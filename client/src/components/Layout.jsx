@@ -25,6 +25,10 @@ export default function Layout() {
   const [editProjectForm, setEditProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' });
   const [storageWarning, setStorageWarning] = useState(null); // { gb, bytes } | null
   const [expandedClients, setExpandedClients] = useState([]); // string[] de client IDs
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ current_password: '', password: '', confirm: '' });
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return; // wait for auth
@@ -83,6 +87,40 @@ export default function Layout() {
       setClients(updated);
       setEditingClient(null);
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
+  };
+
+  const openChangePassword = () => {
+    setPasswordForm({ current_password: '', password: '', confirm: '' });
+    setPasswordError('');
+    setShowChangePassword(true);
+  };
+
+  const changePassword = async () => {
+    setPasswordError('');
+    if (!passwordForm.current_password || !passwordForm.password || !passwordForm.confirm) {
+      setPasswordError('Completá todos los campos');
+      return;
+    }
+    if (passwordForm.password.length < 6) {
+      setPasswordError('La nueva contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+    if (passwordForm.password !== passwordForm.confirm) {
+      setPasswordError('Las contraseñas no coinciden');
+      return;
+    }
+    setPasswordLoading(true);
+    try {
+      await api(`/api/users/${user.id}`, {
+        method: 'PATCH',
+        body: { current_password: passwordForm.current_password, password: passwordForm.password }
+      });
+      setShowChangePassword(false);
+    } catch (e) {
+      setPasswordError(e.message);
+    } finally {
+      setPasswordLoading(false);
+    }
   };
 
   const deleteProject = async (id) => {
@@ -251,6 +289,7 @@ export default function Layout() {
             <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>{user?.role}</div>
           </div>
+          <button onClick={openChangePassword} title="Cambiar contraseña" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>🔑</button>
           <button onClick={logout} title="Cerrar sesión" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>⏻</button>
         </div>
       </aside>
@@ -512,6 +551,34 @@ export default function Layout() {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setEditingClient(null)}>Cancelar</button>
               <button className="btn btn-primary" onClick={saveClient} disabled={!editClientForm.name.trim()}>Guardar cambios</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Cambiar contraseña */}
+      {showChangePassword && (
+        <div className="modal-overlay" onClick={() => setShowChangePassword(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Cambiar contraseña</h2>
+            <div className="form-group">
+              <label>Contraseña actual</label>
+              <input className="input" type="password" value={passwordForm.current_password} onChange={e => setPasswordForm(p => ({ ...p, current_password: e.target.value }))} placeholder="••••••••" autoFocus />
+            </div>
+            <div className="form-group">
+              <label>Nueva contraseña</label>
+              <input className="input" type="password" value={passwordForm.password} onChange={e => setPasswordForm(p => ({ ...p, password: e.target.value }))} placeholder="Mínimo 6 caracteres" />
+            </div>
+            <div className="form-group">
+              <label>Confirmar nueva contraseña</label>
+              <input className="input" type="password" value={passwordForm.confirm} onChange={e => setPasswordForm(p => ({ ...p, confirm: e.target.value }))} placeholder="••••••••" />
+            </div>
+            {passwordError && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12, background: 'rgba(240,92,92,0.08)', padding: '8px 12px', borderRadius: 8 }}>{passwordError}</p>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setShowChangePassword(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={changePassword} disabled={passwordLoading}>
+                {passwordLoading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : 'Cambiar contraseña'}
+              </button>
             </div>
           </div>
         </div>

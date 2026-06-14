@@ -357,7 +357,7 @@ app.patch('/api/users/:id', auth, async (req, res) => {
     if (req.user.role !== 'admin' && req.user.id !== req.params.id) {
       return res.status(403).json({ error: 'Sin acceso' });
     }
-    const { name, email, role, avatar_color, password } = req.body;
+    const { name, email, role, avatar_color, password, current_password } = req.body;
     const updateData = {};
     if (name) updateData.name = name;
     if (email) {
@@ -369,6 +369,13 @@ app.patch('/api/users/:id', auth, async (req, res) => {
     if (avatar_color) updateData.avatar_color = avatar_color;
     if (password) {
       if (password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+      // Si el usuario cambia su propia contraseña, debe confirmar la actual
+      if (req.user.id === req.params.id) {
+        const target = await db('users').where({ id: req.params.id }).first();
+        if (!current_password || !bcrypt.compareSync(current_password, target.password)) {
+          return res.status(400).json({ error: 'Contraseña actual incorrecta' });
+        }
+      }
       updateData.password = bcrypt.hashSync(password, 10);
     }
     if (Object.keys(updateData).length === 0) {
