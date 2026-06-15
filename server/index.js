@@ -9,6 +9,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const rateLimit = require('express-rate-limit');
 
 function parseReadBy(val) {
   if (!val) return [];
@@ -284,6 +285,46 @@ async function initDB() {
     });
   }
 
+  // Project members table — controla qué usuarios (no admin) tienen acceso a un proyecto
+  const hasProjectMembers = await db.schema.hasTable('project_members');
+  if (!hasProjectMembers) {
+    await db.schema.createTable('project_members', t => {
+      t.string('project_id').notNullable();
+      t.string('user_id').notNullable();
+      t.timestamp('created_at').defaultTo(db.fn.now());
+      t.primary(['project_id', 'user_id']);
+    });
+
+    // Backfill: agregar como miembros a quienes ya tenían relación con el proyecto
+    const projects = await db('projects').select('id', 'created_by', 'payment_editor_id');
+    const memberSet = new Map(); // project_id -> Set(user_id)
+    const addMember = (projectId, userId) => {
+      if (!projectId || !userId) return;
+      if (!memberSet.has(projectId)) memberSet.set(projectId, new Set());
+      memberSet.get(projectId).add(userId);
+    };
+    for (const p of projects) {
+      addMember(p.id, p.created_by);
+      addMember(p.id, p.payment_editor_id);
+    }
+    const tasks = await db('tasks').select('project_id', 'assigned_to');
+    for (const t of tasks) addMember(t.project_id, t.assigned_to);
+    const videos = await db('videos').select('project_id', 'uploaded_by');
+    for (const v of videos) addMember(v.project_id, v.uploaded_by);
+    const messages = await db('messages').where({ type: 'project' }).select('project_id', 'sender_id');
+    for (const m of messages) addMember(m.project_id, m.sender_id);
+    const videoComments = await db('video_comments as vc')
+      .join('videos as v', 'vc.video_id', 'v.id')
+      .select('v.project_id', 'vc.user_id');
+    for (const c of videoComments) addMember(c.project_id, c.user_id);
+
+    const rows = [];
+    for (const [projectId, userIds] of memberSet.entries()) {
+      for (const userId of userIds) rows.push({ project_id: projectId, user_id: userId });
+    }
+    if (rows.length > 0) await db('project_members').insert(rows);
+  }
+
   // Seed admin
   const admin = await db('users').where({ email: 'admin@agencyos.com' }).first();
   if (!admin) {
@@ -304,8 +345,40 @@ const auth = (req, res, next) => {
   catch { res.status(401).json({ error: 'Token inválido' }); }
 };
 
+// ─── PROJECT MEMBERSHIP ───────────────────────────────────────────────────────
+// Los admins tienen acceso a todos los proyectos. Los demás usuarios solo
+// pueden acceder a proyectos de los que son miembros.
+async function isProjectMember(userId, role, projectId) {
+  if (role === 'admin') return true;
+  if (!projectId) return false;
+  const member = await db('project_members').where({ project_id: projectId, user_id: userId }).first();
+  return !!member;
+}
+
+async function addProjectMember(projectId, userId) {
+  if (!projectId || !userId) return;
+  const existing = await db('project_members').where({ project_id: projectId, user_id: userId }).first();
+  if (!existing) await db('project_members').insert({ project_id: projectId, user_id: userId });
+}
+
+// Middleware: requiere ser miembro del proyecto indicado por :projectId (o admin)
+const requireProjectMember = async (req, res, next) => {
+  const allowed = await isProjectMember(req.user.id, req.user.role, req.params.projectId);
+  if (!allowed) return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+  next();
+};
+
+// Rate limiting para login: previene ataques de fuerza bruta
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de inicio de sesión. Probá de nuevo más tarde.' }
+});
+
 // ─── AUTH ────────────────────────────────────────────────────────────────────
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await db('users').where({ email }).first();
@@ -330,8 +403,14 @@ app.post('/api/auth/register', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/users — solo admins ven email y rol de todos. El resto ve datos mínimos
+// (id, name, avatar_color) necesarios para mostrar avatares/asignaciones en la UI.
 app.get('/api/users', auth, async (req, res) => {
-  const users = await db('users').select('id','name','email','role','avatar_color','created_at');
+  if (req.user.role === 'admin') {
+    const users = await db('users').select('id','name','email','role','avatar_color','created_at');
+    return res.json(users);
+  }
+  const users = await db('users').select('id','name','avatar_color');
   res.json(users);
 });
 
@@ -430,6 +509,8 @@ app.post('/api/projects', auth, async (req, res) => {
       payment_status: 'unpaid',
       upwork_status: 'pending'
     });
+    await addProjectMember(id, req.user.id);
+    if (payment_editor_id) await addProjectMember(id, payment_editor_id);
     const project = await db('projects').where({ id }).first();
     io.emit('project:created', project);
     res.json(project);
@@ -447,6 +528,7 @@ app.put('/api/projects/:id', auth, async (req, res) => {
       payment_editor_id: payment_editor_id || null,
       payment_type, payment_amount, payment_hours, payment_status, upwork_status
     });
+    if (payment_editor_id) await addProjectMember(req.params.id, payment_editor_id);
     const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color').first();
     io.emit('project:updated', project);
     res.json(project);
@@ -482,6 +564,36 @@ app.delete('/api/projects/:id', auth, async (req, res) => {
 
     await db('projects').where({ id: projectId }).delete();
     io.emit('project:deleted', { id: projectId });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── PROJECT MEMBERS ─────────────────────────────────────────────────────────
+app.get('/api/projects/:projectId/members', auth, requireProjectMember, async (req, res) => {
+  try {
+    const members = await db('project_members as pm')
+      .join('users as u', 'pm.user_id', 'u.id')
+      .where('pm.project_id', req.params.projectId)
+      .select('u.id', 'u.name', 'u.avatar_color', 'u.role');
+    res.json(members);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/projects/:projectId/members', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const { user_id } = req.body;
+    const user = await db('users').where({ id: user_id }).first();
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    await addProjectMember(req.params.projectId, user_id);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/projects/:projectId/members/:userId', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    await db('project_members').where({ project_id: req.params.projectId, user_id: req.params.userId }).delete();
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -557,13 +669,13 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
       .where('p.id', req.params.projectId)
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .first();
-    io.emit('payment:updated', project);
+    io.to('admins').emit('payment:updated', project);
     res.json(project);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── TASKS ───────────────────────────────────────────────────────────────────
-app.get('/api/projects/:projectId/tasks', auth, async (req, res) => {
+app.get('/api/projects/:projectId/tasks', auth, requireProjectMember, async (req, res) => {
   try {
     const tasks = await db('tasks as t')
       .leftJoin('users as u', 't.assigned_to', 'u.id')
@@ -574,11 +686,12 @@ app.get('/api/projects/:projectId/tasks', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/projects/:projectId/tasks', auth, async (req, res) => {
+app.post('/api/projects/:projectId/tasks', auth, requireProjectMember, async (req, res) => {
   try {
     const { title, description, status, priority, assigned_to, due_date } = req.body;
     const id = uuidv4();
     await db('tasks').insert({ id, project_id: req.params.projectId, title, description, status: status || 'todo', priority: priority || 'medium', assigned_to: assigned_to || null, created_by: req.user.id, due_date: due_date || null });
+    if (assigned_to) await addProjectMember(req.params.projectId, assigned_to);
     const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
     io.emit('task:created', task);
     res.json(task);
@@ -587,8 +700,14 @@ app.post('/api/projects/:projectId/tasks', auth, async (req, res) => {
 
 app.put('/api/tasks/:id', auth, async (req, res) => {
   try {
+    const existing = await db('tasks').where({ id: req.params.id }).first();
+    if (!existing) return res.status(404).json({ error: 'No encontrado' });
+    if (!await isProjectMember(req.user.id, req.user.role, existing.project_id)) {
+      return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+    }
     const { title, description, status, priority, assigned_to, due_date } = req.body;
     await db('tasks').where({ id: req.params.id }).update({ title, description, status, priority, assigned_to: assigned_to || null, due_date: due_date || null, updated_at: new Date().toISOString() });
+    if (assigned_to) await addProjectMember(existing.project_id, assigned_to);
     const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', req.params.id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
     io.emit('task:updated', task);
     res.json(task);
@@ -596,13 +715,20 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
 });
 
 app.delete('/api/tasks/:id', auth, async (req, res) => {
-  await db('tasks').where({ id: req.params.id }).delete();
-  io.emit('task:deleted', { id: req.params.id });
-  res.json({ success: true });
+  try {
+    const existing = await db('tasks').where({ id: req.params.id }).first();
+    if (!existing) return res.status(404).json({ error: 'No encontrado' });
+    if (!await isProjectMember(req.user.id, req.user.role, existing.project_id)) {
+      return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+    }
+    await db('tasks').where({ id: req.params.id }).delete();
+    io.emit('task:deleted', { id: req.params.id });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── MESSAGES ────────────────────────────────────────────────────────────────
-app.get('/api/projects/:projectId/messages', auth, async (req, res) => {
+app.get('/api/projects/:projectId/messages', auth, requireProjectMember, async (req, res) => {
   const messages = await db('messages as m').join('users as u', 'm.sender_id', 'u.id')
     .where({ 'project_id': req.params.projectId, 'type': 'project' })
     .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color')
@@ -611,7 +737,7 @@ app.get('/api/projects/:projectId/messages', auth, async (req, res) => {
 });
 
 // ─── VIDEOS ──────────────────────────────────────────────────────────────────
-app.get('/api/projects/:projectId/videos', auth, async (req, res) => {
+app.get('/api/projects/:projectId/videos', auth, requireProjectMember, async (req, res) => {
   const videos = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id')
     .where('v.project_id', req.params.projectId)
     .select('v.*', 'u.name as uploader_name')
@@ -619,7 +745,7 @@ app.get('/api/projects/:projectId/videos', auth, async (req, res) => {
   res.json(videos);
 });
 
-app.post('/api/projects/:projectId/videos', auth, upload.single('video'), async (req, res) => {
+app.post('/api/projects/:projectId/videos', auth, requireProjectMember, upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file' });
   const { title, version } = req.body;
   const id = uuidv4();
@@ -680,6 +806,11 @@ app.get('/api/storage', auth, async (req, res) => {
 
 // ─── VIDEO COMMENTS ──────────────────────────────────────────────────────────
 app.get('/api/videos/:videoId/comments', auth, async (req, res) => {
+  const video = await db('videos').where({ id: req.params.videoId }).first();
+  if (!video) return res.status(404).json({ error: 'No encontrado' });
+  if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+    return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+  }
   const comments = await db('video_comments as vc').join('users as u', 'vc.user_id', 'u.id')
     .where('vc.video_id', req.params.videoId)
     .select('vc.*', 'u.name as user_name', 'u.avatar_color')
@@ -693,7 +824,14 @@ app.get('/api/videos/:videoId/comments', auth, async (req, res) => {
   res.json(withAttachments);
 });
 
-app.post('/api/videos/:videoId/comments', auth, upload.array('attachments', 5), async (req, res) => {
+app.post('/api/videos/:videoId/comments', auth, async (req, res, next) => {
+  const video = await db('videos').where({ id: req.params.videoId }).first();
+  if (!video) return res.status(404).json({ error: 'No encontrado' });
+  if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+    return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+  }
+  next();
+}, upload.array('attachments', 5), async (req, res) => {
   const { content, timestamp_sec, timestamp_end, annotation } = req.body;
   const id = uuidv4();
   await db('video_comments').insert({
@@ -729,6 +867,10 @@ app.patch('/api/comments/:id/resolve', auth, async (req, res) => {
   try {
     const comment = await db('video_comments').where({ id: req.params.id }).first();
     if (!comment) return res.status(404).json({ error: 'No encontrado' });
+    const video = await db('videos').where({ id: comment.video_id }).first();
+    if (!video || !await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+      return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+    }
     const resolved = !comment.resolved;
     await db('video_comments').where({ id: req.params.id }).update({ resolved });
     io.emit('comment:resolved', { id: req.params.id, resolved });
@@ -740,6 +882,10 @@ app.delete('/api/comments/:id', auth, async (req, res) => {
   try {
     const comment = await db('video_comments').where({ id: req.params.id }).first();
     if (!comment) return res.status(404).json({ error: 'No encontrado' });
+    const video = await db('videos').where({ id: comment.video_id }).first();
+    if (!video || !await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+      return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+    }
     if (comment.user_id !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Sin acceso' });
     }
@@ -758,6 +904,12 @@ app.delete('/api/comments/:id', auth, async (req, res) => {
 // GET replies for a comment
 app.get('/api/comments/:id/replies', auth, async (req, res) => {
   try {
+    const comment = await db('video_comments').where({ id: req.params.id }).first();
+    if (!comment) return res.status(404).json({ error: 'No encontrado' });
+    const video = await db('videos').where({ id: comment.video_id }).first();
+    if (!video || !await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+      return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+    }
     const replies = await db('comment_replies as r')
       .join('users as u', 'r.user_id', 'u.id')
       .where('r.comment_id', req.params.id)
@@ -772,7 +924,15 @@ app.get('/api/comments/:id/replies', auth, async (req, res) => {
 });
 
 // POST create reply
-app.post('/api/comments/:id/replies', auth, upload.array('attachments', 5), async (req, res) => {
+app.post('/api/comments/:id/replies', auth, async (req, res, next) => {
+  const comment = await db('video_comments').where({ id: req.params.id }).first();
+  if (!comment) return res.status(404).json({ error: 'No encontrado' });
+  const video = await db('videos').where({ id: comment.video_id }).first();
+  if (!video || !await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+    return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+  }
+  next();
+}, upload.array('attachments', 5), async (req, res) => {
   try {
     const { content } = req.body;
     const id = uuidv4();
@@ -1063,16 +1223,30 @@ io.on('connection', (socket) => {
   socket.on('user:online', () => {
     onlineUsers.set(socket.userId, socket.id);
     socket.join(`user:${socket.userId}`); // personal room for notifications
+    if (socket.userRole === 'admin') socket.join('admins'); // sala para eventos financieros/admin
     io.emit('users:online', Array.from(onlineUsers.keys()));
   });
+  // Unirse a la sala de un proyecto para recibir sus mensajes en vivo.
+  // Requiere ser miembro del proyecto (o admin).
+  socket.on('project:join', async (projectId) => {
+    if (!projectId) return;
+    const allowed = await isProjectMember(socket.userId, socket.userRole, projectId);
+    if (!allowed) return;
+    socket.join(`project:${projectId}`);
+  });
   socket.on('message:send', async (data) => {
-    const { project_id, receiver_id, content, type } = data;
+    const { project_id, content, type } = data;
+    if (!project_id || !content?.trim()) return;
     const sender = await db('users').where({ id: socket.userId }).first();
     if (!sender) return;
+    // Solo miembros del proyecto (o admins) pueden enviar mensajes a ese proyecto
+    const allowed = await isProjectMember(socket.userId, socket.userRole, project_id);
+    if (!allowed) return;
     const id = uuidv4();
-    await db('messages').insert({ id, project_id: project_id || null, sender_id: socket.userId, receiver_id: receiver_id || null, content, type: type || 'project' });
-    const msg = { id, project_id, sender_id: socket.userId, receiver_id, content, type, sender_name: sender.name, sender_color: sender.avatar_color, created_at: new Date().toISOString() };
-    io.emit('message:new', msg);
+    await db('messages').insert({ id, project_id, sender_id: socket.userId, receiver_id: null, content, type: type || 'project' });
+    const msg = { id, project_id, sender_id: socket.userId, receiver_id: null, content, type, sender_name: sender.name, sender_color: sender.avatar_color, created_at: new Date().toISOString() };
+    socket.join(`project:${project_id}`); // el emisor recibe su propio mensaje
+    io.to(`project:${project_id}`).emit('message:new', msg);
   });
   socket.on('disconnect', () => {
     for (const [userId, sid] of onlineUsers.entries()) {

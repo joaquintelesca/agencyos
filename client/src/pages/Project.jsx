@@ -54,6 +54,7 @@ export default function Project() {
     };
     const onTaskDel = ({ id: tid }) => setTasks(prev => prev.filter(t => t.id !== tid));
     const onMsg = (m) => { if (m.project_id === id && m.type === 'project') setMessages(prev => [...prev, m]); };
+    socket.emit('project:join', id);
     socket.on('task:created', onTask);
     socket.on('task:updated', onTask);
     socket.on('task:deleted', onTaskDel);

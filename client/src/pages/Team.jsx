@@ -4,12 +4,12 @@ import { useAuth } from '../context/AuthContext';
 const AVATAR_COLORS = ['#6366f1','#ec4899','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ef4444','#14b8a6','#f97316','#06b6d4'];
 
 export default function Team() {
-  const { api, user } = useAuth();
+  const { api, user, updateUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [showNewUser, setShowNewUser] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [userForm, setUserForm] = useState({ name: '', email: '', password: '', role: 'editor' });
-  const [editForm, setEditForm] = useState({ name: '', email: '', role: 'editor', avatar_color: '#6366f1', password: '' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', role: 'editor', avatar_color: '#6366f1', password: '', current_password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -32,18 +32,27 @@ export default function Team() {
 
   const openEdit = (u) => {
     setEditingUser(u);
-    setEditForm({ name: u.name, email: u.email, role: u.role, avatar_color: u.avatar_color, password: '' });
+    setEditForm({ name: u.name, email: u.email, role: u.role, avatar_color: u.avatar_color, password: '', current_password: '' });
     setError('');
   };
 
   const saveUser = async () => {
     if (!editForm.name || !editForm.email) { setError('Nombre y email son obligatorios'); return; }
+    const isSelf = editingUser.id === user.id;
+    if (editForm.password && isSelf && !editForm.current_password) {
+      setError('Ingresá tu contraseña actual para cambiarla');
+      return;
+    }
     setLoading(true); setError('');
     try {
       const body = { name: editForm.name, email: editForm.email, role: editForm.role, avatar_color: editForm.avatar_color };
-      if (editForm.password) body.password = editForm.password;
+      if (editForm.password) {
+        body.password = editForm.password;
+        if (isSelf) body.current_password = editForm.current_password;
+      }
       const updated = await api(`/api/users/${editingUser.id}`, { method: 'PATCH', body });
       setUsers(prev => prev.map(u => u.id === editingUser.id ? updated : u));
+      if (isSelf) updateUser({ name: updated.name, email: updated.email, role: updated.role, avatar_color: updated.avatar_color });
       setEditingUser(null);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -79,8 +88,8 @@ export default function Team() {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 600, fontSize: 15 }}>{u.name}</div>
-              <div style={{ color: 'var(--text2)', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>
-              <span className={`badge ${u.role === 'admin' ? 'badge-in_progress' : 'badge-todo'}`} style={{ marginTop: 6 }}>{u.role}</span>
+              {u.email && <div style={{ color: 'var(--text2)', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>}
+              {u.role && <span className={`badge ${u.role === 'admin' ? 'badge-in_progress' : 'badge-todo'}`} style={{ marginTop: 6 }}>{u.role}</span>}
             </div>
             {user?.role === 'admin' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -168,6 +177,12 @@ export default function Team() {
               <label>Nueva contraseña <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(dejar vacío para no cambiar)</span></label>
               <input className="input" type="password" value={editForm.password} onChange={e => setEditForm(p => ({ ...p, password: e.target.value }))} placeholder="••••••••" />
             </div>
+            {editingUser.id === user.id && editForm.password && (
+              <div className="form-group">
+                <label>Contraseña actual <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(para confirmar el cambio)</span></label>
+                <input className="input" type="password" value={editForm.current_password} onChange={e => setEditForm(p => ({ ...p, current_password: e.target.value }))} placeholder="••••••••" />
+              </div>
+            )}
             {error && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12, background: 'rgba(240,92,92,0.08)', padding: '8px 12px', borderRadius: 8 }}>{error}</p>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setEditingUser(null)}>Cancelar</button>
