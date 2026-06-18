@@ -15,10 +15,7 @@
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "express": "^4.18.2",
-<<<<<<< HEAD
-=======
     "express-rate-limit": "^8.5.2",
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
     "jsonwebtoken": "^9.0.2",
     "knex": "^3.1.0",
     "multer": "^1.4.5-lts.1",

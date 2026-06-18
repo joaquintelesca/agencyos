@@ -638,11 +638,7 @@ export default function VideoReview({ projectId }) {
                         onMouseLeave={e => e.currentTarget.style.color = DARK.text3}>
                         ↩ Responder
                       </button>
-<<<<<<< HEAD
-                      {c.user_id === user.id && (
-=======
                       {(c.user_id === user.id || user.role === 'admin') && (
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
                         <button onClick={e => { e.stopPropagation(); deleteComment(c.id); }}
                           style={{ background: 'transparent', border: 'none', color: DARK.text3, cursor: 'pointer', fontSize: 11, padding: 0 }}
                           onMouseEnter={e => e.currentTarget.style.color = DARK.red}

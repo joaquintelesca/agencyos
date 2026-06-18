@@ -57,8 +57,6 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-<<<<<<< HEAD
-=======
   const updateUser = (updates) => {
     setUser(prev => {
       const next = { ...prev, ...updates };
@@ -67,7 +65,6 @@ export function AuthProvider({ children }) {
     });
   };
 
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
   const logout = () => {
     setToken(null); setUser(null);
     localStorage.removeItem('token'); localStorage.removeItem('user');
@@ -106,11 +103,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-<<<<<<< HEAD
-    <AuthContext.Provider value={{ user, token, loading, login, logout, api, socket, onlineUsers }}>
-=======
     <AuthContext.Provider value={{ user, token, loading, login, logout, api, socket, onlineUsers, updateUser }}>
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
       {children}
     </AuthContext.Provider>
   );

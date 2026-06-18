@@ -9,10 +9,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
-<<<<<<< HEAD
-=======
 const rateLimit = require('express-rate-limit');
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
 
 function parseReadBy(val) {
   if (!val) return [];
@@ -75,19 +72,18 @@ const db = process.env.DATABASE_URL
       useNullAsDefault: true
     });
 
-<<<<<<< HEAD
 // Poblar project_members a partir de datos existentes (se ejecuta una sola vez al crear la tabla).
 async function seedProjectMembers() {
   const projects = await db('projects').select('id', 'created_by', 'payment_editor_id');
-  const membersToInsert = [];
   const seen = new Set();
+  const rows = [];
 
   function add(projectId, userId, role) {
     if (!projectId || !userId) return;
     const key = `${projectId}:${userId}`;
     if (seen.has(key)) return;
     seen.add(key);
-    membersToInsert.push({ project_id: projectId, user_id: userId, role });
+    rows.push({ project_id: projectId, user_id: userId, role });
   }
 
   for (const p of projects) {
@@ -95,8 +91,14 @@ async function seedProjectMembers() {
     add(p.id, p.payment_editor_id, 'member');
   }
 
+  const tasks = await db('tasks').select('project_id', 'assigned_to');
+  for (const t of tasks) add(t.project_id, t.assigned_to, 'member');
+
   const videos = await db('videos').select('project_id', 'uploaded_by');
   for (const v of videos) add(v.project_id, v.uploaded_by, 'member');
+
+  const messages = await db('messages').where({ type: 'project' }).select('project_id', 'sender_id');
+  for (const m of messages) add(m.project_id, m.sender_id, 'member');
 
   const comments = await db('video_comments as vc')
     .join('videos as v', 'vc.video_id', 'v.id')
@@ -109,13 +111,9 @@ async function seedProjectMembers() {
     .select('v.project_id', 'cr.user_id');
   for (const r of replies) add(r.project_id, r.user_id, 'member');
 
-  if (membersToInsert.length > 0) {
-    await db('project_members').insert(membersToInsert);
-  }
+  if (rows.length > 0) await db('project_members').insert(rows);
 }
 
-=======
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
 async function initDB() {
   const hasUsers = await db.schema.hasTable('users');
   if (!hasUsers) {
@@ -329,56 +327,17 @@ async function initDB() {
     });
   }
 
-<<<<<<< HEAD
   // Tabla de miembros de proyecto: controla qué usuarios tienen acceso a qué proyectos.
-=======
-  // Project members table — controla qué usuarios (no admin) tienen acceso a un proyecto
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
   const hasProjectMembers = await db.schema.hasTable('project_members');
   if (!hasProjectMembers) {
     await db.schema.createTable('project_members', t => {
       t.string('project_id').notNullable();
       t.string('user_id').notNullable();
-<<<<<<< HEAD
       t.string('role').defaultTo('member'); // 'owner' | 'member'
       t.timestamp('added_at').defaultTo(db.fn.now());
       t.unique(['project_id', 'user_id']);
     });
     await seedProjectMembers();
-=======
-      t.timestamp('created_at').defaultTo(db.fn.now());
-      t.primary(['project_id', 'user_id']);
-    });
-
-    // Backfill: agregar como miembros a quienes ya tenían relación con el proyecto
-    const projects = await db('projects').select('id', 'created_by', 'payment_editor_id');
-    const memberSet = new Map(); // project_id -> Set(user_id)
-    const addMember = (projectId, userId) => {
-      if (!projectId || !userId) return;
-      if (!memberSet.has(projectId)) memberSet.set(projectId, new Set());
-      memberSet.get(projectId).add(userId);
-    };
-    for (const p of projects) {
-      addMember(p.id, p.created_by);
-      addMember(p.id, p.payment_editor_id);
-    }
-    const tasks = await db('tasks').select('project_id', 'assigned_to');
-    for (const t of tasks) addMember(t.project_id, t.assigned_to);
-    const videos = await db('videos').select('project_id', 'uploaded_by');
-    for (const v of videos) addMember(v.project_id, v.uploaded_by);
-    const messages = await db('messages').where({ type: 'project' }).select('project_id', 'sender_id');
-    for (const m of messages) addMember(m.project_id, m.sender_id);
-    const videoComments = await db('video_comments as vc')
-      .join('videos as v', 'vc.video_id', 'v.id')
-      .select('v.project_id', 'vc.user_id');
-    for (const c of videoComments) addMember(c.project_id, c.user_id);
-
-    const rows = [];
-    for (const [projectId, userIds] of memberSet.entries()) {
-      for (const userId of userIds) rows.push({ project_id: projectId, user_id: userId });
-    }
-    if (rows.length > 0) await db('project_members').insert(rows);
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
   }
 
   // Seed admin
@@ -401,9 +360,32 @@ const auth = (req, res, next) => {
   catch { res.status(401).json({ error: 'Token inválido' }); }
 };
 
-<<<<<<< HEAD
-// Verifica que el usuario autenticado sea miembro del proyecto (admins pasan siempre).
-// `paramName` es el nombre del parámetro de ruta que contiene el project_id.
+// ─── PROJECT MEMBERSHIP ───────────────────────────────────────────────────────
+
+async function isProjectMember(userId, role, projectId) {
+  if (role === 'admin') return true;
+  if (!projectId) return false;
+  const member = await db('project_members').where({ project_id: projectId, user_id: userId }).first();
+  return !!member;
+}
+
+async function addProjectMember(projectId, userId, role = 'member') {
+  if (!projectId || !userId) return;
+  const existing = await db('project_members').where({ project_id: projectId, user_id: userId }).first();
+  if (!existing) await db('project_members').insert({ project_id: projectId, user_id: userId, role });
+}
+
+// Emite un evento solo a los miembros de un proyecto (via sus rooms personales) y a todos los admins.
+async function emitToProject(projectId, event, data) {
+  const memberIds = await db('project_members').where({ project_id: projectId }).pluck('user_id');
+  const adminIds = await db('users').where({ role: 'admin' }).pluck('id');
+  const targetIds = new Set([...memberIds, ...adminIds]);
+  for (const uid of targetIds) {
+    io.to(`user:${uid}`).emit(event, data);
+  }
+}
+
+// Middleware: requiere ser miembro del proyecto indicado por :projectId (o admin).
 function requireProjectAccess(paramName = 'projectId') {
   return async (req, res, next) => {
     if (req.user.role === 'admin') return next();
@@ -416,75 +398,9 @@ function requireProjectAccess(paramName = 'projectId') {
   };
 }
 
-// Resuelve el project_id a partir de un video_id y verifica pertenencia.
-function requireVideoProjectAccess(paramName = 'videoId') {
-  return async (req, res, next) => {
-    if (req.user.role === 'admin') return next();
-    const video = await db('videos').where({ id: req.params[paramName] }).first();
-    if (!video) return res.status(404).json({ error: 'Video no encontrado' });
-    const membership = await db('project_members')
-      .where({ project_id: video.project_id, user_id: req.user.id }).first();
-    if (!membership) return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
-    req.videoProjectId = video.project_id;
-    next();
-  };
-}
-
-// Resuelve el project_id a partir de un comment_id (video_comments → videos) y verifica pertenencia.
-function requireCommentProjectAccess(paramName = 'id') {
-  return async (req, res, next) => {
-    if (req.user.role === 'admin') return next();
-    const comment = await db('video_comments').where({ id: req.params[paramName] }).first();
-    if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
-    const video = await db('videos').where({ id: comment.video_id }).first();
-    if (!video) return res.status(404).json({ error: 'Video no encontrado' });
-    const membership = await db('project_members')
-      .where({ project_id: video.project_id, user_id: req.user.id }).first();
-    if (!membership) return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
-    req.commentProjectId = video.project_id;
-    next();
-  };
-}
-
-// Helper: agrega un usuario como miembro de un proyecto si no lo es ya.
-async function addProjectMember(projectId, userId, role = 'member') {
-  if (!projectId || !userId) return;
-  const exists = await db('project_members')
-    .where({ project_id: projectId, user_id: userId }).first();
-  if (!exists) {
-    await db('project_members').insert({ project_id: projectId, user_id: userId, role });
-  }
-}
-
-// ─── AUTH ────────────────────────────────────────────────────────────────────
-app.post('/api/auth/login', async (req, res) => {
-=======
-// ─── PROJECT MEMBERSHIP ───────────────────────────────────────────────────────
-// Los admins tienen acceso a todos los proyectos. Los demás usuarios solo
-// pueden acceder a proyectos de los que son miembros.
-async function isProjectMember(userId, role, projectId) {
-  if (role === 'admin') return true;
-  if (!projectId) return false;
-  const member = await db('project_members').where({ project_id: projectId, user_id: userId }).first();
-  return !!member;
-}
-
-async function addProjectMember(projectId, userId) {
-  if (!projectId || !userId) return;
-  const existing = await db('project_members').where({ project_id: projectId, user_id: userId }).first();
-  if (!existing) await db('project_members').insert({ project_id: projectId, user_id: userId });
-}
-
-// Middleware: requiere ser miembro del proyecto indicado por :projectId (o admin)
-const requireProjectMember = async (req, res, next) => {
-  const allowed = await isProjectMember(req.user.id, req.user.role, req.params.projectId);
-  if (!allowed) return res.status(403).json({ error: 'Sin acceso a este proyecto' });
-  next();
-};
-
-// Rate limiting para login: previene ataques de fuerza bruta
+// Rate limiting para login: previene ataques de fuerza bruta.
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
+  windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
@@ -493,7 +409,6 @@ const loginLimiter = rateLimit({
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
   try {
     const { email, password } = req.body;
     const user = await db('users').where({ email }).first();
@@ -501,13 +416,16 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, avatar_color: user.avatar_color } });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.post('/api/auth/register', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     const { name, email, password, role } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'El nombre es obligatorio' });
+    if (!email?.trim()) return res.status(400).json({ error: 'El email es obligatorio' });
+    if (!password || password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
     const exists = await db('users').where({ email }).first();
     if (exists) return res.status(400).json({ error: 'Email ya registrado' });
     const hash = bcrypt.hashSync(password, 10);
@@ -515,22 +433,16 @@ app.post('/api/auth/register', auth, async (req, res) => {
     const color = colors[Math.floor(Math.random() * colors.length)];
     await db('users').insert({ id: uuidv4(), name, email, password: hash, role: role || 'editor', avatar_color: color });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-<<<<<<< HEAD
-app.get('/api/users', auth, async (req, res) => {
-  const users = await db('users').select('id','name','email','role','avatar_color','created_at');
-=======
-// GET /api/users — solo admins ven email y rol de todos. El resto ve datos mínimos
-// (id, name, avatar_color) necesarios para mostrar avatares/asignaciones en la UI.
+// GET /api/users — admins ven todo, editores solo datos mínimos para UI.
 app.get('/api/users', auth, async (req, res) => {
   if (req.user.role === 'admin') {
     const users = await db('users').select('id','name','email','role','avatar_color','created_at');
     return res.json(users);
   }
   const users = await db('users').select('id','name','avatar_color');
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
   res.json(users);
 });
 
@@ -542,12 +454,13 @@ app.delete('/api/users/:id', auth, async (req, res) => {
     await db('messages').where({ sender_id: uid }).delete();
     await db('chat_messages').where({ sender_id: uid }).delete();
     await db('chat_channel_members').where({ user_id: uid }).delete();
+    await db('project_members').where({ user_id: uid }).delete();
     await db('tasks').where({ assigned_to: uid }).update({ assigned_to: null });
     await db('video_comments').where({ user_id: uid }).delete();
     await db('comment_replies').where({ user_id: uid }).delete();
     await db('users').where({ id: uid }).delete();
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // PATCH /api/users/:id — editar usuario (admin, o el propio usuario)
@@ -568,7 +481,6 @@ app.patch('/api/users/:id', auth, async (req, res) => {
     if (avatar_color) updateData.avatar_color = avatar_color;
     if (password) {
       if (password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
-      // Si el usuario cambia su propia contraseña, debe confirmar la actual
       if (req.user.id === req.params.id) {
         const target = await db('users').where({ id: req.params.id }).first();
         if (!current_password || !bcrypt.compareSync(current_password, target.password)) {
@@ -583,13 +495,12 @@ app.patch('/api/users/:id', auth, async (req, res) => {
     await db('users').where({ id: req.params.id }).update(updateData);
     const updated = await db('users').where({ id: req.params.id }).select('id', 'name', 'email', 'role', 'avatar_color', 'created_at').first();
     res.json(updated);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // ─── PROJECTS ────────────────────────────────────────────────────────────────
 app.get('/api/projects', auth, async (req, res) => {
   try {
-<<<<<<< HEAD
     let query = db('projects as p')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .select('p.*', 'c.name as client_name', 'c.color as client_color')
@@ -602,26 +513,16 @@ app.get('/api/projects', auth, async (req, res) => {
     }
 
     const projects = await query;
-=======
-    const projects = await db('projects as p')
-      .leftJoin('clients as c', 'p.client_id', 'c.id')
-      .select('p.*', 'c.name as client_name', 'c.color as client_color')
-      .orderBy('p.created_at', 'desc');
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
     const withCounts = await Promise.all(projects.map(async p => {
       const [{ count: task_count }] = await db('tasks').where({ project_id: p.id }).count('id as count');
       const [{ count: done_count }] = await db('tasks').where({ project_id: p.id, status: 'done' }).count('id as count');
       return { ...p, task_count: Number(task_count), done_count: Number(done_count) };
     }));
     res.json(withCounts);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-<<<<<<< HEAD
 app.get('/api/projects/:id', auth, requireProjectAccess('id'), async (req, res) => {
-=======
-app.get('/api/projects/:id', auth, async (req, res) => {
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
   try {
     const project = await db('projects as p')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
@@ -630,12 +531,14 @@ app.get('/api/projects/:id', auth, async (req, res) => {
       .first();
     if (!project) return res.status(404).json({ error: 'No encontrado' });
     res.json(project);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.post('/api/projects', auth, async (req, res) => {
   try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo el admin puede crear proyectos' });
     const { name, description, color, payment_editor_id, payment_type, payment_amount, payment_hours, client_id, deadline } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'El nombre del proyecto es obligatorio' });
     const id = uuidv4();
     await db('projects').insert({
       id, name, description, color: color || '#6366f1', created_by: req.user.id,
@@ -648,15 +551,12 @@ app.post('/api/projects', auth, async (req, res) => {
       payment_status: 'unpaid',
       upwork_status: 'pending'
     });
-<<<<<<< HEAD
-=======
-    await addProjectMember(id, req.user.id);
+    await addProjectMember(id, req.user.id, 'owner');
     if (payment_editor_id) await addProjectMember(id, payment_editor_id);
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
     const project = await db('projects').where({ id }).first();
-    io.emit('project:created', project);
+    await emitToProject(id, 'project:created', project);
     res.json(project);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.put('/api/projects/:id', auth, async (req, res) => {
@@ -670,14 +570,11 @@ app.put('/api/projects/:id', auth, async (req, res) => {
       payment_editor_id: payment_editor_id || null,
       payment_type, payment_amount, payment_hours, payment_status, upwork_status
     });
-<<<<<<< HEAD
-=======
     if (payment_editor_id) await addProjectMember(req.params.id, payment_editor_id);
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
     const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color').first();
-    io.emit('project:updated', project);
+    await emitToProject(req.params.id, 'project:updated', project);
     res.json(project);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.delete('/api/projects/:id', auth, async (req, res) => {
@@ -707,23 +604,24 @@ app.delete('/api/projects/:id', auth, async (req, res) => {
     await db('messages').where({ project_id: projectId }).delete();
     await db('notifications').where({ project_id: projectId }).delete();
 
+    // Emitir antes de borrar miembros para que llegue a los destinatarios correctos
+    await emitToProject(projectId, 'project:deleted', { id: projectId });
+    await db('project_members').where({ project_id: projectId }).delete();
+
     await db('projects').where({ id: projectId }).delete();
-    io.emit('project:deleted', { id: projectId });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-<<<<<<< HEAD
-=======
-// ─── PROJECT MEMBERS ─────────────────────────────────────────────────────────
-app.get('/api/projects/:projectId/members', auth, requireProjectMember, async (req, res) => {
+// ─── PROJECT MEMBERS CRUD ───────────────────────────────────────────────────
+app.get('/api/projects/:projectId/members', auth, requireProjectAccess(), async (req, res) => {
   try {
     const members = await db('project_members as pm')
       .join('users as u', 'pm.user_id', 'u.id')
       .where('pm.project_id', req.params.projectId)
-      .select('u.id', 'u.name', 'u.avatar_color', 'u.role');
+      .select('u.id', 'u.name', 'u.avatar_color', 'u.role', 'pm.role as member_role');
     res.json(members);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.post('/api/projects/:projectId/members', auth, async (req, res) => {
@@ -734,7 +632,7 @@ app.post('/api/projects/:projectId/members', auth, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
     await addProjectMember(req.params.projectId, user_id);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.delete('/api/projects/:projectId/members/:userId', auth, async (req, res) => {
@@ -742,28 +640,28 @@ app.delete('/api/projects/:projectId/members/:userId', auth, async (req, res) =>
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     await db('project_members').where({ project_id: req.params.projectId, user_id: req.params.userId }).delete();
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
 // ─── CLIENTS ─────────────────────────────────────────────────────────────────
 
 app.get('/api/clients', auth, async (req, res) => {
   try {
     const clients = await db('clients').orderBy('name', 'asc');
     res.json(clients);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.post('/api/clients', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     const { name, color, email, phone, notes } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'El nombre del cliente es obligatorio' });
     const id = uuidv4();
     await db('clients').insert({ id, name, color: color || '#6366f1', email: email || null, phone: phone || null, notes: notes || null });
     const client = await db('clients').where({ id }).first();
     res.json(client);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.patch('/api/clients/:id', auth, async (req, res) => {
@@ -773,7 +671,7 @@ app.patch('/api/clients/:id', auth, async (req, res) => {
     await db('clients').where({ id: req.params.id }).update({ name, color, email, phone, notes });
     const client = await db('clients').where({ id: req.params.id }).first();
     res.json(client);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.delete('/api/clients/:id', auth, async (req, res) => {
@@ -782,7 +680,7 @@ app.delete('/api/clients/:id', auth, async (req, res) => {
     await db('projects').where({ client_id: req.params.id }).update({ client_id: null });
     await db('clients').where({ id: req.params.id }).delete();
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // ─── PAYMENTS ────────────────────────────────────────────────────────────────
@@ -796,7 +694,7 @@ app.get('/api/payments', auth, async (req, res) => {
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .orderBy('p.created_at', 'desc');
     res.json(projects);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.patch('/api/payments/:projectId', auth, async (req, res) => {
@@ -817,21 +715,13 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
       .where('p.id', req.params.projectId)
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .first();
-<<<<<<< HEAD
-    io.emit('payment:updated', project);
-=======
     io.to('admins').emit('payment:updated', project);
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
     res.json(project);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // ─── TASKS ───────────────────────────────────────────────────────────────────
-<<<<<<< HEAD
 app.get('/api/projects/:projectId/tasks', auth, requireProjectAccess(), async (req, res) => {
-=======
-app.get('/api/projects/:projectId/tasks', auth, requireProjectMember, async (req, res) => {
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
   try {
     const tasks = await db('tasks as t')
       .leftJoin('users as u', 't.assigned_to', 'u.id')
@@ -839,125 +729,94 @@ app.get('/api/projects/:projectId/tasks', auth, requireProjectMember, async (req
       .select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color')
       .orderBy('t.created_at', 'asc');
     res.json(tasks);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-<<<<<<< HEAD
 app.post('/api/projects/:projectId/tasks', auth, requireProjectAccess(), async (req, res) => {
-=======
-app.post('/api/projects/:projectId/tasks', auth, requireProjectMember, async (req, res) => {
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
   try {
     const { title, description, status, priority, assigned_to, due_date } = req.body;
+    if (!title?.trim()) return res.status(400).json({ error: 'El título de la tarea es obligatorio' });
     const id = uuidv4();
     await db('tasks').insert({ id, project_id: req.params.projectId, title, description, status: status || 'todo', priority: priority || 'medium', assigned_to: assigned_to || null, created_by: req.user.id, due_date: due_date || null });
-<<<<<<< HEAD
-=======
     if (assigned_to) await addProjectMember(req.params.projectId, assigned_to);
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
     const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
-    io.emit('task:created', task);
+    await emitToProject(req.params.projectId, 'task:created', task);
     res.json(task);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.put('/api/tasks/:id', auth, async (req, res) => {
   try {
-<<<<<<< HEAD
-    const task = await db('tasks').where({ id: req.params.id }).first();
-    if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
-    if (req.user.role !== 'admin') {
-      const membership = await db('project_members')
-        .where({ project_id: task.project_id, user_id: req.user.id }).first();
-      if (!membership) return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
-    }
-    const { title, description, status, priority, assigned_to, due_date } = req.body;
-    await db('tasks').where({ id: req.params.id }).update({ title, description, status, priority, assigned_to: assigned_to || null, due_date: due_date || null, updated_at: new Date().toISOString() });
-    const updated = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', req.params.id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
-    io.emit('task:updated', updated);
-    res.json(updated);
-=======
     const existing = await db('tasks').where({ id: req.params.id }).first();
-    if (!existing) return res.status(404).json({ error: 'No encontrado' });
+    if (!existing) return res.status(404).json({ error: 'Tarea no encontrada' });
     if (!await isProjectMember(req.user.id, req.user.role, existing.project_id)) {
-      return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
     }
     const { title, description, status, priority, assigned_to, due_date } = req.body;
     await db('tasks').where({ id: req.params.id }).update({ title, description, status, priority, assigned_to: assigned_to || null, due_date: due_date || null, updated_at: new Date().toISOString() });
     if (assigned_to) await addProjectMember(existing.project_id, assigned_to);
     const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', req.params.id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
-    io.emit('task:updated', task);
+    await emitToProject(existing.project_id, 'task:updated', task);
     res.json(task);
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.delete('/api/tasks/:id', auth, async (req, res) => {
   try {
-<<<<<<< HEAD
-    const task = await db('tasks').where({ id: req.params.id }).first();
-    if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
-    if (req.user.role !== 'admin') {
-      const membership = await db('project_members')
-        .where({ project_id: task.project_id, user_id: req.user.id }).first();
-      if (!membership) return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
-=======
     const existing = await db('tasks').where({ id: req.params.id }).first();
-    if (!existing) return res.status(404).json({ error: 'No encontrado' });
+    if (!existing) return res.status(404).json({ error: 'Tarea no encontrada' });
     if (!await isProjectMember(req.user.id, req.user.role, existing.project_id)) {
-      return res.status(403).json({ error: 'Sin acceso a este proyecto' });
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
     }
     await db('tasks').where({ id: req.params.id }).delete();
-    io.emit('task:deleted', { id: req.params.id });
+    await emitToProject(existing.project_id, 'task:deleted', { id: req.params.id });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // ─── MESSAGES ────────────────────────────────────────────────────────────────
-<<<<<<< HEAD
-app.get('/api/projects/:projectId/messages', auth, async (req, res) => {
-=======
-app.get('/api/projects/:projectId/messages', auth, requireProjectMember, async (req, res) => {
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
-  const messages = await db('messages as m').join('users as u', 'm.sender_id', 'u.id')
-    .where({ 'project_id': req.params.projectId, 'type': 'project' })
-    .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color')
-    .orderBy('m.created_at', 'asc').limit(200);
-  res.json(messages);
+app.get('/api/projects/:projectId/messages', auth, requireProjectAccess(), async (req, res) => {
+  try {
+    const { before } = req.query;
+    let query = db('messages as m').join('users as u', 'm.sender_id', 'u.id')
+      .where({ 'project_id': req.params.projectId, 'type': 'project' })
+      .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color');
+    if (before) {
+      const ref = await db('messages').where({ id: before }).first();
+      if (ref) query = query.where('m.created_at', '<', ref.created_at);
+    }
+    const messages = await query.orderBy('m.created_at', 'desc').limit(50);
+    res.json(messages.reverse());
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // ─── VIDEOS ──────────────────────────────────────────────────────────────────
-<<<<<<< HEAD
-app.get('/api/projects/:projectId/videos', auth, async (req, res) => {
-=======
-app.get('/api/projects/:projectId/videos', auth, requireProjectMember, async (req, res) => {
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
-  const videos = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id')
-    .where('v.project_id', req.params.projectId)
-    .select('v.*', 'u.name as uploader_name')
-    .orderBy('v.created_at', 'desc');
-  res.json(videos);
+app.get('/api/projects/:projectId/videos', auth, requireProjectAccess(), async (req, res) => {
+  try {
+    const videos = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id')
+      .where('v.project_id', req.params.projectId)
+      .select('v.*', 'u.name as uploader_name')
+      .orderBy('v.created_at', 'desc');
+    res.json(videos);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-<<<<<<< HEAD
-app.post('/api/projects/:projectId/videos', auth, upload.single('video'), async (req, res) => {
-=======
-app.post('/api/projects/:projectId/videos', auth, requireProjectMember, upload.single('video'), async (req, res) => {
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
-  if (!req.file) return res.status(400).json({ error: 'No file' });
-  const { title, version } = req.body;
-  const id = uuidv4();
-  await db('videos').insert({ id, project_id: req.params.projectId, title: title || req.file.originalname, filename: req.file.filename, original_name: req.file.originalname, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: req.file.size });
-  const video = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id').where('v.id', id).select('v.*', 'u.name as uploader_name').first();
-  io.emit('video:uploaded', video);
-  // Check storage after upload
-  const bytes = getUploadsSize();
-  if (bytes >= STORAGE_WARN_BYTES) {
-    const admins = await db('users').where({ role: 'admin' }).pluck('id');
-    admins.forEach(adminId => io.to(`user:${adminId}`).emit('storage:warning', { bytes, gb: (bytes / (1024 ** 3)).toFixed(2) }));
-  }
-  res.json(video);
+app.post('/api/projects/:projectId/videos', auth, requireProjectAccess(), upload.single('video'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file' });
+    const { title, version } = req.body;
+    const id = uuidv4();
+    await db('videos').insert({ id, project_id: req.params.projectId, title: title || req.file.originalname, filename: req.file.filename, original_name: req.file.originalname, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: req.file.size });
+    const video = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id').where('v.id', id).select('v.*', 'u.name as uploader_name').first();
+    await emitToProject(req.params.projectId, 'video:uploaded', video);
+    // Check storage after upload
+    const bytes = getUploadsSize();
+    if (bytes >= STORAGE_WARN_BYTES) {
+      const admins = await db('users').where({ role: 'admin' }).pluck('id');
+      admins.forEach(adminId => io.to(`user:${adminId}`).emit('storage:warning', { bytes, gb: (bytes / (1024 ** 3)).toFixed(2) }));
+    }
+    res.json(video);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.delete('/api/videos/:id', auth, async (req, res) => {
@@ -975,9 +834,9 @@ app.delete('/api/videos/:id', auth, async (req, res) => {
       await db('video_comments').where({ video_id: req.params.id }).delete();
     }
     await db('videos').where({ id: req.params.id }).delete();
-    io.emit('video:deleted', { id: req.params.id });
+    if (video) await emitToProject(video.project_id, 'video:deleted', { id: req.params.id });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // ─── STORAGE CHECK ───────────────────────────────────────────────────────────
@@ -999,105 +858,98 @@ function getUploadsSize(dir = uploadsDir) {
 }
 
 app.get('/api/storage', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
   const bytes = getUploadsSize();
   res.json({ bytes, gb: (bytes / (1024 ** 3)).toFixed(2), warning: bytes >= STORAGE_WARN_BYTES });
 });
 
 // ─── VIDEO COMMENTS ──────────────────────────────────────────────────────────
 app.get('/api/videos/:videoId/comments', auth, async (req, res) => {
-<<<<<<< HEAD
-=======
-  const video = await db('videos').where({ id: req.params.videoId }).first();
-  if (!video) return res.status(404).json({ error: 'No encontrado' });
-  if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
-    return res.status(403).json({ error: 'Sin acceso a este proyecto' });
-  }
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
-  const comments = await db('video_comments as vc').join('users as u', 'vc.user_id', 'u.id')
-    .where('vc.video_id', req.params.videoId)
-    .select('vc.*', 'u.name as user_name', 'u.avatar_color')
-    .orderBy('vc.timestamp_sec', 'asc');
-  const withAttachments = await Promise.all(comments.map(async c => ({
-    ...c,
-    attachments: await db('comment_attachments').where({ comment_id: c.id }),
-    replies: await db('comment_replies as r').join('users as u', 'r.user_id', 'u.id').where('r.comment_id', c.id).select('r.*', 'u.name as user_name', 'u.avatar_color').orderBy('r.created_at', 'asc'),
-    annotation: c.annotation ? JSON.parse(c.annotation) : null
-  })));
-  res.json(withAttachments);
+  try {
+    const video = await db('videos').where({ id: req.params.videoId }).first();
+    if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+    if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+    }
+    const comments = await db('video_comments as vc').join('users as u', 'vc.user_id', 'u.id')
+      .where('vc.video_id', req.params.videoId)
+      .select('vc.*', 'u.name as user_name', 'u.avatar_color')
+      .orderBy('vc.timestamp_sec', 'asc');
+    const withAttachments = await Promise.all(comments.map(async c => ({
+      ...c,
+      attachments: await db('comment_attachments').where({ comment_id: c.id }),
+      replies: await db('comment_replies as r').join('users as u', 'r.user_id', 'u.id').where('r.comment_id', c.id).select('r.*', 'u.name as user_name', 'u.avatar_color').orderBy('r.created_at', 'asc'),
+      annotation: c.annotation ? JSON.parse(c.annotation) : null
+    })));
+    res.json(withAttachments);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-<<<<<<< HEAD
-app.post('/api/videos/:videoId/comments', auth, upload.array('attachments', 5), async (req, res) => {
-=======
 app.post('/api/videos/:videoId/comments', auth, async (req, res, next) => {
-  const video = await db('videos').where({ id: req.params.videoId }).first();
-  if (!video) return res.status(404).json({ error: 'No encontrado' });
-  if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
-    return res.status(403).json({ error: 'Sin acceso a este proyecto' });
-  }
-  next();
-}, upload.array('attachments', 5), async (req, res) => {
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
-  const { content, timestamp_sec, timestamp_end, annotation } = req.body;
-  const id = uuidv4();
-  await db('video_comments').insert({
-    id, video_id: req.params.videoId, user_id: req.user.id, content,
-    timestamp_sec: parseFloat(timestamp_sec) || 0,
-    timestamp_end: timestamp_end ? parseFloat(timestamp_end) : null,
-    annotation: annotation || null
-  });
-  if (req.files?.length) {
-    await db('comment_attachments').insert(req.files.map(f => ({ id: uuidv4(), comment_id: id, filename: f.filename, original_name: f.originalname })));
-  }
-  const comment = await db('video_comments as vc').join('users as u', 'vc.user_id', 'u.id').where('vc.id', id).select('vc.*', 'u.name as user_name', 'u.avatar_color').first();
-  const attachments = await db('comment_attachments').where({ comment_id: id });
-  const full = { ...comment, attachments, annotation: annotation ? JSON.parse(annotation) : null };
-  io.emit('comment:created', full);
-  // Notify admins and users who already commented on this video, except sender
-  const video = await db('videos').where({ id: req.params.videoId }).first();
-  if (video) {
-    const members = await db('users')
-      .where('id', '!=', req.user.id)
-      .where(function() {
-        this.where({ role: 'admin' })
-          .orWhereIn('id', db('video_comments').where({ video_id: req.params.videoId }).pluck('user_id'));
-      });
-    for (const m of members) {
-      await createNotification({ userId: m.id, type: 'comment', actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });
+  try {
+    const video = await db('videos').where({ id: req.params.videoId }).first();
+    if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+    if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
     }
-  }
-  res.json(full);
+    next();
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+}, upload.array('attachments', 5), async (req, res) => {
+  try {
+    const { content, timestamp_sec, timestamp_end, annotation } = req.body;
+    const id = uuidv4();
+    await db('video_comments').insert({
+      id, video_id: req.params.videoId, user_id: req.user.id, content,
+      timestamp_sec: parseFloat(timestamp_sec) || 0,
+      timestamp_end: timestamp_end ? parseFloat(timestamp_end) : null,
+      annotation: annotation || null
+    });
+    if (req.files?.length) {
+      await db('comment_attachments').insert(req.files.map(f => ({ id: uuidv4(), comment_id: id, filename: f.filename, original_name: f.originalname })));
+    }
+    const comment = await db('video_comments as vc').join('users as u', 'vc.user_id', 'u.id').where('vc.id', id).select('vc.*', 'u.name as user_name', 'u.avatar_color').first();
+    const attachments = await db('comment_attachments').where({ comment_id: id });
+    const full = { ...comment, attachments, annotation: annotation ? JSON.parse(annotation) : null };
+    const video = await db('videos').where({ id: req.params.videoId }).first();
+    if (video) await emitToProject(video.project_id, 'comment:created', full);
+    if (video) {
+      const members = await db('users')
+        .where('id', '!=', req.user.id)
+        .where(function() {
+          this.where({ role: 'admin' })
+            .orWhereIn('id', db('video_comments').where({ video_id: req.params.videoId }).pluck('user_id'));
+        });
+      for (const m of members) {
+        await createNotification({ userId: m.id, type: 'comment', actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });
+      }
+    }
+    res.json(full);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.patch('/api/comments/:id/resolve', auth, async (req, res) => {
   try {
     const comment = await db('video_comments').where({ id: req.params.id }).first();
     if (!comment) return res.status(404).json({ error: 'No encontrado' });
-<<<<<<< HEAD
-=======
     const video = await db('videos').where({ id: comment.video_id }).first();
     if (!video || !await isProjectMember(req.user.id, req.user.role, video.project_id)) {
-      return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
     }
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
     const resolved = !comment.resolved;
     await db('video_comments').where({ id: req.params.id }).update({ resolved });
-    io.emit('comment:resolved', { id: req.params.id, resolved });
+    await emitToProject(video.project_id, 'comment:resolved', { id: req.params.id, resolved });
     res.json({ id: req.params.id, resolved });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.delete('/api/comments/:id', auth, async (req, res) => {
   try {
     const comment = await db('video_comments').where({ id: req.params.id }).first();
     if (!comment) return res.status(404).json({ error: 'No encontrado' });
-<<<<<<< HEAD
-=======
     const video = await db('videos').where({ id: comment.video_id }).first();
     if (!video || !await isProjectMember(req.user.id, req.user.role, video.project_id)) {
-      return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
     }
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
     if (comment.user_id !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Sin acceso' });
     }
@@ -1108,23 +960,20 @@ app.delete('/api/comments/:id', auth, async (req, res) => {
     await db('comment_attachments').where({ comment_id: req.params.id }).delete();
     await db('comment_replies').where({ comment_id: req.params.id }).delete();
     await db('video_comments').where({ id: req.params.id }).delete();
-    io.emit('comment:deleted', { id: req.params.id });
+    await emitToProject(video.project_id, 'comment:deleted', { id: req.params.id });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // GET replies for a comment
 app.get('/api/comments/:id/replies', auth, async (req, res) => {
   try {
-<<<<<<< HEAD
-=======
     const comment = await db('video_comments').where({ id: req.params.id }).first();
     if (!comment) return res.status(404).json({ error: 'No encontrado' });
     const video = await db('videos').where({ id: comment.video_id }).first();
     if (!video || !await isProjectMember(req.user.id, req.user.role, video.project_id)) {
-      return res.status(403).json({ error: 'Sin acceso a este proyecto' });
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
     }
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
     const replies = await db('comment_replies as r')
       .join('users as u', 'r.user_id', 'u.id')
       .where('r.comment_id', req.params.id)
@@ -1135,23 +984,21 @@ app.get('/api/comments/:id/replies', auth, async (req, res) => {
       attachments: await db('reply_attachments').where({ reply_id: r.id })
     })));
     res.json(withAttachments);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // POST create reply
-<<<<<<< HEAD
-app.post('/api/comments/:id/replies', auth, upload.array('attachments', 5), async (req, res) => {
-=======
 app.post('/api/comments/:id/replies', auth, async (req, res, next) => {
-  const comment = await db('video_comments').where({ id: req.params.id }).first();
-  if (!comment) return res.status(404).json({ error: 'No encontrado' });
-  const video = await db('videos').where({ id: comment.video_id }).first();
-  if (!video || !await isProjectMember(req.user.id, req.user.role, video.project_id)) {
-    return res.status(403).json({ error: 'Sin acceso a este proyecto' });
-  }
-  next();
+  try {
+    const comment = await db('video_comments').where({ id: req.params.id }).first();
+    if (!comment) return res.status(404).json({ error: 'No encontrado' });
+    const video = await db('videos').where({ id: comment.video_id }).first();
+    if (!video || !await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+    }
+    next();
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 }, upload.array('attachments', 5), async (req, res) => {
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
   try {
     const { content } = req.body;
     const id = uuidv4();
@@ -1162,14 +1009,14 @@ app.post('/api/comments/:id/replies', auth, async (req, res, next) => {
     const reply = await db('comment_replies as r').join('users as u', 'r.user_id', 'u.id').where('r.id', id).select('r.*', 'u.name as user_name', 'u.avatar_color').first();
     const attachments = await db('reply_attachments').where({ reply_id: id });
     const full = { ...reply, attachments };
-    io.emit('comment:reply', full);
     const parentComment = await db('video_comments').where({ id: req.params.id }).first();
     if (parentComment) {
       const video = await db('videos').where({ id: parentComment.video_id }).first();
+      if (video) await emitToProject(video.project_id, 'comment:reply', full);
       await createNotification({ userId: parentComment.user_id, type: 'reply', actorId: req.user.id, projectId: video?.project_id, videoId: parentComment.video_id, commentId: req.params.id, preview: content?.slice(0, 80) });
     }
     res.json(full);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
@@ -1198,7 +1045,7 @@ app.get('/api/notifications', auth, async (req, res) => {
       .orderBy('n.created_at', 'desc')
       .limit(50);
     res.json(notifs);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.patch('/api/notifications/read-all', auth, async (req, res) => {
@@ -1215,24 +1062,40 @@ app.patch('/api/notifications/:id/read', auth, async (req, res) => {
 app.get('/api/chat/unread', auth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const msgs = await db('chat_messages')
-      .whereNot({ sender_id: userId })
-      .select('id', 'type', 'sender_id', 'receiver_id', 'channel_id', 'read_by');
-
     const counts = {};
-    for (const m of msgs) {
-      if (m.type === 'dm' && m.receiver_id !== userId) continue;
-      if (m.type === 'channel') {
-        const isMember = await db('chat_channel_members').where({ channel_id: m.channel_id, user_id: userId }).first();
-        if (!isMember) continue;
-      }
+
+    // DMs: solo mensajes dirigidos a este usuario, no enviados por él
+    const dmMsgs = await db('chat_messages')
+      .where({ type: 'dm', receiver_id: userId })
+      .whereNot({ sender_id: userId })
+      .select('id', 'sender_id', 'read_by');
+    for (const m of dmMsgs) {
       const readBy = parseReadBy(m.read_by);
-      if (readBy.includes(userId)) continue;
-      const key = m.type === 'dm' ? `dm:${m.sender_id}` : `channel:${m.channel_id}`;
-      counts[key] = (counts[key] || 0) + 1;
+      if (!readBy.includes(userId)) {
+        const key = `dm:${m.sender_id}`;
+        counts[key] = (counts[key] || 0) + 1;
+      }
     }
+
+    // Canales: solo los canales donde es miembro
+    const memberChannels = await db('chat_channel_members').where({ user_id: userId }).pluck('channel_id');
+    if (memberChannels.length > 0) {
+      const channelMsgs = await db('chat_messages')
+        .where({ type: 'channel' })
+        .whereIn('channel_id', memberChannels)
+        .whereNot({ sender_id: userId })
+        .select('id', 'channel_id', 'read_by');
+      for (const m of channelMsgs) {
+        const readBy = parseReadBy(m.read_by);
+        if (!readBy.includes(userId)) {
+          const key = `channel:${m.channel_id}`;
+          counts[key] = (counts[key] || 0) + 1;
+        }
+      }
+    }
+
     res.json(counts);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // Mark messages as read
@@ -1255,7 +1118,7 @@ app.post('/api/chat/read', auth, async (req, res) => {
     }
     io.to(`user:${userId}`).emit('chat:read', { type, id });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // ─── CHAT ─────────────────────────────────────────────────────────────────────
@@ -1268,7 +1131,6 @@ app.get('/api/chat/conversations', auth, async (req, res) => {
 
     let dms = [];
     if (isAdmin) {
-      // Admin sees all users they've chatted with OR all editors
       const allUsers = await db('users').where('id', '!=', userId).select('id', 'name', 'avatar_color');
       dms = await Promise.all(allUsers.map(async u => {
         const last = await db('chat_messages')
@@ -1277,7 +1139,6 @@ app.get('/api/chat/conversations', auth, async (req, res) => {
         return { id: u.id, name: u.name, color: u.avatar_color, last_message: last?.content || (last?.file_type ? '📎 Archivo' : null), unread: 0 };
       }));
     } else {
-      // Editor: ve a TODOS los admins (no solo el primero)
       const admins = await db('users').where({ role: 'admin' }).select('id', 'name', 'avatar_color');
       dms = await Promise.all(admins.map(async (admin) => {
         const last = await db('chat_messages')
@@ -1287,7 +1148,6 @@ app.get('/api/chat/conversations', auth, async (req, res) => {
       }));
     }
 
-    // Channels: admin sees all, editor only sees ones they're member of
     let channels = [];
     if (isAdmin) {
       const allChannels = await db('chat_channels').orderBy('created_at', 'asc');
@@ -1303,38 +1163,45 @@ app.get('/api/chat/conversations', auth, async (req, res) => {
     }
 
     res.json({ dms, channels });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-// GET messages for a DM or channel
+// GET messages for a DM or channel (paginado: devuelve los más recientes primero).
+// ?before=<id> para cargar mensajes anteriores.
 app.get('/api/chat/messages', auth, async (req, res) => {
   try {
-    const { type, id } = req.query;
+    const { type, id, before } = req.query;
     const userId = req.user.id;
+    const PAGE_SIZE = 50;
 
-    let msgs = [];
+    let query;
     if (type === 'dm') {
-      // Security: only participants can read
-      msgs = await db('chat_messages as m')
+      query = db('chat_messages as m')
         .join('users as u', 'm.sender_id', 'u.id')
         .where('m.type', 'dm')
         .where(function() { this.where({ sender_id: userId, receiver_id: id }).orWhere({ sender_id: id, receiver_id: userId }); })
-        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color')
-        .orderBy('m.created_at', 'asc').limit(200);
+        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color');
     } else if (type === 'channel') {
-      // Security: check membership (admin always allowed)
       if (req.user.role !== 'admin') {
         const isMember = await db('chat_channel_members').where({ channel_id: id, user_id: userId }).first();
         if (!isMember) return res.status(403).json({ error: 'Sin acceso' });
       }
-      msgs = await db('chat_messages as m')
+      query = db('chat_messages as m')
         .join('users as u', 'm.sender_id', 'u.id')
         .where({ 'm.type': 'channel', 'm.channel_id': id })
-        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color')
-        .orderBy('m.created_at', 'asc').limit(200);
+        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color');
+    } else {
+      return res.json([]);
     }
-    res.json(msgs);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+
+    if (before) {
+      const ref = await db('chat_messages').where({ id: before }).first();
+      if (ref) query = query.where('m.created_at', '<', ref.created_at);
+    }
+
+    const msgs = await query.orderBy('m.created_at', 'desc').limit(PAGE_SIZE);
+    res.json(msgs.reverse());
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // POST send a message
@@ -1343,7 +1210,6 @@ app.post('/api/chat/messages', auth, async (req, res) => {
     const { type, receiver_id, channel_id, content, file_url, file_type, file_name } = req.body;
     const senderId = req.user.id;
 
-    // Security: editors can only DM admins (any admin, not just the first one)
     if (req.user.role !== 'admin' && type === 'dm') {
       const targetUser = await db('users').where({ id: receiver_id }).first();
       if (!targetUser || targetUser.role !== 'admin') {
@@ -1363,18 +1229,18 @@ app.post('/api/chat/messages', auth, async (req, res) => {
     const id = uuidv4();
     await db('chat_messages').insert({ id, sender_id: senderId, receiver_id: receiver_id || null, channel_id: channel_id || null, type, content: content || '', file_url: file_url || null, file_type: file_type || null, file_name: file_name || null });
     const msg = await db('chat_messages as m').join('users as u', 'm.sender_id', 'u.id').where('m.id', id).select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color').first();
-    io.emit('chat:message', msg);
-    // Notify recipient(s)
     if (type === 'dm' && receiver_id) {
+      io.to(`user:${senderId}`).to(`user:${receiver_id}`).emit('chat:message', msg);
       await createNotification({ userId: receiver_id, type: 'chat', actorId: senderId, chatMessageId: id, preview: content?.slice(0, 80) });
     } else if (type === 'channel' && channel_id) {
       const members = await db('chat_channel_members').where({ channel_id }).pluck('user_id');
       for (const uid of members) {
+        io.to(`user:${uid}`).emit('chat:message', msg);
         await createNotification({ userId: uid, type: 'chat', actorId: senderId, chatMessageId: id, preview: content?.slice(0, 80) });
       }
     }
     res.json(msg);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // POST upload file for chat
@@ -1420,7 +1286,7 @@ app.post('/api/chat/channels', auth, async (req, res) => {
 
     const totalMembers = (members?.filter(uid => uid !== req.user.id).length || 0) + 1;
     res.json({ id, name: name.trim(), member_count: totalMembers, created_by: req.user.id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // ─── SOCKET.IO ───────────────────────────────────────────────────────────────
@@ -1441,24 +1307,10 @@ const onlineUsers = new Map();
 io.on('connection', (socket) => {
   socket.on('user:online', () => {
     onlineUsers.set(socket.userId, socket.id);
-    socket.join(`user:${socket.userId}`); // personal room for notifications
-<<<<<<< HEAD
+    socket.join(`user:${socket.userId}`);
+    if (socket.userRole === 'admin') socket.join('admins');
     io.emit('users:online', Array.from(onlineUsers.keys()));
   });
-  socket.on('message:send', async (data) => {
-    const { project_id, receiver_id, content, type } = data;
-    const sender = await db('users').where({ id: socket.userId }).first();
-    if (!sender) return;
-    const id = uuidv4();
-    await db('messages').insert({ id, project_id: project_id || null, sender_id: socket.userId, receiver_id: receiver_id || null, content, type: type || 'project' });
-    const msg = { id, project_id, sender_id: socket.userId, receiver_id, content, type, sender_name: sender.name, sender_color: sender.avatar_color, created_at: new Date().toISOString() };
-    io.emit('message:new', msg);
-=======
-    if (socket.userRole === 'admin') socket.join('admins'); // sala para eventos financieros/admin
-    io.emit('users:online', Array.from(onlineUsers.keys()));
-  });
-  // Unirse a la sala de un proyecto para recibir sus mensajes en vivo.
-  // Requiere ser miembro del proyecto (o admin).
   socket.on('project:join', async (projectId) => {
     if (!projectId) return;
     const allowed = await isProjectMember(socket.userId, socket.userRole, projectId);
@@ -1470,15 +1322,12 @@ io.on('connection', (socket) => {
     if (!project_id || !content?.trim()) return;
     const sender = await db('users').where({ id: socket.userId }).first();
     if (!sender) return;
-    // Solo miembros del proyecto (o admins) pueden enviar mensajes a ese proyecto
     const allowed = await isProjectMember(socket.userId, socket.userRole, project_id);
     if (!allowed) return;
     const id = uuidv4();
     await db('messages').insert({ id, project_id, sender_id: socket.userId, receiver_id: null, content, type: type || 'project' });
     const msg = { id, project_id, sender_id: socket.userId, receiver_id: null, content, type, sender_name: sender.name, sender_color: sender.avatar_color, created_at: new Date().toISOString() };
-    socket.join(`project:${project_id}`); // el emisor recibe su propio mensaje
     io.to(`project:${project_id}`).emit('message:new', msg);
->>>>>>> a18f8db389f735886578b4956a834e842f46eac3
   });
   socket.on('disconnect', () => {
     for (const [userId, sid] of onlineUsers.entries()) {
@@ -1489,8 +1338,6 @@ io.on('connection', (socket) => {
 });
 
 // ─── CLIENT ESTÁTICO (producción) ────────────────────────────────────────────
-// Si existe client/dist (build de Vite), servirlo y resolver el SPA fallback.
-// En desarrollo esa carpeta no existe, así que esto no afecta el flujo local con Vite.
 const clientDist = path.join(__dirname, '../client/dist');
 if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist));
