@@ -1,0 +1,8 @@
+node_modules/
+.jwt_secret
+.env
+agencyos.db
+uploads/
+client/dist/
+*.log
+.DS_Store
