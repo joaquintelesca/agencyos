@@ -765,10 +765,22 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
       return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
     }
     const { title, description, status, priority, assigned_to, due_date } = req.body;
-    await db('tasks').where({ id: req.params.id }).update({ title, description, status, priority, assigned_to: assigned_to || null, due_date: due_date || null, updated_at: new Date().toISOString() });
-    if (assigned_to) await addProjectMember(existing.project_id, assigned_to);
+    if (req.user.role !== 'admin') {
+      if (existing.assigned_to !== req.user.id) return res.status(403).json({ error: 'Solo podés cambiar el estado de tus tareas asignadas' });
+      await db('tasks').where({ id: req.params.id }).update({ status, updated_at: new Date().toISOString() });
+    } else {
+      await db('tasks').where({ id: req.params.id }).update({ title, description, status, priority, assigned_to: assigned_to || null, due_date: due_date || null, updated_at: new Date().toISOString() });
+      if (assigned_to) await addProjectMember(existing.project_id, assigned_to);
+    }
     const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', req.params.id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
     await emitToProject(existing.project_id, 'task:updated', task);
+    if (status === 'review' && existing.status !== 'review') {
+      const admins = await db('users').where({ role: 'admin' }).select('id');
+      const project = await db('projects').where({ id: existing.project_id }).first();
+      for (const admin of admins) {
+        await createNotification({ userId: admin.id, type: 'task_review', actorId: req.user.id, projectId: existing.project_id, preview: `"${existing.title}" en ${project?.name || 'proyecto'}` });
+      }
+    }
     res.json(task);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });

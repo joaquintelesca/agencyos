@@ -180,21 +180,26 @@ export default function Project() {
                     {tasks.filter(t => t.status === col.key).length}
                   </span>
                 </div>
-                <button onClick={() => openCreateTask(col.key)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>＋</button>
+                {user.role === 'admin' && <button onClick={() => openCreateTask(col.key)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>＋</button>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
                 {tasks.filter(t => t.status === col.key).map(task => (
-                  <TaskCard key={task.id} task={task} onEdit={() => openEditTask(task)} onDelete={() => deleteTask(task.id)}
-                    onDragStart={() => onDragStart(task)} initials={initials} />
+                  <TaskCard key={task.id} task={task}
+                    onEdit={user.role === 'admin' ? () => openEditTask(task) : null}
+                    onDelete={user.role === 'admin' ? () => deleteTask(task.id) : null}
+                    onDragStart={() => onDragStart(task)} initials={initials}
+                    canDrag={user.role === 'admin' || task.assigned_to === user.id} />
                 ))}
               </div>
-              <button onClick={() => openCreateTask(col.key)} style={{
-                marginTop: 8, padding: '8px', borderRadius: 8, border: '1px dashed var(--border)',
-                background: 'transparent', color: 'var(--text3)', fontSize: 12, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center'
-              }}>
-                ＋ Agregar tarea
-              </button>
+              {user.role === 'admin' && (
+                <button onClick={() => openCreateTask(col.key)} style={{
+                  marginTop: 8, padding: '8px', borderRadius: 8, border: '1px dashed var(--border)',
+                  background: 'transparent', color: 'var(--text3)', fontSize: 12, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center'
+                }}>
+                  ＋ Agregar tarea
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -308,13 +313,13 @@ export default function Project() {
   );
 }
 
-function TaskCard({ task, onEdit, onDelete, onDragStart, initials }) {
+function TaskCard({ task, onEdit, onDelete, onDragStart, initials, canDrag = true }) {
   const priorityColors = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' };
   const priorityLabels = { high: 'Alta', medium: 'Media', low: 'Baja' };
   return (
-    <div draggable onDragStart={onDragStart} onClick={onEdit} style={{
+    <div draggable={canDrag} onDragStart={canDrag ? onDragStart : undefined} onClick={onEdit || undefined} style={{
       background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10,
-      padding: '12px 14px', cursor: 'pointer', transition: 'all 0.15s',
+      padding: '12px 14px', cursor: canDrag || onEdit ? 'pointer' : 'default', transition: 'all 0.15s',
     }}
     onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
     onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>

@@ -36,10 +36,11 @@ export default function Notifications() {
     return `hace ${Math.floor(h / 24)}d`;
   };
 
-  const icon = (type) => type === 'comment' ? '💬' : type === 'reply' ? '↩️' : '✉️';
+  const icon = (type) => type === 'comment' ? '💬' : type === 'reply' ? '↩️' : type === 'task_review' ? '📋' : '✉️';
   const label = (n) => {
     if (n.type === 'comment') return <><strong>{n.actor_name}</strong> comentó en un video{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'reply') return <><strong>{n.actor_name}</strong> respondió tu comentario{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
+    if (n.type === 'task_review') return <><strong>{n.actor_name}</strong> pasó una tarea a revisión{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     return <><strong>{n.actor_name}</strong> te envió un mensaje</>;
   };
 
