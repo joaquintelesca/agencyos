@@ -355,7 +355,7 @@ app.use('/uploads', express.static(uploadsDir));
 
 const auth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'No token' });
+  if (!token) return res.status(401).json({ error: 'Sesión no iniciada' });
   try { req.user = jwt.verify(token, JWT_SECRET); next(); }
   catch { res.status(401).json({ error: 'Token inválido' }); }
 };
@@ -450,6 +450,11 @@ app.delete('/api/users/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     const uid = req.params.id;
+    const target = await db('users').where({ id: uid }).first();
+    if (target?.role === 'admin') {
+      const adminCount = await db('users').where({ role: 'admin' }).count('id as c').first();
+      if (adminCount.c <= 1) return res.status(400).json({ error: 'No se puede eliminar el último administrador' });
+    }
     await db('notifications').where({ user_id: uid }).orWhere({ actor_id: uid }).delete();
     await db('messages').where({ sender_id: uid }).delete();
     await db('chat_messages').where({ sender_id: uid }).delete();
@@ -477,7 +482,14 @@ app.patch('/api/users/:id', auth, async (req, res) => {
       if (existing) return res.status(400).json({ error: 'Email ya en uso por otro usuario' });
       updateData.email = email;
     }
-    if (role && req.user.role === 'admin') updateData.role = role;
+    if (role && req.user.role === 'admin') {
+      const target = await db('users').where({ id: req.params.id }).first();
+      if (target?.role === 'admin' && role !== 'admin') {
+        const adminCount = await db('users').where({ role: 'admin' }).count('id as c').first();
+        if (adminCount.c <= 1) return res.status(400).json({ error: 'No se puede cambiar el rol del último administrador' });
+      }
+      updateData.role = role;
+    }
     if (avatar_color) updateData.avatar_color = avatar_color;
     if (password) {
       if (password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
@@ -803,7 +815,7 @@ app.get('/api/projects/:projectId/videos', auth, requireProjectAccess(), async (
 
 app.post('/api/projects/:projectId/videos', auth, requireProjectAccess(), upload.single('video'), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No file' });
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún video' });
     const { title, version } = req.body;
     const id = uuidv4();
     await db('videos').insert({ id, project_id: req.params.projectId, title: title || req.file.originalname, filename: req.file.filename, original_name: req.file.originalname, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: req.file.size });
@@ -842,19 +854,30 @@ app.delete('/api/videos/:id', auth, async (req, res) => {
 // ─── STORAGE CHECK ───────────────────────────────────────────────────────────
 
 const STORAGE_WARN_BYTES = 20 * 1024 * 1024 * 1024; // 20GB
+const STORAGE_CACHE_TTL = 60_000; // 60 segundos
+let _storageCacheBytes = null;
+let _storageCacheTime = 0;
 
-function getUploadsSize(dir = uploadsDir) {
+function _scanUploadsSize(dir = uploadsDir) {
   if (!fs.existsSync(dir)) return 0;
   let total = 0;
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     try {
-      if (entry.isDirectory()) total += getUploadsSize(fullPath);
+      if (entry.isDirectory()) total += _scanUploadsSize(fullPath);
       else total += fs.statSync(fullPath).size;
     } catch {}
   }
   return total;
+}
+
+function getUploadsSize() {
+  const now = Date.now();
+  if (_storageCacheBytes !== null && (now - _storageCacheTime) < STORAGE_CACHE_TTL) return _storageCacheBytes;
+  _storageCacheBytes = _scanUploadsSize();
+  _storageCacheTime = now;
+  return _storageCacheBytes;
 }
 
 app.get('/api/storage', auth, async (req, res) => {
@@ -1244,8 +1267,21 @@ app.post('/api/chat/messages', auth, async (req, res) => {
 });
 
 // POST upload file for chat
+const ALLOWED_CHAT_TYPES = /^(image\/(jpeg|png|gif|webp|svg\+xml)|video\/(mp4|webm|quicktime|x-msvideo)|audio\/(mpeg|wav|ogg|webm|mp4)|application\/pdf|text\/plain)$/;
+const chatUpload = multer({
+  storage,
+  limits: { fileSize: 3 * 1024 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_CHAT_TYPES.test(file.mimetype)) cb(null, true);
+    else cb(new Error('INVALID_FILE_TYPE'));
+  }
+});
+
 app.post('/api/chat/upload', auth, (req, res) => {
-  upload.single('file')(req, res, (err) => {
+  chatUpload.single('file')(req, res, (err) => {
+    if (err && err.message === 'INVALID_FILE_TYPE') {
+      return res.status(400).json({ error: 'Tipo de archivo no permitido. Se aceptan imágenes, videos, audios, PDFs y texto.' });
+    }
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ error: 'Archivo demasiado grande (máx. 3GB)' });
