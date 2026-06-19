@@ -69,16 +69,12 @@ Resuelto
 • Los eventos financieros (actualización de pagos) ya no se transmiten a todos los usuarios conectados, solo a los administradores.
 • Un administrador puede cambiar su propia contraseña y moderar comentarios de cualquier usuario.
 • Borrado en cascada: al eliminar un proyecto o un cliente, se limpian correctamente las referencias relacionadas en lugar de dejar datos huérfanos.
-Pendiente (prioridad media)
-
-• La carga de mensajes de una conversación tiene un límite fijo que no contempla bien las conversaciones muy largas: solo se cargan los primeros 200 mensajes en lugar de los más recientes.
-• Los mensajes de error que el servidor devuelve al frontend en caso de falla son a veces demasiado técnicos y deberían traducirse a mensajes más claros para el usuario.
-• La subida de archivos de chat no valida qué tipo de archivo se está subiendo, lo cual podría representar un riesgo si se sube un archivo malicioso disfrazado de imagen.
-Pendiente (prioridad baja)
-
-• No existe protección para evitar que la agencia se quede sin ningún usuario administrador, en caso de que el único admin se borre a sí mismo o cambie su propio rol por error.
-• El cálculo del espacio de almacenamiento utilizado se hace de forma que podría volverse lento a medida que la cantidad de archivos subidos crece mucho.
-• Existe algo de código antiguo sin usar en el Dashboard que debería limpiarse.
+• La carga de mensajes en el chat y en proyectos ahora usa paginación: se cargan los 50 más recientes y al scrollear hacia arriba se cargan los anteriores bajo demanda.
+• Todos los mensajes de error del servidor están traducidos al español con textos claros para el usuario.
+• La subida de archivos en el chat valida el tipo MIME contra una whitelist (imágenes, videos, audios, PDFs y texto plano), rechazando archivos no permitidos.
+• Protección del último administrador: no se puede eliminar ni cambiar el rol del único admin restante.
+• El cálculo de espacio de almacenamiento utilizado se cachea por 60 segundos, evitando escaneos repetidos del disco.
+• Se limpió el código muerto del Dashboard (componentes ClientKanban/ProjectKanbanRow y variables sin usar).
 9. Infraestructura actual
 
 La aplicación está deployada en Render (plan gratuito), con el código fuente alojado en un repositorio privado de GitHub. El plan gratuito de Render tiene una limitación importante: el sistema de archivos del servidor no es permanente, por lo que la base de datos (actualmente SQLite) se reinicia y pierde todos los datos cada vez que el servicio se reinicia por inactividad o por un nuevo despliegue de código. Esta es la tarea pendiente de mayor impacto práctico: migrar la base de datos a un servicio externo persistente y gratuito (como Supabase o Neon, ambos basados en PostgreSQL), de forma que los usuarios, clientes y proyectos cargados no se pierdan.
