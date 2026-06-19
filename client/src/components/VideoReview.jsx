@@ -97,7 +97,7 @@ export default function VideoReview({ projectId }) {
   const togglePlay = () => {
     if (!videoRef.current) return;
     if (playing) { videoRef.current.pause(); setPlaying(false); }
-    else { videoRef.current.play(); setPlaying(true); }
+    else { videoRef.current.play(); setPlaying(true); clearAnnotations(); setActiveComment(null); }
   };
 
   // When video pauses, auto-capture timestamp for comments
@@ -116,7 +116,7 @@ export default function VideoReview({ projectId }) {
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const t = pct * duration;
-    if (videoRef.current) { videoRef.current.currentTime = t; setCurrentTime(t); }
+    if (videoRef.current) { videoRef.current.currentTime = t; setCurrentTime(t); setActiveComment(null); }
   };
 
   const setRate = (r) => {
@@ -159,11 +159,11 @@ export default function VideoReview({ projectId }) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const threshold = 1.5;
-    const relevant = comments.filter(c => c.annotation && (c.timestamp_sec !== undefined) && Math.abs(c.timestamp_sec - currentTime) < threshold).map(c => c.annotation);
-    [...relevant, ...annotations].forEach(ann => drawAnnotation(ctx, ann));
+    const active = activeComment && comments.find(c => c.id === activeComment && c.annotation);
+    if (active) drawAnnotation(ctx, active.annotation);
+    annotations.forEach(ann => drawAnnotation(ctx, ann));
     if (currentAnnotation) drawAnnotation(ctx, currentAnnotation);
-  }, [annotations, comments, currentTime, currentAnnotation]);
+  }, [annotations, comments, currentTime, currentAnnotation, activeComment]);
 
   const drawAnnotation = (ctx, ann) => {
     ctx.strokeStyle = ann.color || DARK.orange;
@@ -254,7 +254,7 @@ export default function VideoReview({ projectId }) {
 
   const jumpToComment = (c) => {
     setActiveComment(c.id);
-    if (videoRef.current) { videoRef.current.currentTime = c.timestamp_sec; setCurrentTime(c.timestamp_sec); }
+    if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = c.timestamp_sec; setCurrentTime(c.timestamp_sec); }
   };
 
   const deleteComment = async (cid) => { await api(`/api/comments/${cid}`, { method: 'DELETE' }); };
@@ -394,7 +394,7 @@ export default function VideoReview({ projectId }) {
               onLoadedMetadata={onLoadedMetadata}
               onEnded={() => setPlaying(false)}
               onPause={onVideoPause}
-              onPlay={() => setPlaying(true)}
+              onPlay={() => { setPlaying(true); clearAnnotations(); setActiveComment(null); }}
             />
             <canvas ref={canvasRef} width={1280} height={720}
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: 'crosshair' }}
