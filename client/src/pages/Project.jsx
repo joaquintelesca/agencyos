@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import VideoReview from '../components/VideoReview';
@@ -25,7 +25,10 @@ export default function Project() {
   const [editingTask, setEditingTask] = useState(null);
   const [taskForm, setTaskForm] = useState({ title: '', description: '', status: 'todo', priority: 'medium', assigned_to: '', due_date: '' });
   const [dragTask, setDragTask] = useState(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const msgEndRef = useRef(null);
+  const msgContainerRef = useRef(null);
 
   useEffect(() => {
     setProject(null);
@@ -35,7 +38,7 @@ export default function Project() {
       setNotFound(true);
     });
     api(`/api/projects/${id}/tasks`).then(setTasks);
-    api(`/api/projects/${id}/messages`).then(setMessages);
+    api(`/api/projects/${id}/messages`).then(msgs => { setMessages(msgs); setHasMore(msgs.length >= 50); });
     api('/api/users').then(setUsers);
   }, [id]);
 
@@ -61,6 +64,28 @@ export default function Project() {
     socket.on('message:new', onMsg);
     return () => { socket.off('task:created', onTask); socket.off('task:updated', onTask); socket.off('task:deleted', onTaskDel); socket.off('message:new', onMsg); };
   }, [socket, id]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlder || !hasMore || messages.length === 0) return;
+    setLoadingOlder(true);
+    try {
+      const oldest = messages[0];
+      const older = await api(`/api/projects/${id}/messages?before=${oldest.id}`);
+      if (older.length < 50) setHasMore(false);
+      if (older.length > 0) {
+        const container = msgContainerRef.current;
+        const prevHeight = container?.scrollHeight || 0;
+        setMessages(prev => [...older, ...prev]);
+        requestAnimationFrame(() => {
+          if (container) container.scrollTop = container.scrollHeight - prevHeight;
+        });
+      }
+    } catch (e) {
+      console.error('Error cargando mensajes anteriores:', e);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [messages, loadingOlder, hasMore, api, id]);
 
   const openCreateTask = (status = 'todo') => {
     setEditingTask(null);
@@ -178,7 +203,22 @@ export default function Project() {
       {/* Chat */}
       {tab === 'chat' && (
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div
+            ref={msgContainerRef}
+            onScroll={e => { if (e.target.scrollTop < 80 && hasMore && !loadingOlder) loadOlderMessages(); }}
+            style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 4 }}
+          >
+            {hasMore && messages.length > 0 && (
+              <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                <button
+                  onClick={loadOlderMessages}
+                  disabled={loadingOlder}
+                  style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12 }}
+                >
+                  {loadingOlder ? 'Cargando...' : 'Cargar mensajes anteriores'}
+                </button>
+              </div>
+            )}
             {messages.length === 0 && (
               <div className="empty"><div className="empty-icon">💬</div><p>Sin mensajes todavía</p><p>¡Iniciá la conversación!</p></div>
             )}

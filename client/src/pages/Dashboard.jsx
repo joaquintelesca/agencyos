@@ -2,16 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const COLS = [
-  { id: 'todo', label: 'Pendiente' },
-  { id: 'in_progress', label: 'En progreso' },
-  { id: 'review', label: 'Revisión' },
-  { id: 'done', label: 'Listo' },
-];
-
 export default function Dashboard() {
   const { api, user } = useAuth();
-  const { projects, setProjects } = useOutletContext();
+  const { projects } = useOutletContext();
   const navigate = useNavigate();
   const [tasks, setTasks] = useState({}); // { projectId: [tasks] }
   const [clients, setClients] = useState([]);
@@ -24,12 +17,6 @@ export default function Dashboard() {
       api(`/api/projects/${p.id}/tasks`).then(t => setTasks(prev => ({ ...prev, [p.id]: t }))).catch(console.error);
     });
   }, [projectIds]);
-
-  const deleteProject = async (id) => {
-    if (!confirm('¿Eliminar este proyecto?')) return;
-    await api(`/api/projects/${id}`, { method: 'DELETE' });
-    setProjects(prev => prev.filter(p => p.id !== id));
-  };
 
   const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
@@ -52,13 +39,6 @@ export default function Dashboard() {
     const assigned = projectTasks.find(t => t.assigned_to);
     return assigned ? { name: assigned.assignee_name, color: assigned.assignee_color } : null;
   };
-
-  // Group projects by client
-  const byClient = clients.map(c => ({
-    ...c,
-    projects: projects.filter(p => p.client_id === c.id)
-  })).filter(c => c.projects.length > 0);
-  const noClient = projects.filter(p => !p.client_id);
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
@@ -121,65 +101,6 @@ export default function Dashboard() {
               <p style={{ fontSize: 12 }}>Hacé clic en un proyecto del sidebar para ver sus tareas</p>
             </div>
           )}
-    </div>
-  );
-}
-
-function ClientKanban({ client, tasks, initials, deadlineLabel, navigate, onDelete, getAssignee }) {
-  return (
-    <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
-      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg3)', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 10, height: 10, borderRadius: '50%', background: client.color, flexShrink: 0 }} />
-        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>{client.name}</span>
-        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{client.projects.length} proyecto{client.projects.length !== 1 ? 's' : ''}</span>
-      </div>
-      <div style={{ padding: 12 }}>
-        {client.projects.map(p => (
-          <ProjectKanbanRow key={p.id} project={p} tasks={tasks[p.id] || []} initials={initials} deadlineLabel={deadlineLabel} navigate={navigate} onDelete={onDelete} assignee={getAssignee(p.id)} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ProjectKanbanRow({ project: p, tasks, initials, deadlineLabel, navigate, onDelete, assignee }) {
-  const dl = deadlineLabel(p.deadline);
-  const colCounts = COLS.reduce((acc, c) => ({ ...acc, [c.id]: tasks.filter(t => t.status === c.id).length }), {});
-
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, cursor: 'pointer' }} onClick={() => navigate(`/project/${p.id}`)}>
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{p.name}</span>
-        {assignee && (
-          <div style={{ width: 20, height: 20, borderRadius: '50%', background: assignee.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>
-            {initials(assignee.name)}
-          </div>
-        )}
-        {dl && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 8, fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
-        {onDelete && (
-          <button onClick={e => { e.stopPropagation(); onDelete(p.id); }}
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 13, padding: '1px 4px' }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>🗑</button>
-        )}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
-        {COLS.map(col => (
-          <div key={col.id} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '6px 8px', minHeight: 36 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 500 }}>{col.label}</span>
-              {colCounts[col.id] > 0 && <span style={{ fontSize: 10, background: col.id === 'done' ? 'rgba(34,201,122,0.15)' : 'var(--bg4)', color: col.id === 'done' ? 'var(--green)' : 'var(--text3)', borderRadius: 8, padding: '0px 5px', fontWeight: 600 }}>{colCounts[col.id]}</span>}
-            </div>
-            {tasks.filter(t => t.status === col.id).map(t => (
-              <div key={t.id} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 6px', marginBottom: 3, fontSize: 11, color: 'var(--text2)', opacity: col.id === 'done' ? 0.6 : 1 }}>
-                {t.title}
-              </div>
-            ))}
-            {colCounts[col.id] === 0 && <div style={{ fontSize: 10, color: 'var(--text3)', textAlign: 'center', paddingTop: 2 }}>—</div>}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

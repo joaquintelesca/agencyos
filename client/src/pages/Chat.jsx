@@ -18,7 +18,10 @@ export default function Chat() {
   const [search, setSearch] = useState('');
   const [dmsCollapsed, setDmsCollapsed] = useState(false);
   const [channelsCollapsed, setChannelsCollapsed] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
 
   // Usar refs para valores que el socket handler necesita sin re-registrarse
@@ -140,12 +143,36 @@ export default function Chat() {
     try {
       const msgs = await api(`/api/chat/messages?type=${conv.type}&id=${conv.id}`);
       setMessages(msgs);
-      // Marcar como leído
+      setHasMore(msgs.length >= 50);
       await api('/api/chat/read', { method: 'POST', body: { type: conv.type, id: conv.id } });
     } catch (e) {
       console.error('Error cargando mensajes:', e);
     }
   };
+
+  const loadOlderMessages = useCallback(async () => {
+    const conv = activeConvRef.current;
+    if (!conv || loadingOlder || !hasMore) return;
+    setLoadingOlder(true);
+    try {
+      const oldest = messages[0];
+      if (!oldest) return;
+      const older = await api(`/api/chat/messages?type=${conv.type}&id=${conv.id}&before=${oldest.id}`);
+      if (older.length < 50) setHasMore(false);
+      if (older.length > 0) {
+        const container = messagesContainerRef.current;
+        const prevHeight = container?.scrollHeight || 0;
+        setMessages(prev => [...older, ...prev]);
+        requestAnimationFrame(() => {
+          if (container) container.scrollTop = container.scrollHeight - prevHeight;
+        });
+      }
+    } catch (e) {
+      console.error('Error cargando mensajes anteriores:', e);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [messages, loadingOlder, hasMore, api]);
 
   const sendMessage = async (content, fileUrl, fileType, fileName) => {
     const conv = activeConvRef.current;
@@ -459,7 +486,22 @@ export default function Chat() {
           </div>
 
           {/* Lista de mensajes */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div
+            ref={messagesContainerRef}
+            onScroll={e => { if (e.target.scrollTop < 80 && hasMore && !loadingOlder) loadOlderMessages(); }}
+            style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 2 }}
+          >
+            {hasMore && messages.length > 0 && (
+              <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                <button
+                  onClick={loadOlderMessages}
+                  disabled={loadingOlder}
+                  style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12 }}
+                >
+                  {loadingOlder ? 'Cargando...' : 'Cargar mensajes anteriores'}
+                </button>
+              </div>
+            )}
             {messages.length === 0 && (
               <div style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 13, marginTop: 60 }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>👋</div>
