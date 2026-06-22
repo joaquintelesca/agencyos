@@ -33,6 +33,11 @@ export default function Payments() {
     return parseFloat(p.payment_amount) || 0;
   };
 
+  const getClientTotal = (p) => {
+    if (p.payment_type === 'hourly') return (parseFloat(p.client_amount) || 0) * (parseFloat(p.payment_hours) || 0);
+    return parseFloat(p.client_amount) || 0;
+  };
+
   const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
   const isCompleted = (p) => p.editor_paid === 'paid' && p.client_paid === 'cobrado';
@@ -52,39 +57,55 @@ export default function Payments() {
   };
 
   const totalEditorPending = activeProjects.filter(p => p.editor_paid !== 'paid').reduce((s, p) => s + getTotal(p), 0);
-  const totalClientPending = activeProjects.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + getTotal(p), 0);
+  const totalClientPending = activeProjects.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + getClientTotal(p), 0);
   const readyToCollect = activeProjects.filter(p => p.editor_paid !== 'paid' || p.client_paid !== 'cobrado').length;
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><div className="spinner" /></div>;
 
-  const renderTable = (projs, isHistory) => (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead>
-          <tr>
-            <td colSpan={4} style={{ padding: 0, border: 'none' }} />
-            <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(236,72,153,0.08)', color: '#be185d', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Editor —</td>
-            <td style={{ borderLeft: '1px solid var(--border)' }} />
-            <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(99,102,241,0.08)', color: '#4338ca', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Cliente —</td>
-          </tr>
-          <tr style={{ background: 'var(--bg3)' }}>
-            {['Proyecto','Editor','Tipo','Upwork'].map(h => (
-              <th key={h} style={{ padding: '7px 12px', textAlign: 'left', fontSize: 10, color: 'var(--text3)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+  const thStyle = { padding: '7px 12px', textAlign: 'left', fontSize: 10, color: 'var(--text3)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' };
+
+  const renderTable = (projs, isHistory) => {
+    const sorted = isHistory ? [...projs].sort((a, b) => new Date(b.completed_at || 0) - new Date(a.completed_at || 0)) : projs;
+    const baseCols = isHistory ? 5 : 4;
+    return (
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr>
+              <td colSpan={baseCols} style={{ padding: 0, border: 'none' }} />
+              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(236,72,153,0.08)', color: '#be185d', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Editor —</td>
+              <td style={{ borderLeft: '1px solid var(--border)' }} />
+              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(99,102,241,0.08)', color: '#4338ca', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Cliente —</td>
+            </tr>
+            <tr style={{ background: 'var(--bg3)' }}>
+              {['Proyecto','Editor','Tipo','Upwork'].map(h => (
+                <th key={h} style={thStyle}>{h}</th>
+              ))}
+              {isHistory && <th style={thStyle}>Completado</th>}
+              <th style={{ ...thStyle, textAlign: 'right', color: '#be185d', background: 'rgba(236,72,153,0.05)' }}>Monto</th>
+              <th style={{ ...thStyle, color: '#be185d', background: 'rgba(236,72,153,0.05)' }}>Pagado al editor</th>
+              <th style={{ ...thStyle, textAlign: 'right', color: '#4338ca', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>Monto</th>
+              <th style={{ ...thStyle, color: '#4338ca', background: 'rgba(99,102,241,0.05)' }}>Cobrado al cliente</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map(p => (
+              <ProjectRow key={p.id} project={p} onUpdate={updatePayment} getTotal={getTotal} getClientTotal={getClientTotal} initials={initials} isHistory={isHistory} />
             ))}
-            <th style={{ padding: '7px 12px', textAlign: 'right', fontSize: 10, color: '#be185d', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', background: 'rgba(236,72,153,0.05)' }}>Monto</th>
-            <th style={{ padding: '7px 12px', fontSize: 10, color: '#be185d', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', background: 'rgba(236,72,153,0.05)', whiteSpace: 'nowrap' }}>Pagado al editor</th>
-            <th style={{ padding: '7px 12px', textAlign: 'right', fontSize: 10, color: '#4338ca', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>Monto</th>
-            <th style={{ padding: '7px 12px', fontSize: 10, color: '#4338ca', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', background: 'rgba(99,102,241,0.05)', whiteSpace: 'nowrap' }}>Cobrado al cliente</th>
-          </tr>
-        </thead>
-        <tbody>
-          {projs.map(p => (
-            <ProjectRow key={p.id} project={p} onUpdate={isHistory ? null : updatePayment} getTotal={getTotal} initials={initials} isHistory={isHistory} />
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+            {isHistory && sorted.length > 0 && (
+              <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
+                <td colSpan={baseCols} style={{ padding: '8px 12px', fontSize: 11, color: 'var(--text2)' }}>Total ({sorted.length} proyecto{sorted.length > 1 ? 's' : ''})</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#be185d', background: 'rgba(236,72,153,0.05)' }}>${sorted.reduce((s, p) => s + getTotal(p), 0).toFixed(0)}</td>
+                <td style={{ background: 'rgba(236,72,153,0.05)' }} />
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#4338ca', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>${sorted.reduce((s, p) => s + getClientTotal(p), 0).toFixed(0)}</td>
+                <td style={{ background: 'rgba(99,102,241,0.05)' }} />
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <div style={{ flex: 1, overflow: 'auto' }}>
@@ -170,13 +191,14 @@ export default function Payments() {
   );
 }
 
-function ProjectRow({ project: p, onUpdate, getTotal, initials, isHistory }) {
+function ProjectRow({ project: p, onUpdate, getTotal, getClientTotal, initials, isHistory }) {
   const [hours, setHours] = useState(p.payment_hours || 0);
   const total = getTotal(p);
+  const clientTotal = getClientTotal(p);
 
   return (
-    <tr style={{ borderBottom: '1px solid var(--border)', opacity: isHistory ? 0.7 : 1 }}
-      onMouseEnter={e => { if (!isHistory) e.currentTarget.style.background = 'var(--bg3)'; }}
+    <tr style={{ borderBottom: '1px solid var(--border)' }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
 
       {/* Proyecto */}
@@ -185,12 +207,10 @@ function ProjectRow({ project: p, onUpdate, getTotal, initials, isHistory }) {
         {p.payment_type === 'hourly' && (
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
             ${p.payment_amount}/h ·{' '}
-            {isHistory ? `${p.payment_hours}h` : (
-              <input type="number" min="0" value={hours}
-                onChange={e => setHours(e.target.value)}
-                onBlur={() => onUpdate && onUpdate(p.id, { payment_hours: hours })}
-                style={{ width: 40, background: 'var(--bg4)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '1px 4px', textAlign: 'center' }} />
-            )}
+            <input type="number" min="0" value={hours}
+              onChange={e => setHours(e.target.value)}
+              onBlur={() => onUpdate(p.id, { payment_hours: hours })}
+              style={{ width: 40, background: 'var(--bg4)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '1px 4px', textAlign: 'center' }} />
             {' '}h
           </div>
         )}
@@ -215,16 +235,21 @@ function ProjectRow({ project: p, onUpdate, getTotal, initials, isHistory }) {
 
       {/* Upwork */}
       <td style={{ padding: '9px 12px' }}>
-        {isHistory ? (
-          <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.upwork_status || 'Pendiente'}</span>
-        ) : (
-          <select value={p.upwork_status || 'Pendiente de carga'}
-            onChange={e => onUpdate(p.id, { upwork_status: e.target.value })}
-            style={{ fontSize: 11, padding: '3px 6px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text2)', cursor: 'pointer', fontFamily: 'var(--font)' }}>
-            {UPWORK_OPTIONS.map(o => <option key={o}>{o}</option>)}
-          </select>
-        )}
+        <select value={p.upwork_status || 'Pendiente de carga'}
+          onChange={e => onUpdate(p.id, { upwork_status: e.target.value })}
+          style={{ fontSize: 11, padding: '3px 6px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text2)', cursor: 'pointer', fontFamily: 'var(--font)' }}>
+          {UPWORK_OPTIONS.map(o => <option key={o}>{o}</option>)}
+        </select>
       </td>
+
+      {/* Fecha completado */}
+      {isHistory && (
+        <td style={{ padding: '9px 12px' }}>
+          <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+            {p.completed_at ? new Date(p.completed_at).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+          </span>
+        </td>
+      )}
 
       {/* Monto editor */}
       <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--text)', background: 'rgba(236,72,153,0.03)' }}>
@@ -233,35 +258,27 @@ function ProjectRow({ project: p, onUpdate, getTotal, initials, isHistory }) {
 
       {/* Pagado al editor */}
       <td style={{ padding: '9px 12px', background: 'rgba(236,72,153,0.03)' }}>
-        {isHistory ? (
-          <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>✓ Pagado</span>
-        ) : (
-          <select value={p.editor_paid || 'unpaid'}
-            onChange={e => onUpdate(p.id, { editor_paid: e.target.value })}
-            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.editor_paid === 'paid' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.editor_paid === 'paid' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.editor_paid === 'paid' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
-            <option value="unpaid">Sin pagar</option>
-            <option value="paid">Pagado ✓</option>
-          </select>
-        )}
+        <select value={p.editor_paid || 'unpaid'}
+          onChange={e => onUpdate(p.id, { editor_paid: e.target.value })}
+          style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.editor_paid === 'paid' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.editor_paid === 'paid' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.editor_paid === 'paid' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
+          <option value="unpaid">Sin pagar</option>
+          <option value="paid">Pagado ✓</option>
+        </select>
       </td>
 
       {/* Monto cliente */}
       <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--text)', background: 'rgba(99,102,241,0.03)', borderLeft: '1px solid var(--border)' }}>
-        ${total.toFixed(0)}
+        ${clientTotal.toFixed(0)}
       </td>
 
       {/* Cobrado al cliente */}
       <td style={{ padding: '9px 12px', background: 'rgba(99,102,241,0.03)' }}>
-        {isHistory ? (
-          <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>✓ Cobrado</span>
-        ) : (
-          <select value={p.client_paid || 'unpaid'}
-            onChange={e => onUpdate(p.id, { client_paid: e.target.value })}
-            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.client_paid === 'cobrado' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.client_paid === 'cobrado' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.client_paid === 'cobrado' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
-            <option value="unpaid">Sin cobrar</option>
-            <option value="cobrado">Cobrado ✓</option>
-          </select>
-        )}
+        <select value={p.client_paid || 'unpaid'}
+          onChange={e => onUpdate(p.id, { client_paid: e.target.value })}
+          style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.client_paid === 'cobrado' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.client_paid === 'cobrado' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.client_paid === 'cobrado' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
+          <option value="unpaid">Sin cobrar</option>
+          <option value="cobrado">Cobrado ✓</option>
+        </select>
       </td>
     </tr>
   );

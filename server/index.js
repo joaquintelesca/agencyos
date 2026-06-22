@@ -283,6 +283,11 @@ async function initDB() {
     await db.schema.table('chat_messages', t => { t.text('read_by').defaultTo('[]'); });
   }
 
+  const hasChatClientId = await db.schema.hasColumn('chat_messages', 'client_id');
+  if (!hasChatClientId) {
+    await db.schema.table('chat_messages', t => { t.string('client_id').nullable(); });
+  }
+
   const hasPaymentType = await db.schema.hasColumn('projects', 'payment_type');
   if (!hasPaymentType) {
     await db.schema.table('projects', t => {
@@ -293,6 +298,16 @@ async function initDB() {
       t.string('payment_status').defaultTo('unpaid');
       t.string('upwork_status').defaultTo('pending');
     });
+  }
+
+  const hasClientAmount = await db.schema.hasColumn('projects', 'client_amount');
+  if (!hasClientAmount) {
+    await db.schema.table('projects', t => { t.float('client_amount').defaultTo(0); });
+  }
+
+  const hasCompletedAt = await db.schema.hasColumn('projects', 'completed_at');
+  if (!hasCompletedAt) {
+    await db.schema.table('projects', t => { t.timestamp('completed_at').nullable(); });
   }
 
   // Clients table
@@ -325,6 +340,11 @@ async function initDB() {
       t.string('editor_paid').defaultTo('unpaid');   // unpaid | paid
       t.string('client_paid').defaultTo('unpaid');   // unpaid | cobrado
     });
+  }
+
+  const hasVideoTaskId = await db.schema.hasColumn('videos', 'task_id');
+  if (!hasVideoTaskId) {
+    await db.schema.table('videos', t => { t.string('task_id').nullable(); });
   }
 
   // Tabla de miembros de proyecto: controla qué usuarios tienen acceso a qué proyectos.
@@ -453,7 +473,7 @@ app.delete('/api/users/:id', auth, async (req, res) => {
     const target = await db('users').where({ id: uid }).first();
     if (target?.role === 'admin') {
       const adminCount = await db('users').where({ role: 'admin' }).count('id as c').first();
-      if (adminCount.c <= 1) return res.status(400).json({ error: 'No se puede eliminar el último administrador' });
+      if (Number(adminCount.c) <= 1) return res.status(400).json({ error: 'No se puede eliminar el último administrador' });
     }
     await db('notifications').where({ user_id: uid }).orWhere({ actor_id: uid }).delete();
     await db('messages').where({ sender_id: uid }).delete();
@@ -486,7 +506,7 @@ app.patch('/api/users/:id', auth, async (req, res) => {
       const target = await db('users').where({ id: req.params.id }).first();
       if (target?.role === 'admin' && role !== 'admin') {
         const adminCount = await db('users').where({ role: 'admin' }).count('id as c').first();
-        if (adminCount.c <= 1) return res.status(400).json({ error: 'No se puede cambiar el rol del último administrador' });
+        if (Number(adminCount.c) <= 1) return res.status(400).json({ error: 'No se puede cambiar el rol del último administrador' });
       }
       updateData.role = role;
     }
@@ -528,7 +548,8 @@ app.get('/api/projects', auth, async (req, res) => {
     const withCounts = await Promise.all(projects.map(async p => {
       const [{ count: task_count }] = await db('tasks').where({ project_id: p.id }).count('id as count');
       const [{ count: done_count }] = await db('tasks').where({ project_id: p.id, status: 'done' }).count('id as count');
-      return { ...p, task_count: Number(task_count), done_count: Number(done_count) };
+      const [{ count: review_count }] = await db('tasks').where({ project_id: p.id, status: 'review' }).count('id as count');
+      return { ...p, task_count: Number(task_count), done_count: Number(done_count), review_count: Number(review_count) };
     }));
     res.json(withCounts);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -549,7 +570,7 @@ app.get('/api/projects/:id', auth, requireProjectAccess('id'), async (req, res) 
 app.post('/api/projects', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo el admin puede crear proyectos' });
-    const { name, description, color, payment_editor_id, payment_type, payment_amount, payment_hours, client_id, deadline } = req.body;
+    const { name, description, color, payment_editor_id, payment_type, payment_amount, payment_hours, client_id, deadline, client_amount } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'El nombre del proyecto es obligatorio' });
     const id = uuidv4();
     await db('projects').insert({
@@ -560,6 +581,7 @@ app.post('/api/projects', auth, async (req, res) => {
       payment_type: payment_type || 'fixed',
       payment_amount: parseFloat(payment_amount) || 0,
       payment_hours: parseFloat(payment_hours) || 0,
+      client_amount: parseFloat(client_amount) || 0,
       payment_status: 'unpaid',
       upwork_status: 'pending'
     });
@@ -574,14 +596,16 @@ app.post('/api/projects', auth, async (req, res) => {
 app.put('/api/projects/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    const { name, description, color, status, payment_editor_id, payment_type, payment_amount, payment_hours, payment_status, upwork_status, client_id, deadline } = req.body;
-    await db('projects').where({ id: req.params.id }).update({
+    const { name, description, color, status, payment_editor_id, payment_type, payment_amount, payment_hours, payment_status, upwork_status, client_id, deadline, client_amount } = req.body;
+    const update = {
       name, description, color, status,
       client_id: client_id || null,
       deadline: deadline || null,
       payment_editor_id: payment_editor_id || null,
       payment_type, payment_amount, payment_hours, payment_status, upwork_status
-    });
+    };
+    if (client_amount !== undefined) update.client_amount = parseFloat(client_amount) || 0;
+    await db('projects').where({ id: req.params.id }).update(update);
     if (payment_editor_id) await addProjectMember(req.params.id, payment_editor_id);
     const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color').first();
     await emitToProject(req.params.id, 'project:updated', project);
@@ -690,6 +714,7 @@ app.delete('/api/clients/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     await db('projects').where({ client_id: req.params.id }).update({ client_id: null });
+    await db('chat_messages').where({ client_id: req.params.id }).update({ client_id: null });
     await db('clients').where({ id: req.params.id }).delete();
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -721,6 +746,13 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
     if (req.body.editor_paid !== undefined) update.editor_paid = req.body.editor_paid;
     if (req.body.client_paid !== undefined) update.client_paid = req.body.client_paid;
     await db('projects').where({ id: req.params.projectId }).update(update);
+    const current = await db('projects').where({ id: req.params.projectId }).first();
+    const isCompleted = current.editor_paid === 'paid' && current.client_paid === 'cobrado';
+    if (isCompleted && !current.completed_at) {
+      await db('projects').where({ id: req.params.projectId }).update({ completed_at: new Date().toISOString() });
+    } else if (!isCompleted && current.completed_at) {
+      await db('projects').where({ id: req.params.projectId }).update({ completed_at: null });
+    }
     const project = await db('projects as p')
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
@@ -817,9 +849,11 @@ app.get('/api/projects/:projectId/messages', auth, requireProjectAccess(), async
 // ─── VIDEOS ──────────────────────────────────────────────────────────────────
 app.get('/api/projects/:projectId/videos', auth, requireProjectAccess(), async (req, res) => {
   try {
-    const videos = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id')
+    const videos = await db('videos as v')
+      .leftJoin('users as u', 'v.uploaded_by', 'u.id')
+      .leftJoin('tasks as tk', 'v.task_id', 'tk.id')
       .where('v.project_id', req.params.projectId)
-      .select('v.*', 'u.name as uploader_name')
+      .select('v.*', 'u.name as uploader_name', 'tk.title as task_title')
       .orderBy('v.created_at', 'desc');
     res.json(videos);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -828,10 +862,10 @@ app.get('/api/projects/:projectId/videos', auth, requireProjectAccess(), async (
 app.post('/api/projects/:projectId/videos', auth, requireProjectAccess(), upload.single('video'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se recibió ningún video' });
-    const { title, version } = req.body;
+    const { title, version, task_id } = req.body;
     const id = uuidv4();
-    await db('videos').insert({ id, project_id: req.params.projectId, title: title || req.file.originalname, filename: req.file.filename, original_name: req.file.originalname, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: req.file.size });
-    const video = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id').where('v.id', id).select('v.*', 'u.name as uploader_name').first();
+    await db('videos').insert({ id, project_id: req.params.projectId, title: title || req.file.originalname, filename: req.file.filename, original_name: req.file.originalname, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: req.file.size, task_id: task_id || null });
+    const video = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id').leftJoin('tasks as tk', 'v.task_id', 'tk.id').where('v.id', id).select('v.*', 'u.name as uploader_name', 'tk.title as task_title').first();
     await emitToProject(req.params.projectId, 'video:uploaded', video);
     // Check storage after upload
     const bytes = getUploadsSize();
@@ -1158,6 +1192,25 @@ app.post('/api/chat/read', auth, async (req, res) => {
 
 // ─── CHAT ─────────────────────────────────────────────────────────────────────
 
+app.get('/api/chat/dm-tabs', auth, async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'userId requerido' });
+    const otherUser = await db('users').where({ id: userId }).first();
+    if (!otherUser) return res.status(404).json({ error: 'Usuario no encontrado' });
+    const editorId = req.user.role === 'admin' ? userId : req.user.id;
+    const clients = await db('project_members as pm')
+      .join('projects as p', 'pm.project_id', 'p.id')
+      .join('clients as c', 'p.client_id', 'c.id')
+      .where('pm.user_id', editorId)
+      .whereNotNull('p.client_id')
+      .select('c.id', 'c.name', 'c.color')
+      .groupBy('c.id', 'c.name', 'c.color')
+      .orderBy('c.name', 'asc');
+    res.json(clients);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
 // GET conversations list for current user
 app.get('/api/chat/conversations', auth, async (req, res) => {
   try {
@@ -1205,7 +1258,7 @@ app.get('/api/chat/conversations', auth, async (req, res) => {
 // ?before=<id> para cargar mensajes anteriores.
 app.get('/api/chat/messages', auth, async (req, res) => {
   try {
-    const { type, id, before } = req.query;
+    const { type, id, before, client_id } = req.query;
     const userId = req.user.id;
     const PAGE_SIZE = 50;
 
@@ -1216,6 +1269,11 @@ app.get('/api/chat/messages', auth, async (req, res) => {
         .where('m.type', 'dm')
         .where(function() { this.where({ sender_id: userId, receiver_id: id }).orWhere({ sender_id: id, receiver_id: userId }); })
         .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color');
+      if (client_id) {
+        query = query.where('m.client_id', client_id);
+      } else {
+        query = query.whereNull('m.client_id');
+      }
     } else if (type === 'channel') {
       if (req.user.role !== 'admin') {
         const isMember = await db('chat_channel_members').where({ channel_id: id, user_id: userId }).first();
@@ -1242,7 +1300,7 @@ app.get('/api/chat/messages', auth, async (req, res) => {
 // POST send a message
 app.post('/api/chat/messages', auth, async (req, res) => {
   try {
-    const { type, receiver_id, channel_id, content, file_url, file_type, file_name } = req.body;
+    const { type, receiver_id, channel_id, content, file_url, file_type, file_name, client_id } = req.body;
     const senderId = req.user.id;
 
     if (req.user.role !== 'admin' && type === 'dm') {
@@ -1262,7 +1320,7 @@ app.post('/api/chat/messages', auth, async (req, res) => {
     }
 
     const id = uuidv4();
-    await db('chat_messages').insert({ id, sender_id: senderId, receiver_id: receiver_id || null, channel_id: channel_id || null, type, content: content || '', file_url: file_url || null, file_type: file_type || null, file_name: file_name || null });
+    await db('chat_messages').insert({ id, sender_id: senderId, receiver_id: receiver_id || null, channel_id: channel_id || null, type, content: content || '', file_url: file_url || null, file_type: file_type || null, file_name: file_name || null, client_id: (type === 'dm' && client_id) ? client_id : null });
     const msg = await db('chat_messages as m').join('users as u', 'm.sender_id', 'u.id').where('m.id', id).select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color').first();
     if (type === 'dm' && receiver_id) {
       io.to(`user:${senderId}`).to(`user:${receiver_id}`).emit('chat:message', msg);

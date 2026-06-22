@@ -25,6 +25,8 @@ export default function Project() {
   const [editingTask, setEditingTask] = useState(null);
   const [taskForm, setTaskForm] = useState({ title: '', description: '', status: 'todo', priority: 'medium', assigned_to: '', due_date: '' });
   const [dragTask, setDragTask] = useState(null);
+  const [reviewReminderTask, setReviewReminderTask] = useState(null);
+  const [uploadForTaskId, setUploadForTaskId] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const msgEndRef = useRef(null);
@@ -128,6 +130,9 @@ export default function Project() {
   const onDrop = async (status) => {
     if (!dragTask || dragTask.status === status) return;
     await api(`/api/tasks/${dragTask.id}`, { method: 'PUT', body: { ...dragTask, status } });
+    if (status === 'review' && dragTask.status !== 'review') {
+      setReviewReminderTask({ ...dragTask, status });
+    }
     setDragTask(null);
   };
 
@@ -259,7 +264,14 @@ export default function Project() {
       )}
 
       {/* Videos */}
-      {tab === 'videos' && <VideoReview projectId={id} />}
+      {tab === 'videos' && (
+        <VideoReview
+          projectId={id}
+          tasks={tasks}
+          uploadForTaskId={uploadForTaskId}
+          onUploadForTaskHandled={() => setUploadForTaskId(null)}
+        />
+      )}
 
       {/* Task Modal */}
       {showTaskModal && (
@@ -305,6 +317,27 @@ export default function Project() {
               {editingTask && <button className="btn btn-danger" onClick={() => { deleteTask(editingTask.id); setShowTaskModal(false); }}>Eliminar</button>}
               <button className="btn btn-ghost" onClick={() => setShowTaskModal(false)}>Cancelar</button>
               <button className="btn btn-primary" onClick={saveTask}>{editingTask ? 'Guardar' : 'Crear'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reviewReminderTask && (
+        <div className="modal-overlay" onClick={() => setReviewReminderTask(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Tarea en revisión</h2>
+            <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
+              Moviste <strong>"{reviewReminderTask.title}"</strong> a revisión. ¿Querés subir la última versión del video para esta tarea?
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setReviewReminderTask(null)}>Ahora no</button>
+              <button className="btn btn-primary" onClick={() => {
+                setUploadForTaskId(reviewReminderTask.id);
+                setTab('videos');
+                setReviewReminderTask(null);
+              }}>
+                Ir a Videos
+              </button>
             </div>
           </div>
         </div>

@@ -9,7 +9,7 @@ const DARK = {
   red: '#f05c5c', border: '#2a2a31',
 };
 
-export default function VideoReview({ projectId }) {
+export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled }) {
   const { api, user, socket } = useAuth();
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
@@ -17,7 +17,7 @@ export default function VideoReview({ projectId }) {
   const [comments, setComments] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadForm, setUploadForm] = useState({ title: '', version: '' });
+  const [uploadForm, setUploadForm] = useState({ title: '', version: '', task_id: '' });
   const [uploadFile, setUploadFile] = useState(null);
 
   // Player state
@@ -86,6 +86,15 @@ export default function VideoReview({ projectId }) {
     socket.on('comment:reply', onReply);
     return () => { socket.off('comment:created', onComment); socket.off('comment:deleted', onCommentDel); socket.off('comment:resolved', onCommentResolved); socket.off('comment:reply', onReply); };
   }, [socket, selectedVideo?.id]);
+
+  useEffect(() => {
+    if (uploadForTaskId) {
+      setSelectedVideo(null);
+      setUploadForm(prev => ({ ...prev, task_id: uploadForTaskId }));
+      setShowUpload(true);
+      onUploadForTaskHandled?.();
+    }
+  }, [uploadForTaskId]);
 
   const formatTime = (s) => {
     if (!s && s !== 0) return '--:--';
@@ -283,13 +292,14 @@ export default function VideoReview({ projectId }) {
     fd.append('video', uploadFile);
     fd.append('title', uploadForm.title || uploadFile.name);
     fd.append('version', uploadForm.version || '1');
+    if (uploadForm.task_id) fd.append('task_id', uploadForm.task_id);
     try {
       const v = await api(`/api/projects/${projectId}/videos`, { method: 'POST', body: fd });
       setVideos(prev => [v, ...prev]);
       setSelectedVideo(v);
       setShowUpload(false);
       setUploadFile(null);
-      setUploadForm({ title: '', version: '' });
+      setUploadForm({ title: '', version: '', task_id: '' });
     } finally { setUploading(false); }
   };
 
@@ -318,6 +328,11 @@ export default function VideoReview({ projectId }) {
                 <span style={{ fontSize: 11, background: 'var(--accent-glow)', color: 'var(--accent2)', padding: '2px 7px', borderRadius: 8, fontWeight: 700 }}>v{v.version}</span>
                 <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.uploader_name}</span>
               </div>
+              {v.task_title && (
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ flexShrink: 0 }}>📋</span> {v.task_title}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -337,6 +352,15 @@ export default function VideoReview({ projectId }) {
                 <label>Versión</label>
                 <input className="input" value={uploadForm.version} onChange={e => setUploadForm(p => ({ ...p, version: e.target.value }))} placeholder="ej: v1, v2, v3..." />
               </div>
+              {tasks.length > 0 && (
+                <div className="form-group">
+                  <label>Tarea asociada</label>
+                  <select className="input" value={uploadForm.task_id} onChange={e => setUploadForm(p => ({ ...p, task_id: e.target.value }))}>
+                    <option value="">Sin tarea</option>
+                    {tasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                  </select>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button className="btn btn-ghost" onClick={() => setShowUpload(false)}>Cancelar</button>
                 <button className="btn btn-primary" onClick={uploadVideo} disabled={!uploadFile || uploading}>
@@ -733,6 +757,15 @@ export default function VideoReview({ projectId }) {
               <label>Versión</label>
               <input className="input" value={uploadForm.version} onChange={e => setUploadForm(p => ({ ...p, version: e.target.value }))} placeholder={`v${(selectedVideo?.version || 0) + 1}`} />
             </div>
+            {tasks.length > 0 && (
+              <div className="form-group">
+                <label>Tarea asociada</label>
+                <select className="input" value={uploadForm.task_id} onChange={e => setUploadForm(p => ({ ...p, task_id: e.target.value }))}>
+                  <option value="">Sin tarea</option>
+                  {tasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                </select>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setShowUpload(false)}>Cancelar</button>
               <button className="btn btn-primary" onClick={uploadVideo} disabled={!uploadFile || uploading}>

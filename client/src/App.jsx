@@ -7,6 +7,7 @@ import Payments from './pages/Payments';
 import Team from './pages/Team';
 import Chat from './pages/Chat';
 import Notifications from './pages/Notifications';
+import ClientDashboard from './pages/ClientDashboard';
 import Layout from './components/Layout';
 
 function PrivateRoute({ children }) {
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="project/:id" element={<Project />} />
+            <Route path="client/:id" element={<ClientDashboard />} />
             <Route path="team" element={<Team />} />
             <Route path="chat" element={<Chat />} />
             <Route path="notifications" element={<Notifications />} />

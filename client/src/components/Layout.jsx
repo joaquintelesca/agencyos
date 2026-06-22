@@ -16,7 +16,7 @@ export default function Layout() {
   const [clientForm, setClientForm] = useState({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
   const [step, setStep] = useState(1);
   const [projectForm, setProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' });
-  const [paymentForm, setPaymentForm] = useState({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '' });
+  const [paymentForm, setPaymentForm] = useState({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '' });
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [chatUnread, setChatUnread] = useState({});
   const [editingClient, setEditingClient] = useState(null);
@@ -44,7 +44,7 @@ export default function Layout() {
 
   useEffect(() => {
     if (!socket) return;
-    const onNotif = () => setUnreadNotifs(prev => prev + 1);
+    const onNotif = () => { setUnreadNotifs(prev => prev + 1); api('/api/projects').then(setProjects).catch(console.error); };
     const onRead = () => { api('/api/chat/unread').then(setChatUnread).catch(console.error); };
     const onStorageWarn = (s) => setStorageWarning(s);
     socket.on('notification:new', onNotif);
@@ -139,6 +139,7 @@ export default function Layout() {
       body.payment_type = paymentForm.payment_type;
       body.payment_amount = paymentForm.payment_type === 'fixed' ? paymentForm.payment_amount : paymentForm.payment_rate;
       body.payment_hours = paymentForm.payment_hours || 0;
+      body.client_amount = paymentForm.payment_type === 'fixed' ? paymentForm.client_amount : paymentForm.client_rate;
     }
     const p = await api('/api/projects', { method: 'POST', body });
     setProjects(prev => [p, ...prev]);
@@ -157,6 +158,15 @@ export default function Layout() {
       return rate * hours;
     }
     return parseFloat(paymentForm.payment_amount) || 0;
+  };
+
+  const estimatedClientTotal = () => {
+    if (paymentForm.payment_type === 'hourly') {
+      const rate = parseFloat(paymentForm.client_rate) || 0;
+      const hours = parseFloat(paymentForm.payment_hours) || 0;
+      return rate * hours;
+    }
+    return parseFloat(paymentForm.client_amount) || 0;
   };
 
   return (
@@ -195,11 +205,15 @@ export default function Layout() {
               <div key={c.id} style={{ marginBottom: 2 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', transition: 'background 0.1s' }}
                   onClick={() => setExpandedClients(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}
+                  onDoubleClick={e => { e.stopPropagation(); navigate(`/client/${c.id}`); }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.querySelectorAll('.client-btn').forEach(b => b.style.opacity = '1'); }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.querySelectorAll('.client-btn').forEach(b => b.style.opacity = '0'); }}>
                   <span style={{ fontSize: 10, color: 'var(--text3)', transition: 'transform 0.15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                  {user?.role === 'admin' && clientProjects.some(p => p.review_count > 0) && (
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
+                  )}
                   {clientProjects.length > 0 && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{clientProjects.length}</span>}
                   {user?.role === 'admin' && (
                     <div style={{ display: 'flex', gap: 0 }}>
@@ -223,12 +237,15 @@ export default function Layout() {
                 </div>
                 {isExpanded && clientProjects.map(p => (
                   <div key={p.id} style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s' }}
-                    onMouseEnter={e => e.currentTarget.querySelector('.del-btn')?.style && (e.currentTarget.querySelector('.del-btn').style.opacity = '1')}
-                    onMouseLeave={e => e.currentTarget.querySelector('.del-btn')?.style && (e.currentTarget.querySelector('.del-btn').style.opacity = '0')}>
+                    onMouseEnter={e => e.currentTarget.querySelectorAll('.del-btn').forEach(b => b.style.opacity = '1')}
+                    onMouseLeave={e => e.currentTarget.querySelectorAll('.del-btn').forEach(b => b.style.opacity = '0')}>
                     <Link to={`/project/${p.id}`} style={{ textDecoration: 'none', flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px 5px 26px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 12 }}>
                         <div style={{ width: 6, height: 6, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                        {user?.role === 'admin' && p.review_count > 0 && (
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
+                        )}
                       </div>
                     </Link>
                     {user?.role === 'admin' && (
@@ -261,6 +278,9 @@ export default function Layout() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 13 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                  {user?.role === 'admin' && p.review_count > 0 && (
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
+                  )}
                 </div>
               </Link>
               {user?.role === 'admin' && (
@@ -404,28 +424,50 @@ export default function Layout() {
                       </div>
                     </div>
                     {paymentForm.payment_type === 'fixed' ? (
-                      <div className="form-group">
-                        <label>Monto total ($)</label>
-                        <input className="input" type="number" min="0" value={paymentForm.payment_amount} onChange={e => setPaymentForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" />
-                      </div>
-                    ) : (
                       <div className="form-row">
                         <div className="form-group">
-                          <label>Precio por hora ($)</label>
-                          <input className="input" type="number" min="0" value={paymentForm.payment_rate} onChange={e => setPaymentForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25" />
+                          <label>Pago al editor ($)</label>
+                          <input className="input" type="number" min="0" value={paymentForm.payment_amount} onChange={e => setPaymentForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" />
+                        </div>
+                        <div className="form-group">
+                          <label>Cobro al cliente ($)</label>
+                          <input className="input" type="number" min="0" value={paymentForm.client_amount} onChange={e => setPaymentForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="form-row">
+                          <div className="form-group">
+                            <label>Tarifa editor ($/h)</label>
+                            <input className="input" type="number" min="0" value={paymentForm.payment_rate} onChange={e => setPaymentForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25" />
+                          </div>
+                          <div className="form-group">
+                            <label>Tarifa cliente ($/h)</label>
+                            <input className="input" type="number" min="0" value={paymentForm.client_rate} onChange={e => setPaymentForm(p => ({ ...p, client_rate: e.target.value }))} placeholder="Ej: 40" />
+                          </div>
                         </div>
                         <div className="form-group">
                           <label>Horas estimadas</label>
                           <input className="input" type="number" min="0" value={paymentForm.payment_hours} onChange={e => setPaymentForm(p => ({ ...p, payment_hours: e.target.value }))} placeholder="Ej: 20" />
                         </div>
-                      </div>
+                      </>
                     )}
-                    {estimatedTotal() > 0 && (
-                      <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 13, color: 'var(--text2)' }}>
-                          {paymentForm.payment_type === 'hourly' ? `$${paymentForm.payment_rate || 0} × ${paymentForm.payment_hours || 0} hs =` : 'Total:'}
-                        </span>
-                        <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent2)' }}>${estimatedTotal().toFixed(0)}</span>
+                    {(estimatedTotal() > 0 || estimatedClientTotal() > 0) && (
+                      <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 12, color: '#be185d' }}>Pago editor:</span>
+                          <span style={{ fontSize: 16, fontWeight: 700, color: '#be185d' }}>${estimatedTotal().toFixed(0)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 12, color: '#4338ca' }}>Cobro cliente:</span>
+                          <span style={{ fontSize: 16, fontWeight: 700, color: '#4338ca' }}>${estimatedClientTotal().toFixed(0)}</span>
+                        </div>
+                        {estimatedClientTotal() > estimatedTotal() && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                            <span style={{ fontSize: 12, color: 'var(--green)' }}>Ganancia:</span>
+                            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>${(estimatedClientTotal() - estimatedTotal()).toFixed(0)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </>

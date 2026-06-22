@@ -20,12 +20,15 @@ export default function Chat() {
   const [channelsCollapsed, setChannelsCollapsed] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [dmTabs, setDmTabs] = useState([]);
+  const [activeTab, setActiveTab] = useState(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
 
   // Usar refs para valores que el socket handler necesita sin re-registrarse
   const activeConvRef = useRef(null);
+  const activeTabRef = useRef(null);
   const userRef = useRef(null);
   const setMessagesRef = useRef(setMessages);
   const setUnreadCountsRef = useRef(setUnreadCounts);
@@ -34,6 +37,7 @@ export default function Chat() {
 
   // Mantener refs siempre actualizados
   useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { userRef.current = user; }, [user]);
 
   const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
@@ -67,11 +71,14 @@ export default function Chat() {
       );
 
       if (isForActiveConv) {
-        // Agregar mensaje a la lista actual, evitando duplicados
-        setMessagesRef.current(prev =>
-          prev.some(m => m.id === msg.id) ? prev : [...prev, msg]
-        );
-        // Marcar como leído en background
+        const tab = activeTabRef.current;
+        const msgTab = msg.client_id || null;
+        const tabMatches = conv.type !== 'dm' || tab === msgTab;
+        if (tabMatches) {
+          setMessagesRef.current(prev =>
+            prev.some(m => m.id === msg.id) ? prev : [...prev, msg]
+          );
+        }
         api('/api/chat/read', { method: 'POST', body: { type: conv.type, id: conv.id } })
           .catch(() => {});
       } else if (msg.sender_id !== me.id) {
@@ -130,23 +137,44 @@ export default function Chat() {
   };
 
   const openConv = async (conv) => {
-    // Actualizar ref ANTES de setear el estado para que el handler del socket
-    // use el valor correcto inmediatamente
     activeConvRef.current = conv;
     setActiveConv(conv);
     setMessages([]);
+    setDmTabs([]);
+    setActiveTab(null);
+    activeTabRef.current = null;
 
-    // Limpiar badge de esta conversación
     const key = conv.type === 'dm' ? `dm:${conv.id}` : `channel:${conv.id}`;
     setUnreadCounts(prev => { const n = { ...prev }; delete n[key]; return n; });
 
     try {
+      if (conv.type === 'dm') {
+        const tabs = await api(`/api/chat/dm-tabs?userId=${conv.id}`);
+        setDmTabs(tabs || []);
+      }
       const msgs = await api(`/api/chat/messages?type=${conv.type}&id=${conv.id}`);
       setMessages(msgs);
       setHasMore(msgs.length >= 50);
       await api('/api/chat/read', { method: 'POST', body: { type: conv.type, id: conv.id } });
     } catch (e) {
       console.error('Error cargando mensajes:', e);
+    }
+  };
+
+  const switchTab = async (clientId) => {
+    setActiveTab(clientId);
+    activeTabRef.current = clientId;
+    setMessages([]);
+    setHasMore(true);
+    const conv = activeConvRef.current;
+    if (!conv || conv.type !== 'dm') return;
+    try {
+      const tabParam = clientId ? `&client_id=${clientId}` : '';
+      const msgs = await api(`/api/chat/messages?type=dm&id=${conv.id}${tabParam}`);
+      setMessages(msgs);
+      setHasMore(msgs.length >= 50);
+    } catch (e) {
+      console.error('Error cargando mensajes del tab:', e);
     }
   };
 
@@ -157,7 +185,8 @@ export default function Chat() {
     try {
       const oldest = messages[0];
       if (!oldest) return;
-      const older = await api(`/api/chat/messages?type=${conv.type}&id=${conv.id}&before=${oldest.id}`);
+      const tabParam = (conv.type === 'dm' && activeTabRef.current) ? `&client_id=${activeTabRef.current}` : '';
+      const older = await api(`/api/chat/messages?type=${conv.type}&id=${conv.id}&before=${oldest.id}${tabParam}`);
       if (older.length < 50) setHasMore(false);
       if (older.length > 0) {
         const container = messagesContainerRef.current;
@@ -187,6 +216,7 @@ export default function Chat() {
       file_url: fileUrl || null,
       file_type: fileType || null,
       file_name: fileName || null,
+      client_id: conv.type === 'dm' ? (activeTabRef.current || null) : null,
     };
 
     try {
@@ -485,6 +515,32 @@ export default function Chat() {
             )}
           </div>
 
+          {/* Pestañas por cliente (solo DMs con tabs) */}
+          {activeConv.type === 'dm' && dmTabs.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '0 20px', borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' }}>
+              <button onClick={() => switchTab(null)} style={{
+                padding: '10px 16px', background: 'transparent', border: 'none',
+                borderBottom: !activeTab ? '2px solid var(--accent)' : '2px solid transparent',
+                cursor: 'pointer', fontSize: 13, fontWeight: !activeTab ? 700 : 500,
+                color: !activeTab ? 'var(--accent)' : 'var(--text3)',
+                fontFamily: 'var(--font)', whiteSpace: 'nowrap', transition: 'all 0.15s'
+              }}>General</button>
+              {dmTabs.map(client => (
+                <button key={client.id} onClick={() => switchTab(client.id)} style={{
+                  padding: '10px 16px', background: 'transparent', border: 'none',
+                  borderBottom: activeTab === client.id ? '2px solid var(--accent)' : '2px solid transparent',
+                  cursor: 'pointer', fontSize: 13, fontWeight: activeTab === client.id ? 700 : 500,
+                  color: activeTab === client.id ? 'var(--accent)' : 'var(--text3)',
+                  fontFamily: 'var(--font)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6,
+                  transition: 'all 0.15s'
+                }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: client.color || '#6366f1', flexShrink: 0 }} />
+                  {client.name}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Lista de mensajes */}
           <div
             ref={messagesContainerRef}
@@ -505,7 +561,7 @@ export default function Chat() {
             {messages.length === 0 && (
               <div style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 13, marginTop: 60 }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>👋</div>
-                <p>Inicio de {activeConv.type === 'channel' ? `#${activeConv.name}` : `la conversación con ${activeConv.name}`}</p>
+                <p>{activeConv.type === 'channel' ? `Inicio de #${activeConv.name}` : activeTab ? `Sin mensajes sobre ${dmTabs.find(t => t.id === activeTab)?.name || 'este cliente'}` : `Inicio de la conversación con ${activeConv.name}`}</p>
               </div>
             )}
             {messages.map((msg, i) => {
@@ -563,7 +619,7 @@ export default function Chat() {
                     sendMessage(input);
                   }
                 }}
-                placeholder={activeConv.type === 'channel' ? `Mensaje en #${activeConv.name}...` : `Mensaje a ${activeConv.name}...`}
+                placeholder={activeConv.type === 'channel' ? `Mensaje en #${activeConv.name}...` : activeTab ? `Mensaje a ${activeConv.name} sobre ${dmTabs.find(t => t.id === activeTab)?.name || 'cliente'}...` : `Mensaje a ${activeConv.name}...`}
                 style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font)' }}
               />
               <button
