@@ -75,6 +75,14 @@ Resuelto
 • Protección del último administrador: no se puede eliminar ni cambiar el rol del único admin restante.
 • El cálculo de espacio de almacenamiento utilizado se cachea por 60 segundos, evitando escaneos repetidos del disco.
 • Se limpió el código muerto del Dashboard (componentes ClientKanban/ProjectKanbanRow y variables sin usar).
+• Dashboard: sección 'Esperando tu aprobación' muestra tareas en revisión de todos los proyectos con cliente, editor y estado.
+• Videos: sistema de stacking — se pueden apilar versiones de un video con drag and drop, y al subir nueva versión se apilan automáticamente. Campo group_id en la tabla videos.
+• Videos: fix del bug que impedía crear comentarios (pluck→select en subquery de notificaciones). Delete y respuestas ahora actualizan el estado local sin depender del socket.
+• Equipo: panel lateral de seguimiento por editor (tareas pendientes, resumen de pagos pagados/pendientes) visible solo para admin.
+• Pagos: filtros por cliente y por editor en ambas pestañas. Los proyectos solo aparecen en Pagos cuando tienen al menos una tarea en 'Listo'.
+• Crear proyecto: editor y precio son obligatorios. Al asignar un editor a una tarea, se auto-asigna como editor de pago si el proyecto no tiene uno.
+• Editar proyecto (lápiz del sidebar): se puede cambiar el editor asignado y el precio/tipo de pago.
+• Header de proyecto: muestra el nombre del editor asignado junto al título. Soporte de query param ?tab=videos para navegación directa.
 9. Infraestructura actual
 
 La aplicación está deployada en Render (plan gratuito), con el código fuente alojado en un repositorio privado de GitHub. El plan gratuito de Render tiene una limitación importante: el sistema de archivos del servidor no es permanente, por lo que la base de datos (actualmente SQLite) se reinicia y pierde todos los datos cada vez que el servicio se reinicia por inactividad o por un nuevo despliegue de código. Esta es la tarea pendiente de mayor impacto práctico: migrar la base de datos a un servicio externo persistente y gratuito (como Supabase o Neon, ambos basados en PostgreSQL), de forma que los usuarios, clientes y proyectos cargados no se pierdan.
