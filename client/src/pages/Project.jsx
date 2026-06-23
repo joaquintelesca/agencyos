@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import VideoReview from '../components/VideoReview';
 
@@ -13,13 +13,14 @@ const PRIORITIES = ['low', 'medium', 'high'];
 
 export default function Project() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const { api, user, socket } = useAuth();
   const [project, setProject] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
   const [messages, setMessages] = useState([]);
-  const [tab, setTab] = useState('kanban');
+  const [tab, setTab] = useState(searchParams.get('tab') || 'kanban');
   const [newMsg, setNewMsg] = useState('');
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
@@ -157,6 +158,12 @@ export default function Project() {
           <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color }} />
           <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18 }}>{project.name}</h2>
           <span style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8 }}>{tasks.length} tareas</span>
+          {(() => { const editor = users.find(u => u.id === project.payment_editor_id); return editor ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ width: 20, height: 20, borderRadius: '50%', background: editor.avatar_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>{initials(editor.name)}</div>
+              <span style={{ fontSize: 12, color: 'var(--text2)' }}>{editor.name}</span>
+            </div>
+          ) : null; })()}
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {['kanban', 'chat', 'videos'].map(t => (

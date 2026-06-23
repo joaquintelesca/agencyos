@@ -9,6 +9,8 @@ export default function Payments() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('active'); // active | completed
+  const [filterClient, setFilterClient] = useState('');
+  const [filterEditor, setFilterEditor] = useState('');
 
   useEffect(() => {
     Promise.all([api('/api/payments'), api('/api/clients')])
@@ -42,8 +44,18 @@ export default function Payments() {
 
   const isCompleted = (p) => p.editor_paid === 'paid' && p.client_paid === 'cobrado';
 
-  const activeProjects = projects.filter(p => !isCompleted(p));
-  const completedProjects = projects.filter(p => isCompleted(p));
+  const applyFilters = (projs) => {
+    let filtered = projs;
+    if (filterClient) filtered = filtered.filter(p => (p.client_name || '') === filterClient);
+    if (filterEditor) filtered = filtered.filter(p => (p.editor_name || '') === filterEditor);
+    return filtered;
+  };
+
+  const activeProjects = applyFilters(projects.filter(p => !isCompleted(p)));
+  const completedProjects = applyFilters(projects.filter(p => isCompleted(p)));
+
+  const allClients = [...new Set(projects.map(p => p.client_name).filter(Boolean))].sort();
+  const allEditors = [...new Set(projects.map(p => p.editor_name).filter(Boolean))].sort();
 
   // Group by client
   const groupByClient = (projs) => {
@@ -115,10 +127,28 @@ export default function Payments() {
           <h2 style={{ fontWeight: 700, fontSize: 18 }}>Pagos</h2>
           <span style={{ fontSize: 11, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', padding: '2px 8px', borderRadius: 8, fontWeight: 600 }}>🔒 Solo admin</span>
         </div>
-        <div style={{ display: 'flex', gap: 2, background: 'var(--bg3)', padding: 3, borderRadius: 9 }}>
-          {[['active','Activos'],['completed','Completados']].map(([val, label]) => (
-            <button key={val} onClick={() => setTab(val)} style={{ padding: '5px 14px', borderRadius: 7, border: 'none', fontFamily: 'var(--font)', fontSize: 12, cursor: 'pointer', background: tab === val ? 'var(--bg2)' : 'transparent', color: tab === val ? 'var(--text)' : 'var(--text2)', fontWeight: tab === val ? 600 : 400 }}>{label}</button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <select value={filterClient} onChange={e => setFilterClient(e.target.value)}
+              style={{ fontSize: 11, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border)', background: filterClient ? 'var(--accent-glow)' : 'var(--bg3)', color: filterClient ? 'var(--accent2)' : 'var(--text2)', cursor: 'pointer', fontFamily: 'var(--font)' }}>
+              <option value="">Todos los clientes</option>
+              {allClients.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={filterEditor} onChange={e => setFilterEditor(e.target.value)}
+              style={{ fontSize: 11, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border)', background: filterEditor ? 'var(--accent-glow)' : 'var(--bg3)', color: filterEditor ? 'var(--accent2)' : 'var(--text2)', cursor: 'pointer', fontFamily: 'var(--font)' }}>
+              <option value="">Todos los editores</option>
+              {allEditors.map(e => <option key={e} value={e}>{e}</option>)}
+            </select>
+            {(filterClient || filterEditor) && (
+              <button onClick={() => { setFilterClient(''); setFilterEditor(''); }}
+                style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', color: 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>✕ Limpiar</button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 2, background: 'var(--bg3)', padding: 3, borderRadius: 9 }}>
+            {[['active','Activos'],['completed','Completados']].map(([val, label]) => (
+              <button key={val} onClick={() => setTab(val)} style={{ padding: '5px 14px', borderRadius: 7, border: 'none', fontFamily: 'var(--font)', fontSize: 12, cursor: 'pointer', background: tab === val ? 'var(--bg2)' : 'transparent', color: tab === val ? 'var(--text)' : 'var(--text2)', fontWeight: tab === val ? 600 : 400 }}>{label}</button>
+            ))}
+          </div>
         </div>
       </div>
 

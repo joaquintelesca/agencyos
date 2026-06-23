@@ -22,7 +22,7 @@ export default function Layout() {
   const [editingClient, setEditingClient] = useState(null);
   const [editClientForm, setEditClientForm] = useState({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
   const [editingProject, setEditingProject] = useState(null);
-  const [editProjectForm, setEditProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' });
+  const [editProjectForm, setEditProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '', payment_editor_id: '', payment_type: 'fixed', payment_amount: '', client_amount: '', payment_hours: '' });
   const [storageWarning, setStorageWarning] = useState(null); // { gb, bytes } | null
   const [expandedClients, setExpandedClients] = useState([]); // string[] de client IDs
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -250,7 +250,7 @@ export default function Layout() {
                     </Link>
                     {user?.role === 'admin' && (
                       <div style={{ display: 'flex', gap: 0 }}>
-                        <button className="del-btn" onClick={e => { e.preventDefault(); setEditingProject(p); setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '' }); }}
+                        <button className="del-btn" onClick={e => { e.preventDefault(); setEditingProject(p); setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '', payment_editor_id: p.payment_editor_id || '', payment_type: p.payment_type || 'fixed', payment_amount: p.payment_amount || '', client_amount: p.client_amount || '', payment_hours: p.payment_hours || '' }); }}
                           style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 12, padding: '5px 4px', opacity: 0, transition: 'opacity 0.15s' }}
                           onMouseEnter={e => e.currentTarget.style.color = 'var(--accent2)'}
                           onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>✏️</button>
@@ -285,7 +285,7 @@ export default function Layout() {
               </Link>
               {user?.role === 'admin' && (
                 <div style={{ display: 'flex', gap: 0 }}>
-                  <button className="del-btn" onClick={e => { e.preventDefault(); setEditingProject(p); setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '' }); }}
+                  <button className="del-btn" onClick={e => { e.preventDefault(); setEditingProject(p); setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '', payment_editor_id: p.payment_editor_id || '', payment_type: p.payment_type || 'fixed', payment_amount: p.payment_amount || '', client_amount: p.client_amount || '', payment_hours: p.payment_hours || '' }); }}
                     style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 13, padding: '6px 4px', opacity: 0, transition: 'opacity 0.15s' }}
                     onMouseEnter={e => e.currentTarget.style.color = 'var(--accent2)'}
                     onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>✏️</button>
@@ -402,8 +402,9 @@ export default function Layout() {
                 </div>
                 <div className="form-group">
                   <label>Editor responsable del pago</label>
-                  <select className="input" value={paymentForm.payment_editor_id} onChange={e => setPaymentForm(p => ({ ...p, payment_editor_id: e.target.value }))}>
-                    <option value="">Sin asignar (omitir pago)</option>
+                  <select className="input" value={paymentForm.payment_editor_id} onChange={e => setPaymentForm(p => ({ ...p, payment_editor_id: e.target.value }))}
+                    style={!paymentForm.payment_editor_id ? { borderColor: 'var(--red)' } : {}}>
+                    <option value="">Seleccioná un editor</option>
                     {users.filter(u => u.id !== user.id).map(u => (
                       <option key={u.id} value={u.id}>{u.name}</option>
                     ))}
@@ -426,8 +427,8 @@ export default function Layout() {
                     {paymentForm.payment_type === 'fixed' ? (
                       <div className="form-row">
                         <div className="form-group">
-                          <label>Pago al editor ($)</label>
-                          <input className="input" type="number" min="0" value={paymentForm.payment_amount} onChange={e => setPaymentForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" />
+                          <label>Pago al editor ($) <span style={{ color: 'var(--red)' }}>*</span></label>
+                          <input className="input" type="number" min="0" value={paymentForm.payment_amount} onChange={e => setPaymentForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" style={!paymentForm.payment_amount ? { borderColor: 'var(--red)' } : {}} />
                         </div>
                         <div className="form-group">
                           <label>Cobro al cliente ($)</label>
@@ -438,8 +439,8 @@ export default function Layout() {
                       <>
                         <div className="form-row">
                           <div className="form-group">
-                            <label>Tarifa editor ($/h)</label>
-                            <input className="input" type="number" min="0" value={paymentForm.payment_rate} onChange={e => setPaymentForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25" />
+                            <label>Tarifa editor ($/h) <span style={{ color: 'var(--red)' }}>*</span></label>
+                            <input className="input" type="number" min="0" value={paymentForm.payment_rate} onChange={e => setPaymentForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25" style={!paymentForm.payment_rate ? { borderColor: 'var(--red)' } : {}} />
                           </div>
                           <div className="form-group">
                             <label>Tarifa cliente ($/h)</label>
@@ -474,7 +475,7 @@ export default function Layout() {
                 )}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button className="btn btn-ghost" onClick={() => setStep(1)}>← Volver</button>
-                  <button className="btn btn-primary" onClick={createProject}>Crear proyecto</button>
+                  <button className="btn btn-primary" onClick={createProject} disabled={!paymentForm.payment_editor_id || (paymentForm.payment_type === 'fixed' ? !paymentForm.payment_amount : !paymentForm.payment_rate)}>Crear proyecto</button>
                 </div>
               </>
             )}
@@ -544,6 +545,50 @@ export default function Layout() {
                 <input className="input" type="date" value={editProjectForm.deadline} onChange={e => setEditProjectForm(p => ({ ...p, deadline: e.target.value }))} />
               </div>
             </div>
+            {user?.role === 'admin' && (
+              <div className="form-group">
+                <label>Editor asignado</label>
+                <select className="input" value={editProjectForm.payment_editor_id} onChange={e => setEditProjectForm(p => ({ ...p, payment_editor_id: e.target.value }))}
+                  style={!editProjectForm.payment_editor_id ? { borderColor: 'var(--red)' } : {}}>
+                  <option value="">Seleccioná un editor</option>
+                  {users.filter(u => u.id !== user.id).map(u => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {user?.role === 'admin' && (
+              <>
+                <div className="form-group">
+                  <label>Tipo de pago</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {[['fixed', '💵 Precio fijo'], ['hourly', '⏱ Por horas']].map(([val, label]) => (
+                      <button key={val} type="button" onClick={() => setEditProjectForm(p => ({ ...p, payment_type: val }))}
+                        style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${editProjectForm.payment_type === val ? 'var(--accent)' : 'var(--border)'}`, background: editProjectForm.payment_type === val ? 'var(--accent-glow)' : 'var(--bg3)', cursor: 'pointer', fontSize: 12, fontWeight: 500, color: editProjectForm.payment_type === val ? 'var(--accent2)' : 'var(--text2)', fontFamily: 'var(--font)' }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: editProjectForm.payment_type === 'hourly' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 10 }}>
+                  <div className="form-group">
+                    <label>{editProjectForm.payment_type === 'hourly' ? 'Tarifa editor ($/h)' : 'Pago al editor ($)'} <span style={{ color: 'var(--red)' }}>*</span></label>
+                    <input className="input" type="number" min="0" value={editProjectForm.payment_amount} onChange={e => setEditProjectForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500"
+                      style={!editProjectForm.payment_amount ? { borderColor: 'var(--red)' } : {}} />
+                  </div>
+                  <div className="form-group">
+                    <label>{editProjectForm.payment_type === 'hourly' ? 'Tarifa cliente ($/h)' : 'Cobro al cliente ($)'}</label>
+                    <input className="input" type="number" min="0" value={editProjectForm.client_amount} onChange={e => setEditProjectForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
+                  </div>
+                  {editProjectForm.payment_type === 'hourly' && (
+                    <div className="form-group">
+                      <label>Horas estimadas</label>
+                      <input className="input" type="number" min="0" value={editProjectForm.payment_hours} onChange={e => setEditProjectForm(p => ({ ...p, payment_hours: e.target.value }))} placeholder="Ej: 20" />
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
             <div className="form-group">
               <label>Color</label>
               <div style={{ display: 'flex', gap: 8 }}>

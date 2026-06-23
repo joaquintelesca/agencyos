@@ -346,6 +346,10 @@ async function initDB() {
   if (!hasVideoTaskId) {
     await db.schema.table('videos', t => { t.string('task_id').nullable(); });
   }
+  const hasVideoGroupId = await db.schema.hasColumn('videos', 'group_id');
+  if (!hasVideoGroupId) {
+    await db.schema.table('videos', t => { t.string('group_id').nullable(); });
+  }
 
   // Tabla de miembros de proyecto: controla qué usuarios tienen acceso a qué proyectos.
   const hasProjectMembers = await db.schema.hasTable('project_members');
@@ -572,6 +576,7 @@ app.post('/api/projects', auth, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo el admin puede crear proyectos' });
     const { name, description, color, payment_editor_id, payment_type, payment_amount, payment_hours, client_id, deadline, client_amount } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'El nombre del proyecto es obligatorio' });
+    if (!payment_editor_id) return res.status(400).json({ error: 'Tenés que asignar un editor al proyecto' });
     const id = uuidv4();
     await db('projects').insert({
       id, name, description, color: color || '#6366f1', created_by: req.user.id,
@@ -720,14 +725,94 @@ app.delete('/api/clients/:id', auth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
+// ─── DASHBOARD ──────────────────────────────────────────────────────────────
+app.get('/api/dashboard/pending-videos', auth, async (req, res) => {
+  try {
+    let projectFilter = null;
+    if (req.user.role !== 'admin') {
+      projectFilter = await db('project_members')
+        .where({ user_id: req.user.id }).pluck('project_id');
+    }
+
+    // Videos vinculados a tareas en revisión
+    let reviewQuery = db('videos as v')
+      .join('tasks as tk', function() {
+        this.on('v.task_id', 'tk.id').andOn('tk.status', db.raw('?', ['review']));
+      })
+      .join('projects as p', 'v.project_id', 'p.id')
+      .leftJoin('clients as c', 'p.client_id', 'c.id')
+      .leftJoin('users as u', 'v.uploaded_by', 'u.id')
+      .select(
+        'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at',
+        'p.name as project_name', 'p.color as project_color',
+        'c.name as client_name',
+        'u.name as uploader_name',
+        'tk.title as task_title',
+        db.raw('? as type', ['review'])
+      );
+    if (projectFilter) reviewQuery = reviewQuery.whereIn('v.project_id', projectFilter);
+    const reviewVideos = await reviewQuery;
+
+    // Videos con comentarios sin resolver (excluyendo los que ya están en revisión)
+    const reviewVideoIds = reviewVideos.map(v => v.id);
+    let commentsQuery = db('videos as v')
+      .join('video_comments as vc', function() {
+        this.on('vc.video_id', 'v.id').andOn('vc.resolved', db.raw('?', [false]));
+      })
+      .join('projects as p', 'v.project_id', 'p.id')
+      .leftJoin('clients as c', 'p.client_id', 'c.id')
+      .leftJoin('users as u', 'v.uploaded_by', 'u.id')
+      .select(
+        'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at',
+        'p.name as project_name', 'p.color as project_color',
+        'c.name as client_name',
+        'u.name as uploader_name',
+        db.raw('count(vc.id) as unresolved_count'),
+        db.raw('? as type', ['comments'])
+      )
+      .groupBy('v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at',
+        'p.name', 'p.color', 'c.name', 'u.name');
+    if (projectFilter) commentsQuery = commentsQuery.whereIn('v.project_id', projectFilter);
+    if (reviewVideoIds.length > 0) commentsQuery = commentsQuery.whereNotIn('v.id', reviewVideoIds);
+    const commentVideos = await commentsQuery;
+
+    res.json([...reviewVideos, ...commentVideos]);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// ─── EDITOR DETAIL (admin only) ─────────────────────────────────────────────
+app.get('/api/users/:id/detail', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const editorId = req.params.id;
+    const editor = await db('users').where({ id: editorId }).select('id', 'name', 'email', 'role', 'avatar_color', 'created_at').first();
+    if (!editor) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const tasks = await db('tasks as t')
+      .join('projects as p', 't.project_id', 'p.id')
+      .leftJoin('clients as c', 'p.client_id', 'c.id')
+      .where('t.assigned_to', editorId)
+      .select('t.*', 'p.name as project_name', 'p.color as project_color', 'c.name as client_name');
+
+    const projects = await db('projects as p')
+      .leftJoin('clients as c', 'p.client_id', 'c.id')
+      .where('p.payment_editor_id', editorId)
+      .select('p.id', 'p.name', 'p.color', 'p.editor_paid', 'p.client_paid', 'p.payment_amount', 'p.payment_type', 'p.payment_hours', 'c.name as client_name');
+
+    res.json({ editor, tasks, projects });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
 // ─── PAYMENTS ────────────────────────────────────────────────────────────────
 app.get('/api/payments', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const projectsWithDoneTasks = await db('tasks').where({ status: 'done' }).distinct('project_id').pluck('project_id');
     const projects = await db('projects as p')
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .whereNotNull('p.payment_editor_id')
+      .whereIn('p.id', projectsWithDoneTasks)
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .orderBy('p.created_at', 'desc');
     res.json(projects);
@@ -802,7 +887,16 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
       await db('tasks').where({ id: req.params.id }).update({ status, updated_at: new Date().toISOString() });
     } else {
       await db('tasks').where({ id: req.params.id }).update({ title, description, status, priority, assigned_to: assigned_to || null, due_date: due_date || null, updated_at: new Date().toISOString() });
-      if (assigned_to) await addProjectMember(existing.project_id, assigned_to);
+      if (assigned_to) {
+        await addProjectMember(existing.project_id, assigned_to);
+        const project = await db('projects').where({ id: existing.project_id }).first();
+        if (!project.payment_editor_id) {
+          const assignedUser = await db('users').where({ id: assigned_to }).first();
+          if (assignedUser && assignedUser.role !== 'admin') {
+            await db('projects').where({ id: existing.project_id }).update({ payment_editor_id: assigned_to });
+          }
+        }
+      }
     }
     const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', req.params.id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
     await emitToProject(existing.project_id, 'task:updated', task);
@@ -862,9 +956,19 @@ app.get('/api/projects/:projectId/videos', auth, requireProjectAccess(), async (
 app.post('/api/projects/:projectId/videos', auth, requireProjectAccess(), upload.single('video'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se recibió ningún video' });
-    const { title, version, task_id } = req.body;
+    const { title, version, task_id, stack_with } = req.body;
     const id = uuidv4();
-    await db('videos').insert({ id, project_id: req.params.projectId, title: title || req.file.originalname, filename: req.file.filename, original_name: req.file.originalname, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: req.file.size, task_id: task_id || null });
+    let groupId = null;
+    if (stack_with) {
+      const parentVideo = await db('videos').where({ id: stack_with }).first();
+      if (parentVideo) {
+        groupId = parentVideo.group_id || uuidv4();
+        if (!parentVideo.group_id) {
+          await db('videos').where({ id: stack_with }).update({ group_id: groupId });
+        }
+      }
+    }
+    await db('videos').insert({ id, project_id: req.params.projectId, title: title || req.file.originalname, filename: req.file.filename, original_name: req.file.originalname, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: req.file.size, task_id: task_id || null, group_id: groupId });
     const video = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id').leftJoin('tasks as tk', 'v.task_id', 'tk.id').where('v.id', id).select('v.*', 'u.name as uploader_name', 'tk.title as task_title').first();
     await emitToProject(req.params.projectId, 'video:uploaded', video);
     // Check storage after upload
@@ -893,6 +997,54 @@ app.delete('/api/videos/:id', auth, async (req, res) => {
     }
     await db('videos').where({ id: req.params.id }).delete();
     if (video) await emitToProject(video.project_id, 'video:deleted', { id: req.params.id });
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// Stack: agrupa dos videos (o agrega uno a un grupo existente)
+app.patch('/api/videos/:id/stack', auth, async (req, res) => {
+  try {
+    const { targetVideoId } = req.body;
+    if (!targetVideoId) return res.status(400).json({ error: 'Falta targetVideoId' });
+    const video = await db('videos').where({ id: req.params.id }).first();
+    const target = await db('videos').where({ id: targetVideoId }).first();
+    if (!video || !target) return res.status(404).json({ error: 'Video no encontrado' });
+    if (video.project_id !== target.project_id) return res.status(400).json({ error: 'Los videos deben ser del mismo proyecto' });
+    if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+    }
+    const groupId = target.group_id || video.group_id || uuidv4();
+    const idsToUpdate = [req.params.id, targetVideoId];
+    if (video.group_id && video.group_id !== groupId) {
+      const oldGroupMembers = await db('videos').where({ group_id: video.group_id }).pluck('id');
+      idsToUpdate.push(...oldGroupMembers);
+    }
+    if (target.group_id && target.group_id !== groupId) {
+      const oldGroupMembers = await db('videos').where({ group_id: target.group_id }).pluck('id');
+      idsToUpdate.push(...oldGroupMembers);
+    }
+    await db('videos').whereIn('id', [...new Set(idsToUpdate)]).update({ group_id: groupId });
+    await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
+    res.json({ success: true, group_id: groupId });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// Unstack: saca un video de su grupo
+app.patch('/api/videos/:id/unstack', auth, async (req, res) => {
+  try {
+    const video = await db('videos').where({ id: req.params.id }).first();
+    if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+    if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+    }
+    if (!video.group_id) return res.json({ success: true });
+    const groupId = video.group_id;
+    await db('videos').where({ id: req.params.id }).update({ group_id: null });
+    const remaining = await db('videos').where({ group_id: groupId });
+    if (remaining.length === 1) {
+      await db('videos').where({ id: remaining[0].id }).update({ group_id: null });
+    }
+    await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -947,7 +1099,9 @@ app.get('/api/videos/:videoId/comments', auth, async (req, res) => {
     const withAttachments = await Promise.all(comments.map(async c => ({
       ...c,
       attachments: await db('comment_attachments').where({ comment_id: c.id }),
-      replies: await db('comment_replies as r').join('users as u', 'r.user_id', 'u.id').where('r.comment_id', c.id).select('r.*', 'u.name as user_name', 'u.avatar_color').orderBy('r.created_at', 'asc'),
+      replies: await db('comment_replies as r').join('users as u', 'r.user_id', 'u.id').where('r.comment_id', c.id).select('r.*', 'u.name as user_name', 'u.avatar_color').orderBy('r.created_at', 'asc').then(replies =>
+        Promise.all(replies.map(async r => ({ ...r, attachments: await db('reply_attachments').where({ reply_id: r.id }) })))
+      ),
       annotation: c.annotation ? JSON.parse(c.annotation) : null
     })));
     res.json(withAttachments);
@@ -986,7 +1140,7 @@ app.post('/api/videos/:videoId/comments', auth, async (req, res, next) => {
         .where('id', '!=', req.user.id)
         .where(function() {
           this.where({ role: 'admin' })
-            .orWhereIn('id', db('video_comments').where({ video_id: req.params.videoId }).pluck('user_id'));
+            .orWhereIn('id', db('video_comments').where({ video_id: req.params.videoId }).select('user_id'));
         });
       for (const m of members) {
         await createNotification({ userId: m.id, type: 'comment', actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 const DARK = {
@@ -54,9 +54,43 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const replyFileRef = useRef(null);
   const commentFileRef = useRef(null);
 
-  useEffect(() => {
+  // Stack / drag-and-drop state
+  const [dragVideoId, setDragVideoId] = useState(null);
+  const [dragOverTarget, setDragOverTarget] = useState(null);
+  const [expandedGroup, setExpandedGroup] = useState(null);
+
+  const reloadVideos = useCallback(() => {
     api(`/api/projects/${projectId}/videos`).then(setVideos).catch(console.error);
   }, [projectId]);
+
+  useEffect(() => { reloadVideos(); }, [reloadVideos]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onVideoUpdated = (data) => { if (data.projectId === projectId) reloadVideos(); };
+    socket.on('video:updated', onVideoUpdated);
+    return () => { socket.off('video:updated', onVideoUpdated); };
+  }, [socket, projectId, reloadVideos]);
+
+  const gridItems = useMemo(() => {
+    const groups = {};
+    const standalone = [];
+    videos.forEach(v => {
+      if (v.group_id) {
+        if (!groups[v.group_id]) groups[v.group_id] = [];
+        groups[v.group_id].push(v);
+      } else {
+        standalone.push(v);
+      }
+    });
+    Object.values(groups).forEach(g => g.sort((a, b) => b.version - a.version));
+    const items = [];
+    Object.entries(groups).forEach(([gid, vids]) => {
+      items.push({ type: 'stack', groupId: gid, videos: vids, latest: vids[0] });
+    });
+    standalone.forEach(v => items.push({ type: 'single', video: v }));
+    return items;
+  }, [videos]);
 
   useEffect(() => {
     if (!selectedVideo) return;
@@ -266,7 +300,10 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = c.timestamp_sec; setCurrentTime(c.timestamp_sec); }
   };
 
-  const deleteComment = async (cid) => { await api(`/api/comments/${cid}`, { method: 'DELETE' }); };
+  const deleteComment = async (cid) => {
+    await api(`/api/comments/${cid}`, { method: 'DELETE' });
+    setComments(prev => prev.filter(c => c.id !== cid));
+  };
   const resolveComment = async (cid) => {
     const updated = await api(`/api/comments/${cid}/resolve`, { method: 'PATCH' });
     setComments(prev => prev.map(c => c.id === cid ? { ...c, resolved: updated.resolved } : c));
@@ -281,7 +318,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     setReplyFiles([]);
     setReplyingTo(null);
     await api(`/api/comments/${commentId}/replies`, { method: 'POST', body: fd });
-    // State updated via socket event only to avoid duplicates
+    const updated = await api(`/api/videos/${selectedVideo.id}/comments`);
+    setComments(updated);
   };
   const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
@@ -293,6 +331,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     fd.append('title', uploadForm.title || uploadFile.name);
     fd.append('version', uploadForm.version || '1');
     if (uploadForm.task_id) fd.append('task_id', uploadForm.task_id);
+    if (selectedVideo) fd.append('stack_with', selectedVideo.id);
     try {
       const v = await api(`/api/projects/${projectId}/videos`, { method: 'POST', body: fd });
       setVideos(prev => [v, ...prev]);
@@ -300,8 +339,75 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       setShowUpload(false);
       setUploadFile(null);
       setUploadForm({ title: '', version: '', task_id: '' });
+      reloadVideos();
     } finally { setUploading(false); }
   };
+
+  const handleDrop = async (targetVideoId) => {
+    if (!dragVideoId || dragVideoId === targetVideoId) return;
+    setDragOverTarget(null);
+    setDragVideoId(null);
+    await api(`/api/videos/${dragVideoId}/stack`, { method: 'PATCH', body: { targetVideoId } });
+    reloadVideos();
+  };
+
+  const handleUnstack = async (videoId) => {
+    await api(`/api/videos/${videoId}/unstack`, { method: 'PATCH' });
+    setExpandedGroup(null);
+    reloadVideos();
+  };
+
+  const stackShadow = (count) => {
+    const layers = [];
+    const n = Math.min(count - 1, 3);
+    for (let i = 1; i <= n; i++) {
+      layers.push(`${i * 6}px ${i * 6}px 0 -1px var(--bg2)`);
+      layers.push(`${i * 6}px ${i * 6}px 0 0.5px var(--text3)`);
+    }
+    return layers.join(', ');
+  };
+
+  const cardDragProps = (videoId) => ({
+    draggable: true,
+    onDragStart: (e) => { e.dataTransfer.setData('text/plain', videoId); e.dataTransfer.effectAllowed = 'move'; setDragVideoId(videoId); },
+    onDragEnd: () => { setDragVideoId(null); setDragOverTarget(null); },
+  });
+
+  const dropTargetProps = (videoId) => ({
+    onDragOver: (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragVideoId && dragVideoId !== videoId) setDragOverTarget(videoId); },
+    onDragLeave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverTarget(null); },
+    onDrop: (e) => { e.preventDefault(); handleDrop(videoId); },
+  });
+
+  const renderVideoCard = (v, { isDragOver, isExpanded } = {}) => (
+    <div
+      {...cardDragProps(v.id)}
+      {...dropTargetProps(v.id)}
+      onClick={() => setSelectedVideo(v)}
+      style={{ background: 'var(--bg2)', border: `2px solid ${isDragOver ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 12, padding: 16, cursor: dragVideoId ? 'grabbing' : 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s', opacity: dragVideoId === v.id ? 0.4 : 1 }}
+      onMouseEnter={e => { if (!isDragOver && !dragVideoId) e.currentTarget.style.borderColor = 'var(--accent)'; }}
+      onMouseLeave={e => { if (!isDragOver) e.currentTarget.style.borderColor = 'var(--border)'; }}>
+      <div style={{ width: '100%', paddingBottom: '56%', background: 'var(--bg4)', borderRadius: 8, marginBottom: 10, position: 'relative' }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>▶️</div>
+      </div>
+      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{v.title}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 11, background: 'var(--accent-glow)', color: 'var(--accent2)', padding: '2px 7px', borderRadius: 8, fontWeight: 700 }}>v{v.version}</span>
+        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.uploader_name}</span>
+      </div>
+      {v.task_title && (
+        <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ flexShrink: 0 }}>📋</span> {v.task_title}
+        </div>
+      )}
+      {isExpanded && (
+        <button onClick={e => { e.stopPropagation(); handleUnstack(v.id); }}
+          style={{ marginTop: 8, width: '100%', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 0', color: 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>
+          Desapilar
+        </button>
+      )}
+    </div>
+  );
 
   // ─── VIDEO LIST ──────────────────────────────────────────────────────────────
   if (!selectedVideo) {
@@ -314,27 +420,65 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         {videos.length === 0 && (
           <div className="empty"><div className="empty-icon">🎬</div><p>Sin videos todavía</p><p>Subí el primer video para empezar el feedback</p></div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-          {videos.map(v => (
-            <div key={v.id} onClick={() => setSelectedVideo(v)}
-              style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
-              <div style={{ width: '100%', paddingBottom: '56%', background: 'var(--bg4)', borderRadius: 8, marginBottom: 10, position: 'relative' }}>
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>▶️</div>
-              </div>
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{v.title}</div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 11, background: 'var(--accent-glow)', color: 'var(--accent2)', padding: '2px 7px', borderRadius: 8, fontWeight: 700 }}>v{v.version}</span>
-                <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.uploader_name}</span>
-              </div>
-              {v.task_title && (
-                <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <span style={{ flexShrink: 0 }}>📋</span> {v.task_title}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
+          {gridItems.map(item => {
+            if (item.type === 'single') {
+              return <div key={item.video.id}>{renderVideoCard(item.video, { isDragOver: dragOverTarget === item.video.id })}</div>;
+            }
+            const isExpanded = expandedGroup === item.groupId;
+            const stackDragOver = !isExpanded && dragOverTarget === item.latest.id;
+            if (isExpanded) {
+              return (
+                <div key={item.groupId} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                    <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600 }}>{item.videos.length} versiones</span>
+                    <button onClick={() => setExpandedGroup(null)}
+                      style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', fontSize: 11, color: 'var(--text3)', cursor: 'pointer' }}>
+                      Colapsar
+                    </button>
+                  </div>
+                  {item.videos.map(v => renderVideoCard(v, { isDragOver: dragOverTarget === v.id, isExpanded: true }))}
                 </div>
-              )}
-            </div>
-          ))}
+              );
+            }
+            return (
+              <div key={item.groupId}
+                {...dropTargetProps(item.latest.id)}
+                {...cardDragProps(item.latest.id)}
+                onClick={() => setSelectedVideo(item.latest)}
+                style={{
+                  background: 'var(--bg2)', borderRadius: 12, padding: 16,
+                  cursor: dragVideoId ? 'grabbing' : 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s',
+                  border: `2px solid ${stackDragOver ? 'var(--accent)' : 'var(--border)'}`,
+                  boxShadow: stackShadow(item.videos.length),
+                  marginBottom: Math.min(item.videos.length - 1, 3) * 6,
+                  marginRight: Math.min(item.videos.length - 1, 3) * 6,
+                  opacity: dragVideoId === item.latest.id ? 0.4 : 1,
+                }}
+                onMouseEnter={e => { if (!stackDragOver && !dragVideoId) e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                onMouseLeave={e => { if (!stackDragOver) e.currentTarget.style.borderColor = 'var(--border)'; }}>
+                <div style={{ width: '100%', paddingBottom: '56%', background: 'var(--bg4)', borderRadius: 8, marginBottom: 10, position: 'relative' }}>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>▶️</div>
+                </div>
+                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{item.latest.title}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ fontSize: 11, background: 'var(--accent-glow)', color: 'var(--accent2)', padding: '2px 7px', borderRadius: 8, fontWeight: 700 }}>v{item.latest.version}</span>
+                    <button onClick={e => { e.stopPropagation(); setExpandedGroup(item.groupId); }}
+                      style={{ fontSize: 10, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '2px 7px', color: 'var(--text2)', cursor: 'pointer', fontWeight: 600 }}>
+                      {item.videos.length} versiones
+                    </button>
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>{item.latest.uploader_name}</span>
+                </div>
+                {item.latest.task_title && (
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ flexShrink: 0 }}>📋</span> {item.latest.task_title}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
         {showUpload && (
           <div className="modal-overlay" onClick={() => setShowUpload(false)}>

@@ -12,6 +12,8 @@ export default function Team() {
   const [editForm, setEditForm] = useState({ name: '', email: '', role: 'editor', avatar_color: '#6366f1', password: '', current_password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [detailUser, setDetailUser] = useState(null);
+  const [detailData, setDetailData] = useState(null);
 
   useEffect(() => { api('/api/users').then(setUsers).catch(console.error); }, []);
 
@@ -58,6 +60,16 @@ export default function Team() {
     finally { setLoading(false); }
   };
 
+  const openDetail = async (u) => {
+    if (user?.role !== 'admin') return;
+    setDetailUser(u);
+    setDetailData(null);
+    try {
+      const data = await api(`/api/users/${u.id}/detail`);
+      setDetailData(data);
+    } catch (e) { console.error(e); }
+  };
+
   const deleteUser = async (id) => {
     if (!confirm('¿Eliminar este usuario? Se borrarán todos sus datos.')) return;
     try {
@@ -80,10 +92,9 @@ export default function Team() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
         {users.map(u => (
-          <div key={u.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div className="avatar avatar-lg" style={{ background: u.avatar_color, cursor: user?.role === 'admin' ? 'pointer' : 'default' }}
-              onClick={() => user?.role === 'admin' && openEdit(u)}
-              title={user?.role === 'admin' ? 'Editar usuario' : undefined}>
+          <div key={u.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 14, cursor: user?.role === 'admin' ? 'pointer' : 'default', border: detailUser?.id === u.id ? '1px solid var(--accent)' : undefined }}
+            onClick={() => user?.role === 'admin' && openDetail(u)}>
+            <div className="avatar avatar-lg" style={{ background: u.avatar_color }}>
               {initials(u.name)}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -190,6 +201,118 @@ export default function Team() {
                 {loading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : 'Guardar cambios'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Panel: Detalle de editor */}
+      {detailUser && (
+        <div className="modal-overlay" onClick={() => setDetailUser(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 420, background: 'var(--bg1)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideIn 0.2s ease' }}>
+            {/* Header */}
+            <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+              <div className="avatar avatar-lg" style={{ background: detailUser.avatar_color }}>{initials(detailUser.name)}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>{detailUser.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text3)' }}>{detailUser.email}</div>
+              </div>
+              <button onClick={() => { openEdit(detailUser); setDetailUser(null); }}
+                style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
+                ✏️ Editar
+              </button>
+              <button onClick={() => setDetailUser(null)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 18, cursor: 'pointer', padding: '2px 6px' }}>✕</button>
+            </div>
+
+            {!detailData ? (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" /></div>
+            ) : (
+              <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+                {/* Stats rápidos */}
+                {(() => {
+                  const t = detailData.tasks;
+                  const pending = t.filter(x => x.status !== 'done').length;
+                  const done = t.filter(x => x.status === 'done').length;
+                  const review = t.filter(x => x.status === 'review').length;
+                  const p = detailData.projects;
+                  const totalPaid = p.filter(x => x.editor_paid === 'paid').reduce((s, x) => s + (x.payment_type === 'hourly' ? (x.payment_amount || 0) * (x.payment_hours || 0) : (x.payment_amount || 0)), 0);
+                  const totalPending = p.filter(x => x.editor_paid !== 'paid').reduce((s, x) => s + (x.payment_type === 'hourly' ? (x.payment_amount || 0) * (x.payment_hours || 0) : (x.payment_amount || 0)), 0);
+                  return (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 20 }}>
+                        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--yellow)' }}>{pending}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>Pendientes</div>
+                        </div>
+                        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--yellow)' }}>{review}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>En revisión</div>
+                        </div>
+                        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>{done}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>Completadas</div>
+                        </div>
+                      </div>
+
+                      {/* Tareas pendientes */}
+                      {(() => {
+                        const pendingTasks = t.filter(x => x.status !== 'done');
+                        if (pendingTasks.length === 0) return null;
+                        const statusLabel = { todo: 'Por hacer', in_progress: 'En progreso', review: 'En revisión' };
+                        const statusColor = { todo: 'var(--text3)', in_progress: 'var(--blue)', review: 'var(--yellow)' };
+                        return (
+                          <div style={{ marginBottom: 20 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Tareas pendientes</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {pendingTasks.map(task => (
+                                <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}>
+                                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: task.project_color || 'var(--text3)', flexShrink: 0 }} />
+                                  <span style={{ flex: 1, color: 'var(--text)' }}>{task.title}</span>
+                                  <span style={{ fontSize: 10, color: 'var(--text3)' }}>{task.client_name ? `${task.client_name} · ` : ''}{task.project_name}</span>
+                                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, fontWeight: 500, color: statusColor[task.status], background: `${statusColor[task.status]}18` }}>{statusLabel[task.status]}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Pagos */}
+                      {p.length > 0 && (
+                        <div style={{ marginBottom: 20 }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Pagos</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
+                              <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Pagado</div>
+                              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--green)' }}>${totalPaid.toFixed(0)}</div>
+                            </div>
+                            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
+                              <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Pendiente</div>
+                              <div style={{ fontSize: 18, fontWeight: 700, color: totalPending > 0 ? 'var(--red)' : 'var(--text3)' }}>${totalPending.toFixed(0)}</div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {p.map(proj => {
+                              const amount = proj.payment_type === 'hourly' ? (proj.payment_rate || 0) * (proj.payment_hours || 0) : (proj.payment_amount || 0);
+                              const paid = proj.editor_paid === 'paid';
+                              return (
+                                <div key={proj.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}>
+                                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: proj.color || 'var(--text3)', flexShrink: 0 }} />
+                                  <span style={{ flex: 1, color: 'var(--text)' }}>{proj.client_name ? `${proj.client_name} · ` : ''}{proj.name}</span>
+                                  <span style={{ fontSize: 12, fontWeight: 600, color: paid ? 'var(--green)' : 'var(--text)' }}>${amount.toFixed(0)}</span>
+                                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, fontWeight: 500, color: paid ? 'var(--green)' : 'var(--red)', background: paid ? 'rgba(34,201,122,0.12)' : 'rgba(240,92,92,0.12)' }}>
+                                    {paid ? 'Pagado' : 'Pendiente'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         </div>
       )}
