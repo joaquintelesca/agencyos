@@ -158,12 +158,12 @@ export default function Project() {
           <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color }} />
           <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18 }}>{project.name}</h2>
           <span style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8 }}>{tasks.length} tareas</span>
-          {(() => { const editor = users.find(u => u.id === project.payment_editor_id); return editor ? (
+          {project.payment_editor_name && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <div style={{ width: 20, height: 20, borderRadius: '50%', background: editor.avatar_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>{initials(editor.name)}</div>
-              <span style={{ fontSize: 12, color: 'var(--text2)' }}>{editor.name}</span>
+              <div style={{ width: 20, height: 20, borderRadius: '50%', background: project.payment_editor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>{initials(project.payment_editor_name)}</div>
+              <span style={{ fontSize: 12, color: 'var(--text2)' }}>{project.payment_editor_name}</span>
             </div>
-          ) : null; })()}
+          )}
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {['kanban', 'chat', 'videos'].map(t => (

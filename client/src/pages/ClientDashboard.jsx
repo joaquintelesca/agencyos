@@ -12,14 +12,11 @@ export default function ClientDashboard() {
   const navigate = useNavigate();
   const [client, setClient] = useState(null);
   const [tasks, setTasks] = useState({});
-  const [users, setUsers] = useState([]);
-
   const clientProjects = projects.filter(p => p.client_id === id);
   const projectIds = clientProjects.map(p => p.id).join(',');
 
   useEffect(() => {
     api(`/api/clients`).then(cs => setClient(cs.find(c => c.id === id) || null)).catch(console.error);
-    api('/api/users').then(setUsers).catch(console.error);
   }, [id]);
 
   useEffect(() => {
@@ -99,7 +96,6 @@ export default function ClientDashboard() {
           const done = pTasks.filter(t => t.status === 'done').length;
           const pct = total > 0 ? Math.round((done / total) * 100) : 0;
           const dl = deadlineLabel(p.deadline);
-          const editor = users.find(u => u.id === p.payment_editor_id);
           const statusCounts = {};
           pTasks.forEach(t => { statusCounts[t.status] = (statusCounts[t.status] || 0) + 1; });
 
@@ -113,12 +109,12 @@ export default function ClientDashboard() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                 <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{p.name}</span>
-                {editor && (
+                {p.payment_editor_name && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: editor.avatar_color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>
-                      {initials(editor.name)}
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: p.payment_editor_color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>
+                      {initials(p.payment_editor_name)}
                     </div>
-                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>{editor.name}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.payment_editor_name}</span>
                   </div>
                 )}
                 {dl && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}

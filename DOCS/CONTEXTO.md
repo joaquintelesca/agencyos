@@ -83,6 +83,12 @@ Resuelto
 • Crear proyecto: editor y precio son obligatorios. Al asignar un editor a una tarea, se auto-asigna como editor de pago si el proyecto no tiene uno.
 • Editar proyecto (lápiz del sidebar): se puede cambiar el editor asignado y el precio/tipo de pago.
 • Header de proyecto: muestra el nombre del editor asignado junto al título. Soporte de query param ?tab=videos para navegación directa.
+• Dashboard: sección 'Videos pendientes de revisión' muestra videos vinculados a tareas en revisión o con comentarios sin resolver. Clic navega directo a la pestaña de videos del proyecto.
+• Privacidad entre editores reforzada a nivel de servidor: GET /api/users para no-admins ahora devuelve solo admins + el propio usuario, sin exponer a otros editores.
+• Los endpoints de proyectos (lista y detalle) incluyen payment_editor_name y payment_editor_color via JOIN, eliminando la necesidad de buscar el editor en la lista de usuarios en el frontend.
+• Bug fix: el contador 'Deadlines esta semana' del Dashboard ahora cuenta correctamente solo proyectos con deadline entre hoy y los próximos 7 días.
+• Bug fix: al eliminar un video, se limpian correctamente reply_attachments antes de borrar comment_replies, evitando filas huérfanas en la base de datos.
+• Performance: GET /api/projects reemplazó N×3 queries de COUNT individuales por un único GROUP BY, reduciendo la carga al servidor independientemente de la cantidad de proyectos.
 9. Infraestructura actual
 
 La aplicación está deployada en Render (plan gratuito), con el código fuente alojado en un repositorio privado de GitHub. El plan gratuito de Render tiene una limitación importante: el sistema de archivos del servidor no es permanente, por lo que la base de datos (actualmente SQLite) se reinicia y pierde todos los datos cada vez que el servicio se reinicia por inactividad o por un nuevo despliegue de código. Esta es la tarea pendiente de mayor impacto práctico: migrar la base de datos a un servicio externo persistente y gratuito (como Supabase o Neon, ambos basados en PostgreSQL), de forma que los usuarios, clientes y proyectos cargados no se pierdan.

@@ -460,13 +460,15 @@ app.post('/api/auth/register', auth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-// GET /api/users — admins ven todo, editores solo datos mínimos para UI.
+// GET /api/users — admins ven todo, editores solo ven admins + sí mismos (privacidad entre editores).
 app.get('/api/users', auth, async (req, res) => {
   if (req.user.role === 'admin') {
     const users = await db('users').select('id','name','email','role','avatar_color','created_at');
     return res.json(users);
   }
-  const users = await db('users').select('id','name','avatar_color');
+  const users = await db('users')
+    .where(function() { this.where({ role: 'admin' }).orWhere({ id: req.user.id }); })
+    .select('id','name','email','role','avatar_color','created_at');
   res.json(users);
 });
 
@@ -539,7 +541,8 @@ app.get('/api/projects', auth, async (req, res) => {
   try {
     let query = db('projects as p')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
-      .select('p.*', 'c.name as client_name', 'c.color as client_color')
+      .leftJoin('users as eu', 'p.payment_editor_id', 'eu.id')
+      .select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color')
       .orderBy('p.created_at', 'desc');
 
     if (req.user.role !== 'admin') {
@@ -549,12 +552,17 @@ app.get('/api/projects', auth, async (req, res) => {
     }
 
     const projects = await query;
-    const withCounts = await Promise.all(projects.map(async p => {
-      const [{ count: task_count }] = await db('tasks').where({ project_id: p.id }).count('id as count');
-      const [{ count: done_count }] = await db('tasks').where({ project_id: p.id, status: 'done' }).count('id as count');
-      const [{ count: review_count }] = await db('tasks').where({ project_id: p.id, status: 'review' }).count('id as count');
-      return { ...p, task_count: Number(task_count), done_count: Number(done_count), review_count: Number(review_count) };
-    }));
+    const taskCounts = await db('tasks')
+      .select('project_id')
+      .count('* as task_count')
+      .select(db.raw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as done_count', ['done']))
+      .select(db.raw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as review_count', ['review']))
+      .groupBy('project_id');
+    const countsMap = {};
+    for (const row of taskCounts) {
+      countsMap[row.project_id] = { task_count: Number(row.task_count), done_count: Number(row.done_count), review_count: Number(row.review_count) };
+    }
+    const withCounts = projects.map(p => ({ ...p, ...(countsMap[p.id] || { task_count: 0, done_count: 0, review_count: 0 }) }));
     res.json(withCounts);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -563,8 +571,9 @@ app.get('/api/projects/:id', auth, requireProjectAccess('id'), async (req, res) 
   try {
     const project = await db('projects as p')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
+      .leftJoin('users as eu', 'p.payment_editor_id', 'eu.id')
       .where('p.id', req.params.id)
-      .select('p.*', 'c.name as client_name', 'c.color as client_color')
+      .select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color')
       .first();
     if (!project) return res.status(404).json({ error: 'No encontrado' });
     res.json(project);
@@ -612,7 +621,7 @@ app.put('/api/projects/:id', auth, async (req, res) => {
     if (client_amount !== undefined) update.client_amount = parseFloat(client_amount) || 0;
     await db('projects').where({ id: req.params.id }).update(update);
     if (payment_editor_id) await addProjectMember(req.params.id, payment_editor_id);
-    const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color').first();
+    const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first();
     await emitToProject(req.params.id, 'project:updated', project);
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -990,6 +999,10 @@ app.delete('/api/videos/:id', auth, async (req, res) => {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       const commentIds = await db('video_comments').where({ video_id: req.params.id }).pluck('id');
       if (commentIds.length > 0) {
+        const replyIds = await db('comment_replies').whereIn('comment_id', commentIds).pluck('id');
+        if (replyIds.length > 0) {
+          await db('reply_attachments').whereIn('reply_id', replyIds).delete();
+        }
         await db('comment_attachments').whereIn('comment_id', commentIds).delete();
         await db('comment_replies').whereIn('comment_id', commentIds).delete();
       }

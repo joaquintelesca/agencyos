@@ -8,10 +8,12 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState({}); // { projectId: [tasks] }
   const [clients, setClients] = useState([]);
+  const [pendingVideos, setPendingVideos] = useState([]);
 
   const projectIds = projects.map(p => p.id).join(',');
   useEffect(() => {
     api('/api/clients').then(setClients).catch(console.error);
+    api('/api/dashboard/pending-videos').then(setPendingVideos).catch(console.error);
     projects.forEach(p => {
       api(`/api/projects/${p.id}/tasks`).then(t => setTasks(prev => ({ ...prev, [p.id]: t }))).catch(console.error);
     });
@@ -50,7 +52,7 @@ export default function Dashboard() {
             {[
               { label: 'Proyectos activos', val: projects.length, color: 'var(--text)' },
               { label: 'Tareas pendientes', val: pendingTasks.length, color: pendingTasks.length > 0 ? 'var(--yellow)' : 'var(--green)' },
-              { label: 'Deadlines esta semana', val: deadlineSoon.filter(p => { const d = deadlineLabel(p.deadline); return d && (d.label === 'Vence hoy' || d.label === 'Mañana' || d.label?.includes('días')); }).length, color: 'var(--red)' },
+              { label: 'Deadlines esta semana', val: projects.filter(p => { if (!p.deadline) return false; const diff = Math.ceil((new Date(p.deadline) - new Date()) / 86400000); return diff >= 0 && diff <= 7; }).length, color: 'var(--red)' },
               { label: 'Clientes activos', val: clients.length, color: 'var(--accent2)' },
             ].map(s => (
               <div key={s.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px' }}>
@@ -123,6 +125,37 @@ export default function Dashboard() {
               </div>
             );
           })()}
+
+          {/* Videos pendientes de revisión */}
+          {pendingVideos.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Videos pendientes de revisión</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {pendingVideos.map(v => (
+                  <div key={v.id} onClick={() => navigate(`/project/${v.project_id}?tab=videos`)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, cursor: 'pointer', transition: 'all 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: v.project_color || 'var(--text3)', flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{v.title} <span style={{ fontSize: 11, color: 'var(--text3)' }}>v{v.version}</span></span>
+                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.client_name ? `${v.client_name} · ` : ''}{v.project_name}</span>
+                    {v.uploader_name && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>
+                          {initials(v.uploader_name)}
+                        </div>
+                        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.uploader_name}</span>
+                      </div>
+                    )}
+                    {v.type === 'review'
+                      ? <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)' }}>En revisión</span>
+                      : <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: 'rgba(240,92,92,0.12)', color: 'var(--red)' }}>{v.unresolved_count} comentario{v.unresolved_count !== 1 ? 's' : ''}</span>
+                    }
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {projects.length === 0 && (
             <div className="empty"><div className="empty-icon">📁</div><p>No hay proyectos todavía</p><p style={{ fontSize: 12 }}>Creá uno desde la barra lateral</p></div>
