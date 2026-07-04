@@ -89,6 +89,17 @@ Resuelto
 • Bug fix: el contador 'Deadlines esta semana' del Dashboard ahora cuenta correctamente solo proyectos con deadline entre hoy y los próximos 7 días.
 • Bug fix: al eliminar un video, se limpian correctamente reply_attachments antes de borrar comment_replies, evitando filas huérfanas en la base de datos.
 • Performance: GET /api/projects reemplazó N×3 queries de COUNT individuales por un único GROUP BY, reduciendo la carga al servidor independientemente de la cantidad de proyectos.
+• Bug fix: PUT /api/projects/:id y PATCH /api/payments/:projectId devuelven 404 en lugar de crash/body vacío cuando el ID no existe.
+• Bug fix: DELETE /api/users/:id devuelve 404 si el usuario no existe (antes retornaba success silencioso).
+• Bug fix: DELETE /api/tasks/:id restringido para editores — solo pueden borrar sus propias tareas asignadas (consistente con PUT).
+• Bug fix: PATCH /api/clients/:id valida que el nombre no esté vacío.
+• Bug fix: stack_with al subir video ignora el video padre si pertenece a otro proyecto.
+• Privacidad: GET /api/projects/:id/tasks filtrado por rol — editores solo ven sus propias tareas asignadas, no las de otros editores del mismo proyecto.
+• Notificaciones: nuevos tipos project_assigned (editor asignado a un proyecto) y task_assigned (editor asignado a una tarea). Se emiten al crear o reasignar.
+• Notificaciones de chat: se agrupan por emisor mientras estén sin leer — N mensajes del mismo remitente generan 1 sola notificación (se actualiza el preview con el último mensaje).
+• Bug fix Team: panel lateral de editor mostraba $0 para proyectos por horas (campo payment_rate inexistente → corregido a payment_amount).
+• Bug fix Team: botones editar/eliminar en cards de usuario ahora detienen propagación del click (antes abrían panel de detalle y modal simultáneamente).
+• Bug fix Pagos: total de horas en ProjectRow se calcula con el state local hours, actualizándose en tiempo real mientras el usuario escribe.
 9. Infraestructura actual
 
 La aplicación está deployada en Render (plan gratuito), con el código fuente alojado en un repositorio privado de GitHub. El plan gratuito de Render tiene una limitación importante: el sistema de archivos del servidor no es permanente, por lo que la base de datos (actualmente SQLite) se reinicia y pierde todos los datos cada vez que el servicio se reinicia por inactividad o por un nuevo despliegue de código. Esta es la tarea pendiente de mayor impacto práctico: migrar la base de datos a un servicio externo persistente y gratuito (como Supabase o Neon, ambos basados en PostgreSQL), de forma que los usuarios, clientes y proyectos cargados no se pierdan.
