@@ -223,8 +223,12 @@ export default function Payments() {
 
 function ProjectRow({ project: p, onUpdate, getTotal, getClientTotal, initials, isHistory }) {
   const [hours, setHours] = useState(p.payment_hours || 0);
-  const total = getTotal(p);
-  const clientTotal = getClientTotal(p);
+  const total = p.payment_type === 'hourly'
+    ? (parseFloat(p.payment_amount) || 0) * (parseFloat(hours) || 0)
+    : (parseFloat(p.payment_amount) || 0);
+  const clientTotal = p.payment_type === 'hourly'
+    ? (parseFloat(p.client_amount) || 0) * (parseFloat(hours) || 0)
+    : (parseFloat(p.client_amount) || 0);
 
   return (
     <tr style={{ borderBottom: '1px solid var(--border)' }}

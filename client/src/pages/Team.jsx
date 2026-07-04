@@ -104,9 +104,9 @@ export default function Team() {
             </div>
             {user?.role === 'admin' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(u)} title="Editar">✏️</button>
+                <button className="btn btn-ghost btn-icon btn-sm" onClick={e => { e.stopPropagation(); openEdit(u); }} title="Editar">✏️</button>
                 {u.id !== user.id && (
-                  <button className="btn btn-ghost btn-icon btn-sm" onClick={() => deleteUser(u.id)} style={{ color: 'var(--red)' }} title="Eliminar">🗑</button>
+                  <button className="btn btn-ghost btn-icon btn-sm" onClick={e => { e.stopPropagation(); deleteUser(u.id); }} style={{ color: 'var(--red)' }} title="Eliminar">🗑</button>
                 )}
               </div>
             )}
@@ -292,7 +292,7 @@ export default function Team() {
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             {p.map(proj => {
-                              const amount = proj.payment_type === 'hourly' ? (proj.payment_rate || 0) * (proj.payment_hours || 0) : (proj.payment_amount || 0);
+                              const amount = proj.payment_type === 'hourly' ? (proj.payment_amount || 0) * (proj.payment_hours || 0) : (proj.payment_amount || 0);
                               const paid = proj.editor_paid === 'paid';
                               return (
                                 <div key={proj.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}>

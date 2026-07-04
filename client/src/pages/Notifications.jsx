@@ -36,11 +36,20 @@ export default function Notifications() {
     return `hace ${Math.floor(h / 24)}d`;
   };
 
-  const icon = (type) => type === 'comment' ? '💬' : type === 'reply' ? '↩️' : type === 'task_review' ? '📋' : '✉️';
+  const icon = (type) => {
+    if (type === 'comment') return '💬';
+    if (type === 'reply') return '↩️';
+    if (type === 'task_review') return '📋';
+    if (type === 'project_assigned') return '📁';
+    if (type === 'task_assigned') return '✅';
+    return '✉️';
+  };
   const label = (n) => {
     if (n.type === 'comment') return <><strong>{n.actor_name}</strong> comentó en un video{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'reply') return <><strong>{n.actor_name}</strong> respondió tu comentario{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'task_review') return <><strong>{n.actor_name}</strong> pasó una tarea a revisión{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
+    if (n.type === 'project_assigned') return <><strong>{n.actor_name}</strong> te asignó un proyecto{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
+    if (n.type === 'task_assigned') return <><strong>{n.actor_name}</strong> te asignó una tarea{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     return <><strong>{n.actor_name}</strong> te envió un mensaje</>;
   };
 

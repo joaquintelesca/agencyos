@@ -477,7 +477,8 @@ app.delete('/api/users/:id', auth, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     const uid = req.params.id;
     const target = await db('users').where({ id: uid }).first();
-    if (target?.role === 'admin') {
+    if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (target.role === 'admin') {
       const adminCount = await db('users').where({ role: 'admin' }).count('id as c').first();
       if (Number(adminCount.c) <= 1) return res.status(400).json({ error: 'No se puede eliminar el último administrador' });
     }
@@ -603,6 +604,7 @@ app.post('/api/projects', auth, async (req, res) => {
     if (payment_editor_id) await addProjectMember(id, payment_editor_id);
     const project = await db('projects').where({ id }).first();
     await emitToProject(id, 'project:created', project);
+    await createNotification({ userId: payment_editor_id, type: 'project_assigned', actorId: req.user.id, projectId: id, preview: name });
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -610,6 +612,8 @@ app.post('/api/projects', auth, async (req, res) => {
 app.put('/api/projects/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const existing = await db('projects').where({ id: req.params.id }).first();
+    if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
     const { name, description, color, status, payment_editor_id, payment_type, payment_amount, payment_hours, payment_status, upwork_status, client_id, deadline, client_amount } = req.body;
     const update = {
       name, description, color, status,
@@ -621,6 +625,9 @@ app.put('/api/projects/:id', auth, async (req, res) => {
     if (client_amount !== undefined) update.client_amount = parseFloat(client_amount) || 0;
     await db('projects').where({ id: req.params.id }).update(update);
     if (payment_editor_id) await addProjectMember(req.params.id, payment_editor_id);
+    if (payment_editor_id && payment_editor_id !== existing.payment_editor_id) {
+      await createNotification({ userId: payment_editor_id, type: 'project_assigned', actorId: req.user.id, projectId: req.params.id, preview: name || existing.name });
+    }
     const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first();
     await emitToProject(req.params.id, 'project:updated', project);
     res.json(project);
@@ -718,6 +725,7 @@ app.patch('/api/clients/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     const { name, color, email, phone, notes } = req.body;
+    if (name !== undefined && !name?.trim()) return res.status(400).json({ error: 'El nombre del cliente es obligatorio' });
     await db('clients').where({ id: req.params.id }).update({ name, color, email, phone, notes });
     const client = await db('clients').where({ id: req.params.id }).first();
     res.json(client);
@@ -831,6 +839,8 @@ app.get('/api/payments', auth, async (req, res) => {
 app.patch('/api/payments/:projectId', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const existing = await db('projects').where({ id: req.params.projectId }).first();
+    if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
     const { payment_hours, payment_status, upwork_status, payment_amount } = req.body;
     const update = {};
     if (payment_hours !== undefined) update.payment_hours = parseFloat(payment_hours) || 0;
@@ -861,10 +871,12 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
 // ─── TASKS ───────────────────────────────────────────────────────────────────
 app.get('/api/projects/:projectId/tasks', auth, requireProjectAccess(), async (req, res) => {
   try {
-    const tasks = await db('tasks as t')
+    let query = db('tasks as t')
       .leftJoin('users as u', 't.assigned_to', 'u.id')
       .where('t.project_id', req.params.projectId)
-      .select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color')
+      .select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color');
+    if (req.user.role !== 'admin') query = query.where('t.assigned_to', req.user.id);
+    const tasks = await query
       .orderBy('t.created_at', 'asc');
     res.json(tasks);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -879,6 +891,10 @@ app.post('/api/projects/:projectId/tasks', auth, requireProjectAccess(), async (
     if (assigned_to) await addProjectMember(req.params.projectId, assigned_to);
     const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
     await emitToProject(req.params.projectId, 'task:created', task);
+    if (assigned_to) {
+      const project = await db('projects').where({ id: req.params.projectId }).first();
+      await createNotification({ userId: assigned_to, type: 'task_assigned', actorId: req.user.id, projectId: req.params.projectId, preview: `"${title}" en ${project?.name || 'proyecto'}` });
+    }
     res.json(task);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -905,6 +921,9 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
             await db('projects').where({ id: existing.project_id }).update({ payment_editor_id: assigned_to });
           }
         }
+        if (assigned_to !== existing.assigned_to) {
+          await createNotification({ userId: assigned_to, type: 'task_assigned', actorId: req.user.id, projectId: existing.project_id, preview: `"${title || existing.title}" en ${project?.name || 'proyecto'}` });
+        }
       }
     }
     const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', req.params.id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
@@ -926,6 +945,9 @@ app.delete('/api/tasks/:id', auth, async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Tarea no encontrada' });
     if (!await isProjectMember(req.user.id, req.user.role, existing.project_id)) {
       return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+    }
+    if (req.user.role !== 'admin' && existing.assigned_to !== req.user.id) {
+      return res.status(403).json({ error: 'Solo podés eliminar tus tareas asignadas' });
     }
     await db('tasks').where({ id: req.params.id }).delete();
     await emitToProject(existing.project_id, 'task:deleted', { id: req.params.id });
@@ -970,7 +992,7 @@ app.post('/api/projects/:projectId/videos', auth, requireProjectAccess(), upload
     let groupId = null;
     if (stack_with) {
       const parentVideo = await db('videos').where({ id: stack_with }).first();
-      if (parentVideo) {
+      if (parentVideo && parentVideo.project_id === req.params.projectId) {
         groupId = parentVideo.group_id || uuidv4();
         if (!parentVideo.group_id) {
           await db('videos').where({ id: stack_with }).update({ group_id: groupId });
@@ -1259,6 +1281,29 @@ app.post('/api/comments/:id/replies', auth, async (req, res, next) => {
 
 async function createNotification({ userId, type, actorId, projectId, videoId, commentId, chatMessageId, preview }) {
   if (userId === actorId) return; // don't notify yourself
+
+  // Notificaciones de chat: agrupar las no leídas del mismo emisor en una sola.
+  if (type === 'chat') {
+    const existing = await db('notifications')
+      .where({ user_id: userId, actor_id: actorId, type: 'chat', read: false })
+      .first();
+    if (existing) {
+      await db('notifications').where({ id: existing.id }).update({
+        preview: preview || existing.preview,
+        chat_message_id: chatMessageId || existing.chat_message_id,
+        created_at: new Date().toISOString(),
+      });
+      const updated = await db('notifications as n')
+        .join('users as a', 'n.actor_id', 'a.id')
+        .leftJoin('projects as p', 'n.project_id', 'p.id')
+        .where('n.id', existing.id)
+        .select('n.*', 'a.name as actor_name', 'a.avatar_color as actor_color', 'p.name as project_name')
+        .first();
+      io.to(`user:${userId}`).emit('notification:new', updated);
+      return updated;
+    }
+  }
+
   const id = uuidv4();
   await db('notifications').insert({ id, user_id: userId, type, actor_id: actorId, project_id: projectId || null, video_id: videoId || null, comment_id: commentId || null, chat_message_id: chatMessageId || null, preview: preview || null });
   const notif = await db('notifications as n')
