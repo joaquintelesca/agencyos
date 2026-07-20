@@ -26,8 +26,10 @@ export default function Payments() {
   }, [socket]);
 
   const updatePayment = async (projectId, changes) => {
-    const updated = await api(`/api/payments/${projectId}`, { method: 'PATCH', body: changes });
-    setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
+    try {
+      const updated = await api(`/api/payments/${projectId}`, { method: 'PATCH', body: changes });
+      setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
+    } catch (e) { console.error(e); alert('Error al actualizar el pago: ' + e.message); }
   };
 
   const getTotal = (p) => {
@@ -223,6 +225,9 @@ export default function Payments() {
 
 function ProjectRow({ project: p, onUpdate, getTotal, getClientTotal, initials, isHistory }) {
   const [hours, setHours] = useState(p.payment_hours || 0);
+  // Si otra sesión/socket actualiza payment_hours mientras esta fila está montada (misma key={p.id}),
+  // hay que reflejarlo — si no, un blur posterior pisa ese cambio con el valor local desactualizado.
+  useEffect(() => { setHours(p.payment_hours || 0); }, [p.payment_hours]);
   const total = p.payment_type === 'hourly'
     ? (parseFloat(p.payment_amount) || 0) * (parseFloat(hours) || 0)
     : (parseFloat(p.payment_amount) || 0);
@@ -242,8 +247,8 @@ function ProjectRow({ project: p, onUpdate, getTotal, getClientTotal, initials, 
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
             ${p.payment_amount}/h ·{' '}
             <input type="number" min="0" value={hours}
-              onChange={e => setHours(e.target.value)}
-              onBlur={() => onUpdate(p.id, { payment_hours: hours })}
+              onChange={e => { const v = e.target.value; setHours(v === '' ? '' : Math.max(0, parseFloat(v) || 0)); }}
+              onBlur={() => { const h = hours === '' ? 0 : hours; setHours(h); onUpdate(p.id, { payment_hours: h }); }}
               style={{ width: 40, background: 'var(--bg4)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '1px 4px', textAlign: 'center' }} />
             {' '}h
           </div>

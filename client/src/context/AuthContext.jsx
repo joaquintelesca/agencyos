@@ -102,8 +102,16 @@ export function AuthProvider({ children }) {
     return data;
   };
 
+  // /uploads ahora requiere autenticación; <video>/<img>/<audio src> no pueden mandar el header
+  // Authorization, así que el token viaja como query param en estas URLs.
+  const mediaUrl = (path) => {
+    if (!path) return path;
+    const currentToken = token || localStorage.getItem('token');
+    return `${path}${path.includes('?') ? '&' : '?'}token=${currentToken}`;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, api, socket, onlineUsers, updateUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout, api, socket, onlineUsers, updateUser, mediaUrl }}>
       {children}
     </AuthContext.Provider>
   );

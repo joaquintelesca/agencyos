@@ -46,14 +46,45 @@ const uploadsDir = process.env.UPLOAD_DIR
   : path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
-  }
-});
-const upload = multer({ storage, limits: { fileSize: 3 * 1024 * 1024 * 1024 } });
+// La extensión del archivo en disco sale siempre del mimetype ya validado, nunca del nombre
+// original (que el cliente controla) — evita subir un .html/.js disfrazado de un tipo permitido.
+function makeUploader(mimeExtMap, { fileSize = 3 * 1024 * 1024 * 1024 } = {}) {
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, uploadsDir),
+    filename: (req, file, cb) => cb(null, `${uuidv4()}${mimeExtMap[file.mimetype] || ''}`)
+  });
+  return multer({
+    storage,
+    limits: { fileSize },
+    fileFilter: (req, file, cb) => {
+      if (mimeExtMap[file.mimetype]) cb(null, true);
+      else cb(new Error('INVALID_FILE_TYPE'));
+    }
+  });
+}
+
+// Adjuntos de comentarios/respuestas y archivos de chat: mismo set de tipos seguros.
+// Nota: no se permite image/svg+xml — un SVG puede embeber <script> y ejecutarlo si se abre directo.
+const SAFE_ATTACHMENT_MIME_EXT = {
+  'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp',
+  'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov', 'video/x-msvideo': '.avi',
+  'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'audio/ogg': '.ogg', 'audio/webm': '.weba', 'audio/mp4': '.m4a',
+  'application/pdf': '.pdf', 'text/plain': '.txt'
+};
+// Subida de video de proyecto: solo tipos de video reales (el frontend ya sugiere accept="video/*").
+const VIDEO_MIME_EXT = {
+  'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov',
+  'video/x-msvideo': '.avi', 'video/x-matroska': '.mkv'
+};
+const attachmentUpload = makeUploader(SAFE_ATTACHMENT_MIME_EXT);
+const videoUpload = makeUploader(VIDEO_MIME_EXT);
+function attachmentUploadMiddleware(req, res, next) {
+  attachmentUpload.array('attachments', 5)(req, res, (err) => {
+    if (err && err.message === 'INVALID_FILE_TYPE') return res.status(400).json({ error: 'Tipo de archivo no permitido en el adjunto.' });
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Archivo demasiado grande (máx. 3GB)' : (err.message || 'Error al subir archivo') });
+    next();
+  });
+}
 
 // DB: usa Postgres si DATABASE_URL está definida (producción/Railway),
 // si no cae a SQLite local (desarrollo) sin requerir configuración extra.
@@ -375,14 +406,77 @@ async function initDB() {
 
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
-app.use('/uploads', express.static(uploadsDir));
 
-const auth = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
+// El token viaja por header Authorization (fetch/XHR) o por query string (?token=...),
+// necesario para <video>/<img>/<audio src> que el navegador solicita sin poder adjuntar headers custom.
+// El rol se revalida contra la DB en cada request (no se confía en el rol embebido en el token):
+// si el admin fue degradado o borrado después de emitido el token, no debe seguir actuando como admin.
+const auth = async (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1] || req.query.token;
   if (!token) return res.status(401).json({ error: 'Sesión no iniciada' });
-  try { req.user = jwt.verify(token, JWT_SECRET); next(); }
-  catch { res.status(401).json({ error: 'Token inválido' }); }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const current = await db('users').where({ id: decoded.id }).select('id', 'email', 'role').first();
+    if (!current) return res.status(401).json({ error: 'Usuario no encontrado' });
+    req.user = current;
+    next();
+  } catch { res.status(401).json({ error: 'Token inválido' }); }
 };
+
+// Sirve archivos subidos (videos, adjuntos de comentarios/chat) solo a usuarios autenticados
+// que tengan acceso real al proyecto o conversación dueña del archivo. Reemplaza el static()
+// público anterior, que permitía descargar cualquier archivo sabiendo su nombre.
+app.get('/uploads/:filename', auth, async (req, res) => {
+  const { filename } = req.params;
+  if (!filename || filename.includes('..') || filename.includes('/')) {
+    return res.status(400).json({ error: 'Nombre de archivo inválido' });
+  }
+  const filePath = path.join(uploadsDir, filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+
+  if (req.user.role === 'admin') return res.sendFile(filePath);
+
+  const video = await db('videos').where({ filename }).first();
+  if (video) {
+    if (await isProjectMember(req.user.id, req.user.role, video.project_id)) return res.sendFile(filePath);
+    return res.status(403).json({ error: 'Sin acceso' });
+  }
+
+  const commentAttachment = await db('comment_attachments as ca')
+    .join('video_comments as vc', 'ca.comment_id', 'vc.id')
+    .join('videos as v', 'vc.video_id', 'v.id')
+    .where('ca.filename', filename)
+    .select('v.project_id')
+    .first();
+  if (commentAttachment) {
+    if (await isProjectMember(req.user.id, req.user.role, commentAttachment.project_id)) return res.sendFile(filePath);
+    return res.status(403).json({ error: 'Sin acceso' });
+  }
+
+  const replyAttachment = await db('reply_attachments as ra')
+    .join('comment_replies as cr', 'ra.reply_id', 'cr.id')
+    .join('video_comments as vc', 'cr.comment_id', 'vc.id')
+    .join('videos as v', 'vc.video_id', 'v.id')
+    .where('ra.filename', filename)
+    .select('v.project_id')
+    .first();
+  if (replyAttachment) {
+    if (await isProjectMember(req.user.id, req.user.role, replyAttachment.project_id)) return res.sendFile(filePath);
+    return res.status(403).json({ error: 'Sin acceso' });
+  }
+
+  const chatMsg = await db('chat_messages').where({ file_url: `/uploads/${filename}` }).first();
+  if (chatMsg) {
+    if (chatMsg.sender_id === req.user.id || chatMsg.receiver_id === req.user.id) return res.sendFile(filePath);
+    if (chatMsg.channel_id) {
+      const member = await db('chat_channel_members').where({ channel_id: chatMsg.channel_id, user_id: req.user.id }).first();
+      if (member) return res.sendFile(filePath);
+    }
+    return res.status(403).json({ error: 'Sin acceso' });
+  }
+
+  return res.status(404).json({ error: 'Archivo no encontrado' });
+});
 
 // ─── PROJECT MEMBERSHIP ───────────────────────────────────────────────────────
 
@@ -484,12 +578,28 @@ app.delete('/api/users/:id', auth, async (req, res) => {
     }
     await db('notifications').where({ user_id: uid }).orWhere({ actor_id: uid }).delete();
     await db('messages').where({ sender_id: uid }).delete();
-    await db('chat_messages').where({ sender_id: uid }).delete();
+    await db('chat_messages').where({ sender_id: uid }).orWhere({ receiver_id: uid }).delete();
     await db('chat_channel_members').where({ user_id: uid }).delete();
     await db('project_members').where({ user_id: uid }).delete();
     await db('tasks').where({ assigned_to: uid }).update({ assigned_to: null });
-    await db('video_comments').where({ user_id: uid }).delete();
-    await db('comment_replies').where({ user_id: uid }).delete();
+
+    // Comentarios/respuestas: hay que limpiar en ambas direcciones — lo que el usuario escribió,
+    // y lo que otros escribieron respondiendo a sus comentarios (quedarían huérfanos si no).
+    const ownCommentIds = await db('video_comments').where({ user_id: uid }).pluck('id');
+    const ownReplyIds = await db('comment_replies').where({ user_id: uid }).pluck('id');
+    const repliesToOwnComments = ownCommentIds.length
+      ? await db('comment_replies').whereIn('comment_id', ownCommentIds).pluck('id')
+      : [];
+    const replyIdsToClean = [...new Set([...ownReplyIds, ...repliesToOwnComments])];
+
+    if (replyIdsToClean.length) {
+      await db('reply_attachments').whereIn('reply_id', replyIdsToClean).delete();
+      await db('comment_replies').whereIn('id', replyIdsToClean).delete();
+    }
+    if (ownCommentIds.length) {
+      await db('comment_attachments').whereIn('comment_id', ownCommentIds).delete();
+      await db('video_comments').whereIn('id', ownCommentIds).delete();
+    }
     await db('users').where({ id: uid }).delete();
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -702,9 +812,20 @@ app.delete('/api/projects/:projectId/members/:userId', auth, async (req, res) =>
 
 // ─── CLIENTS ─────────────────────────────────────────────────────────────────
 
+// Un editor solo debe ver los clientes de los proyectos donde es miembro, no el listado completo
+// de clientes de la agencia (nombre, email, teléfono, notas internas son datos de negocio sensibles).
 app.get('/api/clients', auth, async (req, res) => {
   try {
-    const clients = await db('clients').orderBy('name', 'asc');
+    let query = db('clients').orderBy('name', 'asc');
+    if (req.user.role !== 'admin') {
+      const clientIds = await db('project_members as pm')
+        .join('projects as p', 'pm.project_id', 'p.id')
+        .where('pm.user_id', req.user.id)
+        .whereNotNull('p.client_id')
+        .pluck('p.client_id');
+      query = query.whereIn('id', [...new Set(clientIds)]);
+    }
+    const clients = await query;
     res.json(clients);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -843,10 +964,10 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
     const { payment_hours, payment_status, upwork_status, payment_amount } = req.body;
     const update = {};
-    if (payment_hours !== undefined) update.payment_hours = parseFloat(payment_hours) || 0;
+    if (payment_hours !== undefined) update.payment_hours = Math.max(0, parseFloat(payment_hours) || 0);
     if (payment_status !== undefined) update.payment_status = payment_status;
     if (upwork_status !== undefined) update.upwork_status = upwork_status;
-    if (payment_amount !== undefined) update.payment_amount = parseFloat(payment_amount) || 0;
+    if (payment_amount !== undefined) update.payment_amount = Math.max(0, parseFloat(payment_amount) || 0);
     if (req.body.editor_paid !== undefined) update.editor_paid = req.body.editor_paid;
     if (req.body.client_paid !== undefined) update.client_paid = req.body.client_paid;
     await db('projects').where({ id: req.params.projectId }).update(update);
@@ -884,8 +1005,12 @@ app.get('/api/projects/:projectId/tasks', auth, requireProjectAccess(), async (r
 
 app.post('/api/projects/:projectId/tasks', auth, requireProjectAccess(), async (req, res) => {
   try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo el admin puede crear tareas' });
     const { title, description, status, priority, assigned_to, due_date } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: 'El título de la tarea es obligatorio' });
+    if (assigned_to && !await db('users').where({ id: assigned_to }).first()) {
+      return res.status(400).json({ error: 'El usuario asignado no existe' });
+    }
     const id = uuidv4();
     await db('tasks').insert({ id, project_id: req.params.projectId, title, description, status: status || 'todo', priority: priority || 'medium', assigned_to: assigned_to || null, created_by: req.user.id, due_date: due_date || null });
     if (assigned_to) await addProjectMember(req.params.projectId, assigned_to);
@@ -984,7 +1109,13 @@ app.get('/api/projects/:projectId/videos', auth, requireProjectAccess(), async (
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-app.post('/api/projects/:projectId/videos', auth, requireProjectAccess(), upload.single('video'), async (req, res) => {
+app.post('/api/projects/:projectId/videos', auth, requireProjectAccess(), (req, res, next) => {
+  videoUpload.single('video')(req, res, (err) => {
+    if (err && err.message === 'INVALID_FILE_TYPE') return res.status(400).json({ error: 'Tipo de archivo no permitido. Solo se aceptan videos.' });
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Archivo demasiado grande (máx. 3GB)' : (err.message || 'Error al subir archivo') });
+    next();
+  });
+}, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No se recibió ningún video' });
     const { title, version, task_id, stack_with } = req.body;
@@ -1152,7 +1283,7 @@ app.post('/api/videos/:videoId/comments', auth, async (req, res, next) => {
     }
     next();
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-}, upload.array('attachments', 5), async (req, res) => {
+}, attachmentUploadMiddleware, async (req, res) => {
   try {
     const { content, timestamp_sec, timestamp_end, annotation } = req.body;
     const id = uuidv4();
@@ -1256,7 +1387,7 @@ app.post('/api/comments/:id/replies', auth, async (req, res, next) => {
     }
     next();
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-}, upload.array('attachments', 5), async (req, res) => {
+}, attachmentUploadMiddleware, async (req, res) => {
   try {
     const { content } = req.body;
     const id = uuidv4();
@@ -1548,19 +1679,9 @@ app.post('/api/chat/messages', auth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-// POST upload file for chat
-const ALLOWED_CHAT_TYPES = /^(image\/(jpeg|png|gif|webp|svg\+xml)|video\/(mp4|webm|quicktime|x-msvideo)|audio\/(mpeg|wav|ogg|webm|mp4)|application\/pdf|text\/plain)$/;
-const chatUpload = multer({
-  storage,
-  limits: { fileSize: 3 * 1024 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (ALLOWED_CHAT_TYPES.test(file.mimetype)) cb(null, true);
-    else cb(new Error('INVALID_FILE_TYPE'));
-  }
-});
-
+// POST upload file for chat — reusa el whitelist compartido de adjuntos seguros.
 app.post('/api/chat/upload', auth, (req, res) => {
-  chatUpload.single('file')(req, res, (err) => {
+  attachmentUpload.single('file')(req, res, (err) => {
     if (err && err.message === 'INVALID_FILE_TYPE') {
       return res.status(400).json({ error: 'Tipo de archivo no permitido. Se aceptan imágenes, videos, audios, PDFs y texto.' });
     }
@@ -1608,26 +1729,50 @@ app.post('/api/chat/channels', auth, async (req, res) => {
 });
 
 // ─── SOCKET.IO ───────────────────────────────────────────────────────────────
-io.use((socket, next) => {
+// Mismo criterio que el middleware HTTP: el rol se revalida contra la DB, no se confía en el token.
+io.use(async (socket, next) => {
   const token = socket.handshake.auth?.token;
   if (!token) return next(new Error('No token'));
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    socket.userId = decoded.id;
-    socket.userRole = decoded.role;
+    const current = await db('users').where({ id: decoded.id }).select('id', 'role').first();
+    if (!current) return next(new Error('Token inválido'));
+    socket.userId = current.id;
+    socket.userRole = current.role;
     next();
   } catch {
     next(new Error('Token inválido'));
   }
 });
 
+// userId -> { socketId, role }
 const onlineUsers = new Map();
+
+// Un editor nunca debe ver la lista completa de usuarios online (privacidad entre editores):
+// solo ve admins + compañeros con los que comparte un canal de chat. El admin sí ve a todos.
+async function broadcastOnlineUsers() {
+  const onlineIds = Array.from(onlineUsers.keys());
+  const adminIds = onlineIds.filter(id => onlineUsers.get(id).role === 'admin');
+  io.to('admins').emit('users:online', onlineIds);
+
+  const nonAdminIds = onlineIds.filter(id => onlineUsers.get(id).role !== 'admin');
+  for (const uid of nonAdminIds) {
+    const visible = new Set([...adminIds, uid]);
+    const channelIds = await db('chat_channel_members').where({ user_id: uid }).pluck('channel_id');
+    if (channelIds.length > 0) {
+      const mates = await db('chat_channel_members').whereIn('channel_id', channelIds).pluck('user_id');
+      mates.forEach(m => { if (onlineUsers.has(m)) visible.add(m); });
+    }
+    io.to(`user:${uid}`).emit('users:online', Array.from(visible));
+  }
+}
+
 io.on('connection', (socket) => {
-  socket.on('user:online', () => {
-    onlineUsers.set(socket.userId, socket.id);
+  socket.on('user:online', async () => {
+    onlineUsers.set(socket.userId, { socketId: socket.id, role: socket.userRole });
     socket.join(`user:${socket.userId}`);
     if (socket.userRole === 'admin') socket.join('admins');
-    io.emit('users:online', Array.from(onlineUsers.keys()));
+    await broadcastOnlineUsers();
   });
   socket.on('project:join', async (projectId) => {
     if (!projectId) return;
@@ -1647,11 +1792,11 @@ io.on('connection', (socket) => {
     const msg = { id, project_id, sender_id: socket.userId, receiver_id: null, content, type, sender_name: sender.name, sender_color: sender.avatar_color, created_at: new Date().toISOString() };
     io.to(`project:${project_id}`).emit('message:new', msg);
   });
-  socket.on('disconnect', () => {
-    for (const [userId, sid] of onlineUsers.entries()) {
-      if (sid === socket.id) { onlineUsers.delete(userId); break; }
+  socket.on('disconnect', async () => {
+    for (const [userId, info] of onlineUsers.entries()) {
+      if (info.socketId === socket.id) { onlineUsers.delete(userId); break; }
     }
-    io.emit('users:online', Array.from(onlineUsers.keys()));
+    await broadcastOnlineUsers();
   });
 });
 

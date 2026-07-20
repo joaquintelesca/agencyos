@@ -51,9 +51,11 @@ export default function Login() {
             </button>
           </form>
         </div>
-        <p style={{ textAlign: 'center', color: 'var(--text3)', marginTop: 20, fontSize: 12 }}>
-          Admin por defecto: admin@agencyos.com / admin123
-        </p>
+        {import.meta.env.DEV && (
+          <p style={{ textAlign: 'center', color: 'var(--text3)', marginTop: 20, fontSize: 12 }}>
+            Admin por defecto: admin@agencyos.com / admin123
+          </p>
+        )}
       </div>
     </div>
   );

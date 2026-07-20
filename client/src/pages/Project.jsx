@@ -36,6 +36,8 @@ export default function Project() {
   useEffect(() => {
     setProject(null);
     setNotFound(false);
+    setTasks([]);
+    setMessages([]);
     api(`/api/projects/${id}`).then(setProject).catch(e => {
       console.error(e);
       setNotFound(true);
@@ -44,6 +46,13 @@ export default function Project() {
     api(`/api/projects/${id}/messages`).then(msgs => { setMessages(msgs); setHasMore(msgs.length >= 50); });
     api('/api/users').then(setUsers);
   }, [id]);
+
+  // Deep link desde una notificación (?tab=videos): si ya estamos en este proyecto, React Router
+  // no remonta el componente al cambiar solo el query param, así que hay que resincronizar el tab.
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && t !== tab) setTab(t);
+  }, [searchParams]); // eslint-disable-line
 
   useEffect(() => {
     msgEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -277,6 +286,7 @@ export default function Project() {
           tasks={tasks}
           uploadForTaskId={uploadForTaskId}
           onUploadForTaskHandled={() => setUploadForTaskId(null)}
+          initialVideoId={searchParams.get('video')}
         />
       )}
 

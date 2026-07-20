@@ -16,7 +16,16 @@ export default function ClientDashboard() {
   const projectIds = clientProjects.map(p => p.id).join(',');
 
   useEffect(() => {
+    // Resetear antes de refetch: si no, al navegar de un cliente a otro se ve por un instante
+    // el header/nombre del cliente anterior en vez del spinner de carga.
+    setClient(null);
     api(`/api/clients`).then(cs => setClient(cs.find(c => c.id === id) || null)).catch(console.error);
+  }, [id]);
+
+  useEffect(() => {
+    // Resetear las tareas al cambiar de cliente — si no, las estadísticas del cliente nuevo
+    // incluyen tareas acumuladas de clientes visitados antes en esta misma sesión.
+    setTasks({});
   }, [id]);
 
   useEffect(() => {

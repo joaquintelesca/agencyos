@@ -9,10 +9,11 @@ const DARK = {
   red: '#f05c5c', border: '#2a2a31',
 };
 
-export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled }) {
-  const { api, user, socket } = useAuth();
+export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
+  const { api, user, socket, mediaUrl } = useAuth();
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
+  const appliedInitialVideoRef = useRef(null);
   const [versionGroup, setVersionGroup] = useState([]); // all versions of same title
   const [comments, setComments] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
@@ -72,6 +73,13 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     return () => { socket.off('video:updated', onVideoUpdated); };
   }, [socket, projectId, reloadVideos]);
 
+  // Deep link desde una notificación (?tab=videos&video=X): seleccionar ese video apenas cargue.
+  useEffect(() => {
+    if (!initialVideoId || appliedInitialVideoRef.current === initialVideoId) return;
+    const v = videos.find(x => x.id === initialVideoId);
+    if (v) { setSelectedVideo(v); appliedInitialVideoRef.current = initialVideoId; }
+  }, [initialVideoId, videos]);
+
   const gridItems = useMemo(() => {
     const groups = {};
     const standalone = [];
@@ -94,11 +102,15 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
 
   useEffect(() => {
     if (!selectedVideo) return;
-    api(`/api/videos/${selectedVideo.id}/comments`).then(setComments).catch(console.error);
+    // Si el usuario cambia de video antes de que responda el servidor, descartamos la respuesta
+    // vieja para no mostrar comentarios de un video distinto al que está seleccionado ahora.
+    let cancelled = false;
+    api(`/api/videos/${selectedVideo.id}/comments`).then(c => { if (!cancelled) setComments(c); }).catch(console.error);
     // Build version group: same base title, different versions
     const baseName = selectedVideo.title.replace(/\s*v\d+$/i, '').trim();
     const group = videos.filter(v => v.title.replace(/\s*v\d+$/i, '').trim() === baseName || v.title === selectedVideo.title);
     setVersionGroup(group.length > 1 ? group : videos.filter(v => v.title === selectedVideo.title));
+    return () => { cancelled = true; };
   }, [selectedVideo, videos]);
 
   useEffect(() => {
@@ -191,10 +203,30 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   };
 
   // Canvas drawing
+  // El <video> mantiene su aspect ratio dentro del contenedor (letterboxing si no es 16:9),
+  // pero el canvas cubre el contenedor entero — hay que mapear el click al área real del video,
+  // no al contenedor completo, o el dibujo queda desalineado en videos verticales/no 16:9.
+  const getVideoContentRect = () => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    const containerW = canvas?.clientWidth || 0;
+    const containerH = canvas?.clientHeight || 0;
+    if (!video?.videoWidth || !video?.videoHeight) return { x: 0, y: 0, w: containerW, h: containerH };
+    const videoAspect = video.videoWidth / video.videoHeight;
+    const containerAspect = containerW / containerH;
+    let renderW, renderH;
+    if (videoAspect > containerAspect) { renderW = containerW; renderH = containerW / videoAspect; }
+    else { renderH = containerH; renderW = containerH * videoAspect; }
+    return { x: (containerW - renderW) / 2, y: (containerH - renderH) / 2, w: renderW, h: renderH };
+  };
+
   const getCanvasPos = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    return { x: ((e.clientX - rect.left) / rect.width) * canvas.width, y: ((e.clientY - rect.top) / rect.height) * canvas.height };
+    const content = getVideoContentRect();
+    const x = e.clientX - rect.left - content.x;
+    const y = e.clientY - rect.top - content.y;
+    return { x: (x / content.w) * canvas.width, y: (y / content.h) * canvas.height };
   };
 
   const redrawCanvas = useCallback(() => {
@@ -203,7 +235,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const active = activeComment && comments.find(c => c.id === activeComment && c.annotation);
-    if (active) drawAnnotation(ctx, active.annotation);
+    // Comentarios viejos guardaron un solo dibujo (objeto); los nuevos guardan todos los trazos (array).
+    if (active) (Array.isArray(active.annotation) ? active.annotation : [active.annotation]).forEach(ann => drawAnnotation(ctx, ann));
     annotations.forEach(ann => drawAnnotation(ctx, ann));
     if (currentAnnotation) drawAnnotation(ctx, currentAnnotation);
   }, [annotations, comments, currentTime, currentAnnotation, activeComment]);
@@ -280,7 +313,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     fd.append('content', commentText);
     fd.append('timestamp_sec', ts.type === 'single' ? ts.ts : ts.start);
     if (ts.type === 'range') fd.append('timestamp_end', ts.end);
-    if (annotations.length > 0) fd.append('annotation', JSON.stringify(annotations[annotations.length - 1]));
+    if (annotations.length > 0) fd.append('annotation', JSON.stringify(annotations));
     commentFiles.forEach(f => fd.append('attachments', f));
     await api(`/api/videos/${selectedVideo.id}/comments`, { method: 'POST', body: fd });
     // Reload comments directly from server
@@ -301,8 +334,11 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   };
 
   const deleteComment = async (cid) => {
-    await api(`/api/comments/${cid}`, { method: 'DELETE' });
-    setComments(prev => prev.filter(c => c.id !== cid));
+    if (!confirm('¿Eliminar este comentario? Esta acción no se puede deshacer.')) return;
+    try {
+      await api(`/api/comments/${cid}`, { method: 'DELETE' });
+      setComments(prev => prev.filter(c => c.id !== cid));
+    } catch (e) { console.error(e); alert('Error al eliminar el comentario: ' + e.message); }
   };
   const resolveComment = async (cid) => {
     const updated = await api(`/api/comments/${cid}/resolve`, { method: 'PATCH' });
@@ -556,7 +592,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           {/* Video area */}
           <div style={{ flex: 1, background: '#000', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
             <video ref={videoRef}
-              src={`/uploads/${selectedVideo.filename}`}
+              src={mediaUrl(`/uploads/${selectedVideo.filename}`)}
               style={{ maxWidth: '100%', maxHeight: '100%', display: 'block' }}
               onTimeUpdate={onTimeUpdate}
               onLoadedMetadata={onLoadedMetadata}
@@ -790,7 +826,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                     {c.attachments?.length > 0 && (
                       <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 3 }}>
                         {c.attachments.map(a => (
-                          <a key={a.id} href={`/uploads/${a.filename}`} target="_blank" rel="noreferrer"
+                          <a key={a.id} href={mediaUrl(`/uploads/${a.filename}`)} target="_blank" rel="noreferrer"
                             style={{ fontSize: 11, color: DARK.accentText, display: 'flex', alignItems: 'center', gap: 4, background: DARK.bg3, padding: '3px 7px', borderRadius: 5, textDecoration: 'none' }}
                             onClick={e => e.stopPropagation()}>
                             📎 {a.original_name}
@@ -829,7 +865,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                                 <div style={{ fontSize: 10, color: DARK.text3, marginBottom: 2 }}>{r.user_name}</div>
                                 <div style={{ fontSize: 12, color: DARK.text, lineHeight: 1.4 }}>{r.content}</div>
                                 {r.attachments?.length > 0 && r.attachments.map(a => (
-                                  <a key={a.id} href={`/uploads/${a.filename}`} target="_blank" rel="noreferrer"
+                                  <a key={a.id} href={mediaUrl(`/uploads/${a.filename}`)} target="_blank" rel="noreferrer"
                                     style={{ fontSize: 11, color: DARK.accentText, display: 'flex', alignItems: 'center', gap: 3, marginTop: 3, textDecoration: 'none' }}
                                     onClick={e => e.stopPropagation()}>
                                     📎 {a.original_name}

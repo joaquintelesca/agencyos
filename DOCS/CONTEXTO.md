@@ -100,6 +100,19 @@ Resuelto
 • Bug fix Team: panel lateral de editor mostraba $0 para proyectos por horas (campo payment_rate inexistente → corregido a payment_amount).
 • Bug fix Team: botones editar/eliminar en cards de usuario ahora detienen propagación del click (antes abrían panel de detalle y modal simultáneamente).
 • Bug fix Pagos: total de horas en ProjectRow se calcula con el state local hours, actualizándose en tiempo real mientras el usuario escribe.
+• Bug fix Notificaciones: el contador rojo del sidebar ahora baja correctamente al abrir una notificación o marcar todo como leído (antes solo se actualizaba la página de notificaciones, no el sidebar).
+• Seguridad (auditoría completa del código — 3 críticos y 15 altos corregidos):
+  - Los archivos subidos (videos, adjuntos de chat y de comentarios) ya no son públicos: hace falta estar logueado y ser miembro del proyecto/conversación dueña del archivo para descargarlos.
+  - Se cerró un hueco que permitía subir un archivo peligroso (ej. HTML con código) disfrazado de imagen o video; ahora el tipo de archivo se valida de verdad, no solo por el nombre.
+  - Se sacaron del login público las credenciales de admin por defecto (solo se muestran en desarrollo local).
+  - Un admin degradado o eliminado pierde el acceso al instante, ya no sigue actuando como admin con su sesión vieja.
+  - Un editor ya no puede ver el listado completo de clientes de la agencia ni la lista de todos los demás usuarios conectados — solo lo que le corresponde según sus proyectos/canales.
+  - Borrar un usuario ahora limpia correctamente todo lo relacionado (adjuntos, respuestas de otros a sus comentarios, mensajes directos recibidos) sin dejar datos huérfanos.
+  - Solo el admin puede crear tareas (antes cualquier editor con acceso al proyecto podía crear una tarea y asignarla a cualquier persona, agregándola al proyecto sin pasar por el admin).
+• Bug fix Videos: el dibujo sobre el video (flechas, rectángulos, etc.) ahora queda alineado incluso en videos verticales o que no son 16:9; antes se desalineaba. También se guardan todos los trazos de un comentario, no solo el último, y borrar un comentario pide confirmación.
+• Bug fix Chat/Videos: se corrigieron condiciones de carrera que podían mostrar mensajes o comentarios de la conversación/video anterior si se cambiaba rápido de uno a otro.
+• Bug fix Pagos: las horas de un proyecto se actualizan si otra sesión las cambia mientras la pantalla está abierta, y ya no se pueden cargar horas o montos negativos.
+• Bug fix: al hacer clic en una notificación de comentario de video, ahora sí se abre la pestaña de Videos Y el video correcto (antes solo cambiaba la URL sin actualizar la pantalla).
 9. Infraestructura actual
 
 La aplicación está deployada en Render (plan gratuito), con el código fuente alojado en un repositorio privado de GitHub. El plan gratuito de Render tiene una limitación importante: el sistema de archivos del servidor no es permanente, por lo que la base de datos (actualmente SQLite) se reinicia y pierde todos los datos cada vez que el servicio se reinicia por inactividad o por un nuevo despliegue de código. Esta es la tarea pendiente de mayor impacto práctico: migrar la base de datos a un servicio externo persistente y gratuito (como Supabase o Neon, ambos basados en PostgreSQL), de forma que los usuarios, clientes y proyectos cargados no se pierdan.

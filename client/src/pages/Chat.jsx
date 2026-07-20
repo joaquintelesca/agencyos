@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Chat() {
-  const { user, api, socket, onlineUsers } = useAuth();
+  const { user, api, socket, onlineUsers, mediaUrl } = useAuth();
   const [conversations, setConversations] = useState([]);
   const [channels, setChannels] = useState([]);
   const [activeConv, setActiveConv] = useState(null);
@@ -147,12 +147,18 @@ export default function Chat() {
     const key = conv.type === 'dm' ? `dm:${conv.id}` : `channel:${conv.id}`;
     setUnreadCounts(prev => { const n = { ...prev }; delete n[key]; return n; });
 
+    // Si el usuario ya cambió de conversación cuando estas respuestas llegan, las descartamos
+    // (si no, una respuesta lenta de la conversación anterior pisa lo que se está mostrando ahora).
+    const isStale = () => activeConvRef.current?.id !== conv.id || activeConvRef.current?.type !== conv.type;
+
     try {
       if (conv.type === 'dm') {
         const tabs = await api(`/api/chat/dm-tabs?userId=${conv.id}`);
+        if (isStale()) return;
         setDmTabs(tabs || []);
       }
       const msgs = await api(`/api/chat/messages?type=${conv.type}&id=${conv.id}`);
+      if (isStale()) return;
       setMessages(msgs);
       setHasMore(msgs.length >= 50);
       await api('/api/chat/read', { method: 'POST', body: { type: conv.type, id: conv.id } });
@@ -171,6 +177,7 @@ export default function Chat() {
     try {
       const tabParam = clientId ? `&client_id=${clientId}` : '';
       const msgs = await api(`/api/chat/messages?type=dm&id=${conv.id}${tabParam}`);
+      if (activeTabRef.current !== clientId || activeConvRef.current !== conv) return;
       setMessages(msgs);
       setHasMore(msgs.length >= 50);
     } catch (e) {
@@ -777,15 +784,15 @@ function Message({ msg, isMe, compact, initials }) {
         )}
         {msg.file_type === 'image' && (
           <img
-            src={msg.file_url}
+            src={mediaUrl(msg.file_url)}
             alt={msg.file_name || 'imagen'}
             style={{ maxWidth: 300, maxHeight: 220, borderRadius: 8, display: 'block', cursor: 'pointer', marginBottom: 2 }}
-            onClick={() => window.open(msg.file_url, '_blank')}
+            onClick={() => window.open(mediaUrl(msg.file_url), '_blank')}
           />
         )}
         {msg.file_type === 'video' && (
           <video
-            src={msg.file_url}
+            src={mediaUrl(msg.file_url)}
             controls
             style={{ maxWidth: 360, borderRadius: 8, display: 'block', marginBottom: 2, background: '#000' }}
           />
@@ -793,11 +800,11 @@ function Message({ msg, isMe, compact, initials }) {
         {msg.file_type === 'audio' && (
           <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 16, padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
             <span style={{ fontSize: 16 }}>🎙</span>
-            <audio src={msg.file_url} controls style={{ height: 28, maxWidth: 220 }} />
+            <audio src={mediaUrl(msg.file_url)} controls style={{ height: 28, maxWidth: 220 }} />
           </div>
         )}
         {msg.file_type === 'file' && (
-          <a href={msg.file_url} download={msg.file_name} style={{ textDecoration: 'none', display: 'inline-block', marginBottom: 2 }}>
+          <a href={mediaUrl(msg.file_url)} download={msg.file_name} style={{ textDecoration: 'none', display: 'inline-block', marginBottom: 2 }}>
             <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 18 }}>📎</span>
               <div>

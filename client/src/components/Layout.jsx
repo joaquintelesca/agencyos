@@ -47,11 +47,12 @@ export default function Layout() {
     const onNotif = () => { setUnreadNotifs(prev => prev + 1); api('/api/projects').then(setProjects).catch(console.error); };
     const onRead = () => { api('/api/chat/unread').then(setChatUnread).catch(console.error); };
     const onStorageWarn = (s) => setStorageWarning(s);
+    const onChatMessage = () => { api('/api/chat/unread').then(setChatUnread).catch(console.error); };
     socket.on('notification:new', onNotif);
     socket.on('chat:read', onRead);
-    socket.on('chat:message', () => { api('/api/chat/unread').then(setChatUnread).catch(console.error); });
+    socket.on('chat:message', onChatMessage);
     socket.on('storage:warning', onStorageWarn);
-    return () => { socket.off('notification:new', onNotif); socket.off('chat:read', onRead); socket.off('chat:message'); socket.off('storage:warning', onStorageWarn); };
+    return () => { socket.off('notification:new', onNotif); socket.off('chat:read', onRead); socket.off('chat:message', onChatMessage); socket.off('storage:warning', onStorageWarn); };
   }, [socket]);
 
   const openNewProject = () => { setStep(1); setProjectForm({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' }); setPaymentForm({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '' }); setShowNewProject(true); };
@@ -325,7 +326,7 @@ export default function Layout() {
             <button onClick={() => setStorageWarning(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
           </div>
         )}
-        <Outlet context={{ projects, setProjects }} />
+        <Outlet context={{ projects, setProjects, unreadNotifs, setUnreadNotifs }} />
       </main>
 
       {/* New Project Modal */}

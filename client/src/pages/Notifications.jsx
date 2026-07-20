@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 
 export default function Notifications() {
   const { api } = useAuth();
   const [notifs, setNotifs] = useState([]);
   const navigate = useNavigate();
+  const { setUnreadNotifs } = useOutletContext();
 
   useEffect(() => {
     api('/api/notifications').then(setNotifs).catch(console.error);
@@ -14,12 +15,14 @@ export default function Notifications() {
   const markAll = async () => {
     await api('/api/notifications/read-all', { method: 'PATCH' });
     setNotifs(prev => prev.map(n => ({ ...n, read: true })));
+    setUnreadNotifs(0);
   };
 
   const handleClick = async (n) => {
     if (!n.read) {
       await api(`/api/notifications/${n.id}/read`, { method: 'PATCH' });
       setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
+      setUnreadNotifs(prev => Math.max(0, prev - 1));
     }
     if (n.video_id && n.project_id) navigate(`/project/${n.project_id}?tab=videos&video=${n.video_id}`);
     else if (n.type === 'chat') navigate('/chat');
