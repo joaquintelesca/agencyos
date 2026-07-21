@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { initials } from '../utils/format';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#3b82f6','#8b5cf6','#ef4444','#14b8a6'];
 
@@ -126,9 +127,24 @@ export default function Layout() {
 
   const deleteProject = async (id) => {
     if (!confirm('¿Eliminar este proyecto? Se borrarán todas sus tareas, videos y mensajes.')) return;
-    await api(`/api/projects/${id}`, { method: 'DELETE' });
-    setProjects(prev => prev.filter(p => p.id !== id));
-    if (location.pathname === `/project/${id}`) navigate('/');
+    try {
+      await api(`/api/projects/${id}`, { method: 'DELETE' });
+      setProjects(prev => prev.filter(p => p.id !== id));
+      if (location.pathname === `/project/${id}`) navigate('/');
+    } catch (e) { console.error(e); alert('Error al eliminar el proyecto: ' + e.message); }
+  };
+
+  const openEditProject = (p) => {
+    setEditingProject(p);
+    setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '', payment_editor_id: p.payment_editor_id || '', payment_type: p.payment_type || 'fixed', payment_amount: p.payment_amount || '', client_amount: p.client_amount || '', payment_hours: p.payment_hours || '' });
+  };
+
+  const deleteClient = async (c) => {
+    if (!confirm(`¿Eliminar cliente "${c.name}"?`)) return;
+    try {
+      await api(`/api/clients/${c.id}`, { method: 'DELETE' });
+      setClients(prev => prev.filter(x => x.id !== c.id));
+    } catch (e) { console.error(e); alert('Error al eliminar el cliente: ' + e.message); }
   };
 
   const goToStep2 = () => { if (!projectForm.name.trim()) return; setStep(2); };
@@ -148,7 +164,6 @@ export default function Layout() {
     navigate(`/project/${p.id}`);
   };
 
-  const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
   const isActive = (path) => location.pathname === path;
   const isProjectActive = (id) => location.pathname === `/project/${id}`;
 
@@ -204,11 +219,11 @@ export default function Layout() {
             const isExpanded = expandedClients.includes(c.id);
             return (
               <div key={c.id} style={{ marginBottom: 2 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', transition: 'background 0.1s' }}
+                <div className="sidebar-row" style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', transition: 'background 0.1s' }}
                   onClick={() => setExpandedClients(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}
                   onDoubleClick={e => { e.stopPropagation(); navigate(`/client/${c.id}`); }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.querySelectorAll('.client-btn').forEach(b => b.style.opacity = '1'); }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.querySelectorAll('.client-btn').forEach(b => b.style.opacity = '0'); }}>
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                   <span style={{ fontSize: 10, color: 'var(--text3)', transition: 'transform 0.15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
@@ -217,29 +232,13 @@ export default function Layout() {
                   )}
                   {clientProjects.length > 0 && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{clientProjects.length}</span>}
                   {user?.role === 'admin' && (
-                    <div style={{ display: 'flex', gap: 0 }}>
-                      <button className="client-btn" onClick={e => {
-                        e.stopPropagation();
-                        setEditingClient(c);
-                        setEditClientForm({ name: c.name, color: c.color, email: c.email || '', phone: c.phone || '', notes: c.notes || '' });
-                      }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 12, padding: '1px 4px', opacity: 0, transition: 'opacity 0.15s' }}
-                        onMouseEnter={e => { e.stopPropagation(); e.currentTarget.style.color = 'var(--accent2)'; }}
-                        onMouseLeave={e => { e.stopPropagation(); e.currentTarget.style.color = 'var(--text3)'; }}>✏️</button>
-                      <button className="client-btn" onClick={async e => {
-                        e.stopPropagation();
-                        if (!confirm(`¿Eliminar cliente "${c.name}"?`)) return;
-                        await api(`/api/clients/${c.id}`, { method: 'DELETE' });
-                        setClients(prev => prev.filter(x => x.id !== c.id));
-                      }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 12, padding: '1px 4px', opacity: 0, transition: 'opacity 0.15s' }}
-                        onMouseEnter={e => { e.stopPropagation(); e.currentTarget.style.color = 'var(--red)'; }}
-                        onMouseLeave={e => { e.stopPropagation(); e.currentTarget.style.color = 'var(--text3)'; }}>🗑</button>
-                    </div>
+                    <ProjectRowActions fontSize={12} padding="1px 4px"
+                      onEdit={e => { e.stopPropagation(); setEditingClient(c); setEditClientForm({ name: c.name, color: c.color, email: c.email || '', phone: c.phone || '', notes: c.notes || '' }); }}
+                      onDelete={e => { e.stopPropagation(); deleteClient(c); }} />
                   )}
                 </div>
                 {isExpanded && clientProjects.map(p => (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s' }}
-                    onMouseEnter={e => e.currentTarget.querySelectorAll('.del-btn').forEach(b => b.style.opacity = '1')}
-                    onMouseLeave={e => e.currentTarget.querySelectorAll('.del-btn').forEach(b => b.style.opacity = '0')}>
+                  <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s' }}>
                     <Link to={`/project/${p.id}`} style={{ textDecoration: 'none', flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px 5px 26px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 12 }}>
                         <div style={{ width: 6, height: 6, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
@@ -250,16 +249,9 @@ export default function Layout() {
                       </div>
                     </Link>
                     {user?.role === 'admin' && (
-                      <div style={{ display: 'flex', gap: 0 }}>
-                        <button className="del-btn" onClick={e => { e.preventDefault(); setEditingProject(p); setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '', payment_editor_id: p.payment_editor_id || '', payment_type: p.payment_type || 'fixed', payment_amount: p.payment_amount || '', client_amount: p.client_amount || '', payment_hours: p.payment_hours || '' }); }}
-                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 12, padding: '5px 4px', opacity: 0, transition: 'opacity 0.15s' }}
-                          onMouseEnter={e => e.currentTarget.style.color = 'var(--accent2)'}
-                          onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>✏️</button>
-                        <button className="del-btn" onClick={e => { e.preventDefault(); deleteProject(p.id); }}
-                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 12, padding: '5px 4px', opacity: 0, transition: 'opacity 0.15s' }}
-                          onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
-                          onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>🗑</button>
-                      </div>
+                      <ProjectRowActions fontSize={12} padding="5px 4px"
+                        onEdit={e => { e.preventDefault(); openEditProject(p); }}
+                        onDelete={e => { e.preventDefault(); deleteProject(p.id); }} />
                     )}
                   </div>
                 ))}
@@ -272,9 +264,7 @@ export default function Layout() {
 
           {/* Projects without client */}
           {projects.filter(p => !p.client_id).map(p => (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s' }}
-              onMouseEnter={e => e.currentTarget.querySelectorAll('.del-btn').forEach(b => b.style.opacity = '1')}
-              onMouseLeave={e => e.currentTarget.querySelectorAll('.del-btn').forEach(b => b.style.opacity = '0')}>
+            <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s' }}>
               <Link to={`/project/${p.id}`} style={{ textDecoration: 'none', flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 13 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
@@ -285,16 +275,9 @@ export default function Layout() {
                 </div>
               </Link>
               {user?.role === 'admin' && (
-                <div style={{ display: 'flex', gap: 0 }}>
-                  <button className="del-btn" onClick={e => { e.preventDefault(); setEditingProject(p); setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '', payment_editor_id: p.payment_editor_id || '', payment_type: p.payment_type || 'fixed', payment_amount: p.payment_amount || '', client_amount: p.client_amount || '', payment_hours: p.payment_hours || '' }); }}
-                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 13, padding: '6px 4px', opacity: 0, transition: 'opacity 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--accent2)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>✏️</button>
-                  <button className="del-btn" onClick={e => { e.preventDefault(); deleteProject(p.id); }}
-                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 13, padding: '6px 4px', opacity: 0, transition: 'opacity 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>🗑</button>
-                </div>
+                <ProjectRowActions fontSize={13} padding="6px 4px"
+                  onEdit={e => { e.preventDefault(); openEditProject(p); }}
+                  onDelete={e => { e.preventDefault(); deleteProject(p.id); }} />
               )}
             </div>
           ))}
@@ -671,6 +654,18 @@ export default function Layout() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Botones editar/borrar de una fila de proyecto en el sidebar — solo visibles al pasar el mouse
+// por la fila (clase .sidebar-row en el padre, ver index.css). Usado en las dos listas de
+// proyectos (agrupados por cliente y sin cliente), antes duplicado en cada una.
+function ProjectRowActions({ fontSize, padding, onEdit, onDelete }) {
+  return (
+    <div style={{ display: 'flex', gap: 0 }}>
+      <button className="reveal-btn edit" onClick={onEdit} style={{ fontSize, padding }}>✏️</button>
+      <button className="reveal-btn delete" onClick={onDelete} style={{ fontSize, padding }}>🗑</button>
     </div>
   );
 }

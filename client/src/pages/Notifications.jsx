@@ -45,6 +45,7 @@ export default function Notifications() {
     if (type === 'task_review') return '📋';
     if (type === 'project_assigned') return '📁';
     if (type === 'task_assigned') return '✅';
+    if (type === 'project_message') return '💬';
     return '✉️';
   };
   const label = (n) => {
@@ -53,6 +54,7 @@ export default function Notifications() {
     if (n.type === 'task_review') return <><strong>{n.actor_name}</strong> pasó una tarea a revisión{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'project_assigned') return <><strong>{n.actor_name}</strong> te asignó un proyecto{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'task_assigned') return <><strong>{n.actor_name}</strong> te asignó una tarea{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
+    if (n.type === 'project_message') return <><strong>{n.actor_name}</strong> escribió en el chat del proyecto{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     return <><strong>{n.actor_name}</strong> te envió un mensaje</>;
   };
 

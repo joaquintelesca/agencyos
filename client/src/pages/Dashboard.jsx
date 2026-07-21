@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { initials, deadlineLabel } from '../utils/format';
 
 export default function Dashboard() {
   const { api, user } = useAuth();
@@ -19,27 +20,9 @@ export default function Dashboard() {
     });
   }, [projectIds]);
 
-  const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-
   const allTasks = Object.values(tasks).flat();
   const pendingTasks = allTasks.filter(t => t.status !== 'done');
   const deadlineSoon = projects.filter(p => p.deadline).sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
-
-  const deadlineLabel = (d) => {
-    if (!d) return null;
-    const diff = Math.ceil((new Date(d) - new Date()) / 86400000);
-    if (diff < 0) return { label: 'Vencido', color: 'var(--red)', bg: 'rgba(240,92,92,0.12)' };
-    if (diff === 0) return { label: 'Vence hoy', color: 'var(--red)', bg: 'rgba(240,92,92,0.12)' };
-    if (diff === 1) return { label: 'Mañana', color: 'var(--yellow)', bg: 'rgba(240,168,58,0.12)' };
-    if (diff <= 7) return { label: `En ${diff} días`, color: 'var(--yellow)', bg: 'rgba(240,168,58,0.12)' };
-    return { label: `En ${diff} días`, color: 'var(--green)', bg: 'rgba(34,201,122,0.12)' };
-  };
-
-  const getAssignee = (projectId) => {
-    const projectTasks = tasks[projectId] || [];
-    const assigned = projectTasks.find(t => t.assigned_to);
-    return assigned ? { name: assigned.assignee_name, color: assigned.assignee_color } : null;
-  };
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
@@ -69,7 +52,6 @@ export default function Dashboard() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {deadlineSoon.slice(0, 5).map(p => {
                   const dl = deadlineLabel(p.deadline);
-                  const assignee = getAssignee(p.id);
                   return (
                     <div key={p.id} onClick={() => navigate(`/project/${p.id}`)}
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, cursor: 'pointer', transition: 'all 0.1s' }}
@@ -78,9 +60,9 @@ export default function Dashboard() {
                       <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
                       {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
-                      {assignee && (
-                        <div style={{ width: 22, height: 22, borderRadius: '50%', background: assignee.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>
-                          {initials(assignee.name)}
+                      {p.payment_editor_name && (
+                        <div style={{ width: 22, height: 22, borderRadius: '50%', background: p.payment_editor_color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>
+                          {initials(p.payment_editor_name)}
                         </div>
                       )}
                       {dl && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}

@@ -63,6 +63,12 @@ body {
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 .btn-icon { padding: 7px; border-radius: 8px; }
 
+/* Botones de editar/borrar que solo se ven al pasar el mouse por la fila del sidebar */
+.sidebar-row .reveal-btn { background: transparent; border: none; cursor: pointer; color: var(--text3); opacity: 0; transition: opacity 0.15s, color 0.15s; }
+.sidebar-row:hover .reveal-btn { opacity: 1; }
+.reveal-btn.edit:hover { color: var(--accent2); }
+.reveal-btn.delete:hover { color: var(--red); }
+
 /* Inputs */
 .input {
   width: 100%; background: var(--bg3); border: 1px solid var(--border);

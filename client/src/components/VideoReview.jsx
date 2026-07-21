@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { initials } from '../utils/format';
 
 const DARK = {
   bg0: '#0d0d0f', bg1: '#141417', bg2: '#1c1c21', bg3: '#2a2a31',
@@ -14,7 +15,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const appliedInitialVideoRef = useRef(null);
-  const [versionGroup, setVersionGroup] = useState([]); // all versions of same title
+  const suppressPauseComposerRef = useRef(false);
   const [comments, setComments] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -106,10 +107,6 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     // vieja para no mostrar comentarios de un video distinto al que está seleccionado ahora.
     let cancelled = false;
     api(`/api/videos/${selectedVideo.id}/comments`).then(c => { if (!cancelled) setComments(c); }).catch(console.error);
-    // Build version group: same base title, different versions
-    const baseName = selectedVideo.title.replace(/\s*v\d+$/i, '').trim();
-    const group = videos.filter(v => v.title.replace(/\s*v\d+$/i, '').trim() === baseName || v.title === selectedVideo.title);
-    setVersionGroup(group.length > 1 ? group : videos.filter(v => v.title === selectedVideo.title));
     return () => { cancelled = true; };
   }, [selectedVideo, videos]);
 
@@ -158,6 +155,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   // When video pauses, auto-capture timestamp for comments
   const onVideoPause = () => {
     setPlaying(false);
+    if (suppressPauseComposerRef.current) { suppressPauseComposerRef.current = false; return; }
     if (!rangeMode) {
       setCapturedTs({ type: 'single', ts: videoRef.current?.currentTime || 0 });
       setShowCommentInput(true);
@@ -315,22 +313,32 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     if (ts.type === 'range') fd.append('timestamp_end', ts.end);
     if (annotations.length > 0) fd.append('annotation', JSON.stringify(annotations));
     commentFiles.forEach(f => fd.append('attachments', f));
-    await api(`/api/videos/${selectedVideo.id}/comments`, { method: 'POST', body: fd });
-    // Reload comments directly from server
-    const updated = await api(`/api/videos/${selectedVideo.id}/comments`);
-    setComments(updated);
-    setCommentText('');
-    setCommentFiles([]);
-    setShowCommentInput(false);
-    setCapturedTs(null);
-    setRangeStart(null);
-    setRangeEnd(null);
-    clearAnnotations();
+    try {
+      await api(`/api/videos/${selectedVideo.id}/comments`, { method: 'POST', body: fd });
+      // Reload comments directly from server
+      const updated = await api(`/api/videos/${selectedVideo.id}/comments`);
+      setComments(updated);
+      setCommentText('');
+      setCommentFiles([]);
+      if (commentFileRef.current) commentFileRef.current.value = '';
+      setShowCommentInput(false);
+      setCapturedTs(null);
+      setRangeStart(null);
+      setRangeEnd(null);
+      clearAnnotations();
+    } catch (e) { console.error(e); alert('Error al enviar el comentario: ' + e.message); }
   };
 
   const jumpToComment = (c) => {
     setActiveComment(c.id);
-    if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = c.timestamp_sec; setCurrentTime(c.timestamp_sec); }
+    if (videoRef.current) {
+      // Evita que el pause() dispare onVideoPause y reabra por error el compositor de comentario nuevo.
+      // Solo si realmente va a pausar (el evento 'pause' no dispara si ya estaba pausado).
+      if (!videoRef.current.paused) suppressPauseComposerRef.current = true;
+      videoRef.current.pause();
+      videoRef.current.currentTime = c.timestamp_sec;
+      setCurrentTime(c.timestamp_sec);
+    }
   };
 
   const deleteComment = async (cid) => {
@@ -341,8 +349,10 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     } catch (e) { console.error(e); alert('Error al eliminar el comentario: ' + e.message); }
   };
   const resolveComment = async (cid) => {
-    const updated = await api(`/api/comments/${cid}/resolve`, { method: 'PATCH' });
-    setComments(prev => prev.map(c => c.id === cid ? { ...c, resolved: updated.resolved } : c));
+    try {
+      const updated = await api(`/api/comments/${cid}/resolve`, { method: 'PATCH' });
+      setComments(prev => prev.map(c => c.id === cid ? { ...c, resolved: updated.resolved } : c));
+    } catch (e) { console.error(e); alert('Error al resolver el comentario: ' + e.message); }
   };
 
   const submitReply = async (commentId) => {
@@ -352,12 +362,14 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     replyFiles.forEach(f => fd.append('attachments', f));
     setReplyText('');
     setReplyFiles([]);
+    if (replyFileRef.current) replyFileRef.current.value = '';
     setReplyingTo(null);
-    await api(`/api/comments/${commentId}/replies`, { method: 'POST', body: fd });
-    const updated = await api(`/api/videos/${selectedVideo.id}/comments`);
-    setComments(updated);
+    try {
+      await api(`/api/comments/${commentId}/replies`, { method: 'POST', body: fd });
+      const updated = await api(`/api/videos/${selectedVideo.id}/comments`);
+      setComments(updated);
+    } catch (e) { console.error(e); alert('Error al enviar la respuesta: ' + e.message); }
   };
-  const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
   const uploadVideo = async () => {
     if (!uploadFile) return;
@@ -376,21 +388,26 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       setUploadFile(null);
       setUploadForm({ title: '', version: '', task_id: '' });
       reloadVideos();
-    } finally { setUploading(false); }
+    } catch (e) { console.error(e); alert('Error al subir el video: ' + e.message); }
+    finally { setUploading(false); }
   };
 
   const handleDrop = async (targetVideoId) => {
     if (!dragVideoId || dragVideoId === targetVideoId) return;
     setDragOverTarget(null);
     setDragVideoId(null);
-    await api(`/api/videos/${dragVideoId}/stack`, { method: 'PATCH', body: { targetVideoId } });
-    reloadVideos();
+    try {
+      await api(`/api/videos/${dragVideoId}/stack`, { method: 'PATCH', body: { targetVideoId } });
+      reloadVideos();
+    } catch (e) { console.error(e); alert('Error al agrupar los videos: ' + e.message); }
   };
 
   const handleUnstack = async (videoId) => {
-    await api(`/api/videos/${videoId}/unstack`, { method: 'PATCH' });
-    setExpandedGroup(null);
-    reloadVideos();
+    try {
+      await api(`/api/videos/${videoId}/unstack`, { method: 'PATCH' });
+      setExpandedGroup(null);
+      reloadVideos();
+    } catch (e) { console.error(e); alert('Error al desagrupar el video: ' + e.message); }
   };
 
   const stackShadow = (count) => {
@@ -727,13 +744,13 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
               {capturedTs?.type === 'range' ? (
                 <div style={{ background: DARK.bg2, border: `1px solid ${DARK.orange}`, borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 11, color: DARK.orange, fontWeight: 600 }}>⬌ Rango: {formatTime(capturedTs.start)} → {formatTime(capturedTs.end)}</span>
-                  <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); setRangeMode(false); setRangeStart(null); setRangeEnd(null); }}
+                  <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); setRangeMode(false); setRangeStart(null); setRangeEnd(null); clearAnnotations(); }}
                     style={{ background: 'transparent', border: 'none', color: DARK.text3, cursor: 'pointer', fontSize: 13 }}>✕</button>
                 </div>
               ) : (
                 <div style={{ background: DARK.bg2, border: `1px solid ${DARK.accent}`, borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 11, color: DARK.accentText, fontWeight: 600 }}>⏸ Pausado en {formatTime(capturedTs.ts)}</span>
-                  <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); }}
+                  <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
                     style={{ background: 'transparent', border: 'none', color: DARK.text3, cursor: 'pointer', fontSize: 13 }}>✕</button>
                 </div>
               )}
@@ -756,7 +773,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                   {annotations.length > 0 && <span style={{ fontSize: 11, color: DARK.orange }}>✏️ Incluye dibujo</span>}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); }}
+                  <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
                     style={{ background: 'transparent', border: `1px solid ${DARK.border}`, borderRadius: 6, padding: '5px 12px', color: DARK.text2, fontSize: 12, cursor: 'pointer' }}>
                     Cancelar
                   </button>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import VideoReview from '../components/VideoReview';
+import { initials } from '../utils/format';
 
 const STATUSES = [
   { key: 'todo', label: 'Por hacer', color: 'var(--text2)' },
@@ -146,7 +147,6 @@ export default function Project() {
     setDragTask(null);
   };
 
-  const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
   const formatTime = (ts) => new Date(ts).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
 
   if (notFound) return (

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { initials as initialsBase } from '../utils/format';
 
 export default function Chat() {
   const { user, api, socket, onlineUsers, mediaUrl } = useAuth();
@@ -40,7 +41,7 @@ export default function Chat() {
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { userRef.current = user; }, [user]);
 
-  const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
+  const initials = (name) => initialsBase(name, '?');
   const isOnline = (id) => onlineUsers.includes(id);
 
   // Cargar conversaciones y no leídos al montar

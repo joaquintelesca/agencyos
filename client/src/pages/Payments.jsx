@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { initials } from '../utils/format';
 
 const UPWORK_OPTIONS = ['Pendiente de carga', 'Cargado', 'No'];
 
@@ -41,8 +42,6 @@ export default function Payments() {
     if (p.payment_type === 'hourly') return (parseFloat(p.client_amount) || 0) * (parseFloat(p.payment_hours) || 0);
     return parseFloat(p.client_amount) || 0;
   };
-
-  const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
   const isCompleted = (p) => p.editor_paid === 'paid' && p.client_paid === 'cobrado';
 
@@ -104,7 +103,7 @@ export default function Payments() {
           </thead>
           <tbody>
             {sorted.map(p => (
-              <ProjectRow key={p.id} project={p} onUpdate={updatePayment} getTotal={getTotal} getClientTotal={getClientTotal} initials={initials} isHistory={isHistory} />
+              <ProjectRow key={p.id} project={p} onUpdate={updatePayment} isHistory={isHistory} />
             ))}
             {isHistory && sorted.length > 0 && (
               <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
@@ -223,7 +222,7 @@ export default function Payments() {
   );
 }
 
-function ProjectRow({ project: p, onUpdate, getTotal, getClientTotal, initials, isHistory }) {
+function ProjectRow({ project: p, onUpdate, isHistory }) {
   const [hours, setHours] = useState(p.payment_hours || 0);
   // Si otra sesión/socket actualiza payment_hours mientras esta fila está montada (misma key={p.id}),
   // hay que reflejarlo — si no, un blur posterior pisa ese cambio con el valor local desactualizado.

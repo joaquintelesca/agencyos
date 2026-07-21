@@ -113,6 +113,17 @@ Resuelto
 • Bug fix Chat/Videos: se corrigieron condiciones de carrera que podían mostrar mensajes o comentarios de la conversación/video anterior si se cambiaba rápido de uno a otro.
 • Bug fix Pagos: las horas de un proyecto se actualizan si otra sesión las cambia mientras la pantalla está abierta, y ya no se pueden cargar horas o montos negativos.
 • Bug fix: al hacer clic en una notificación de comentario de video, ahora sí se abre la pestaña de Videos Y el video correcto (antes solo cambiaba la URL sin actualizar la pantalla).
+• Auditoría de código, segunda tanda (hallazgos Medio y Bajo, complementan la seguridad de arriba):
+  - Al borrar un proyecto, video o comentario, ahora se borran también los archivos adjuntos del disco (antes solo se borraba la fila de la base de datos, y el archivo quedaba ocupando espacio para siempre).
+  - Esos mismos borrados ahora son "todo o nada": si algo falla a mitad de camino, no queda información a medio borrar.
+  - Un dibujo mal guardado en un comentario ya no puede tumbar la lista completa de comentarios de ese video para todos los usuarios.
+  - Revisar el espacio usado en disco ya no traba el servidor mientras escanea (antes bloqueaba a todos los usuarios conectados un instante en cada subida de video).
+  - El resto de las acciones de Videos (comentar, responder, resolver, subir, agrupar) ahora avisan si algo falla en vez de quedar en silencio.
+  - Revisar un comentario viejo durante la reproducción ya no reabre por error la caja de "comentario nuevo".
+  - El dashboard ahora muestra el editor real asignado a cada proyecto en "Próximos deadlines" (antes podía mostrar a cualquiera con una tarea asignada).
+  - El cálculo de "vence hoy / vencido" en los deadlines ya no se corre por el huso horario.
+  - Un mensaje en el chat de un proyecto ahora genera notificación para los demás miembros, no solo el aviso en tiempo real (si estaban offline, antes no se enteraban).
+  - Limpieza de código: se unificó en un solo archivo compartido (`utils/format.js`) la lógica de iniciales y de "días para el deadline" que estaba copiada en 6 pantallas distintas; se sacó código muerto y duplicado en el sidebar y en Pagos.
 9. Infraestructura actual
 
 La aplicación está deployada en Render (plan gratuito), con el código fuente alojado en un repositorio privado de GitHub. El plan gratuito de Render tiene una limitación importante: el sistema de archivos del servidor no es permanente, por lo que la base de datos (actualmente SQLite) se reinicia y pierde todos los datos cada vez que el servicio se reinicia por inactividad o por un nuevo despliegue de código. Esta es la tarea pendiente de mayor impacto práctico: migrar la base de datos a un servicio externo persistente y gratuito (como Supabase o Neon, ambos basados en PostgreSQL), de forma que los usuarios, clientes y proyectos cargados no se pierdan.

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { initials } from '../utils/format';
 
 const AVATAR_COLORS = ['#6366f1','#ec4899','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ef4444','#14b8a6','#f97316','#06b6d4'];
 
@@ -16,8 +17,6 @@ export default function Team() {
   const [detailData, setDetailData] = useState(null);
 
   useEffect(() => { api('/api/users').then(setUsers).catch(console.error); }, []);
-
-  const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
   const createUser = async () => {
     if (!userForm.name || !userForm.email || !userForm.password) return;
@@ -119,28 +118,30 @@ export default function Team() {
         <div className="modal-overlay" onClick={() => setShowNewUser(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h2>Agregar integrante</h2>
-            <div className="form-group"><label>Nombre completo</label>
-              <input className="input" value={userForm.name} onChange={e => setUserForm(p => ({ ...p, name: e.target.value }))} placeholder="Juan García" autoFocus />
-            </div>
-            <div className="form-group"><label>Email</label>
-              <input className="input" type="email" value={userForm.email} onChange={e => setUserForm(p => ({ ...p, email: e.target.value }))} placeholder="juan@email.com" />
-            </div>
-            <div className="form-group"><label>Contraseña inicial</label>
-              <input className="input" type="password" value={userForm.password} onChange={e => setUserForm(p => ({ ...p, password: e.target.value }))} placeholder="••••••••" />
-            </div>
-            <div className="form-group"><label>Rol</label>
-              <select className="input" value={userForm.role} onChange={e => setUserForm(p => ({ ...p, role: e.target.value }))}>
-                <option value="editor">Editor</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            {error && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12, background: 'rgba(240,92,92,0.08)', padding: '8px 12px', borderRadius: 8 }}>{error}</p>}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button className="btn btn-ghost" onClick={() => setShowNewUser(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={createUser} disabled={loading || !userForm.name || !userForm.email || !userForm.password}>
-                {loading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : 'Crear usuario'}
-              </button>
-            </div>
+            <form onSubmit={e => { e.preventDefault(); createUser(); }}>
+              <div className="form-group"><label>Nombre completo</label>
+                <input className="input" value={userForm.name} onChange={e => setUserForm(p => ({ ...p, name: e.target.value }))} placeholder="Juan García" autoFocus required />
+              </div>
+              <div className="form-group"><label>Email</label>
+                <input className="input" type="email" value={userForm.email} onChange={e => setUserForm(p => ({ ...p, email: e.target.value }))} placeholder="juan@email.com" required />
+              </div>
+              <div className="form-group"><label>Contraseña inicial</label>
+                <input className="input" type="password" value={userForm.password} onChange={e => setUserForm(p => ({ ...p, password: e.target.value }))} placeholder="••••••••" required minLength={6} />
+              </div>
+              <div className="form-group"><label>Rol</label>
+                <select className="input" value={userForm.role} onChange={e => setUserForm(p => ({ ...p, role: e.target.value }))}>
+                  <option value="editor">Editor</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              {error && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12, background: 'rgba(240,92,92,0.08)', padding: '8px 12px', borderRadius: 8 }}>{error}</p>}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setShowNewUser(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={loading || !userForm.name || !userForm.email || !userForm.password}>
+                  {loading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : 'Crear usuario'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -150,57 +151,58 @@ export default function Team() {
         <div className="modal-overlay" onClick={() => setEditingUser(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h2>Editar integrante</h2>
-
-            {/* Color avatar */}
-            <div className="form-group">
-              <label>Color de avatar</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                {AVATAR_COLORS.map(c => (
-                  <div key={c} onClick={() => setEditForm(p => ({ ...p, avatar_color: c }))}
-                    style={{ width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer',
-                      border: editForm.avatar_color === c ? '3px solid var(--text)' : '3px solid transparent',
-                      transition: 'border 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 10, fontWeight: 700, color: '#fff' }}>
-                    {editForm.avatar_color === c ? '✓' : ''}
-                  </div>
-                ))}
-              </div>
-              {/* Preview */}
-              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div className="avatar avatar-lg" style={{ background: editForm.avatar_color }}>{initials(editForm.name || editingUser.name)}</div>
-                <span style={{ fontSize: 13, color: 'var(--text2)' }}>Vista previa</span>
-              </div>
-            </div>
-
-            <div className="form-group"><label>Nombre completo</label>
-              <input className="input" value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} autoFocus />
-            </div>
-            <div className="form-group"><label>Email</label>
-              <input className="input" type="email" value={editForm.email} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))} />
-            </div>
-            <div className="form-group"><label>Rol</label>
-              <select className="input" value={editForm.role} onChange={e => setEditForm(p => ({ ...p, role: e.target.value }))}>
-                <option value="editor">Editor</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Nueva contraseña <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(dejar vacío para no cambiar)</span></label>
-              <input className="input" type="password" value={editForm.password} onChange={e => setEditForm(p => ({ ...p, password: e.target.value }))} placeholder="••••••••" />
-            </div>
-            {editingUser.id === user.id && editForm.password && (
+            <form onSubmit={e => { e.preventDefault(); saveUser(); }}>
+              {/* Color avatar */}
               <div className="form-group">
-                <label>Contraseña actual <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(para confirmar el cambio)</span></label>
-                <input className="input" type="password" value={editForm.current_password} onChange={e => setEditForm(p => ({ ...p, current_password: e.target.value }))} placeholder="••••••••" />
+                <label>Color de avatar</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                  {AVATAR_COLORS.map(c => (
+                    <div key={c} onClick={() => setEditForm(p => ({ ...p, avatar_color: c }))}
+                      style={{ width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer',
+                        border: editForm.avatar_color === c ? '3px solid var(--text)' : '3px solid transparent',
+                        transition: 'border 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, fontWeight: 700, color: '#fff' }}>
+                      {editForm.avatar_color === c ? '✓' : ''}
+                    </div>
+                  ))}
+                </div>
+                {/* Preview */}
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div className="avatar avatar-lg" style={{ background: editForm.avatar_color }}>{initials(editForm.name || editingUser.name)}</div>
+                  <span style={{ fontSize: 13, color: 'var(--text2)' }}>Vista previa</span>
+                </div>
               </div>
-            )}
-            {error && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12, background: 'rgba(240,92,92,0.08)', padding: '8px 12px', borderRadius: 8 }}>{error}</p>}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button className="btn btn-ghost" onClick={() => setEditingUser(null)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={saveUser} disabled={loading}>
-                {loading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : 'Guardar cambios'}
-              </button>
-            </div>
+
+              <div className="form-group"><label>Nombre completo</label>
+                <input className="input" value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} autoFocus required />
+              </div>
+              <div className="form-group"><label>Email</label>
+                <input className="input" type="email" value={editForm.email} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))} required />
+              </div>
+              <div className="form-group"><label>Rol</label>
+                <select className="input" value={editForm.role} onChange={e => setEditForm(p => ({ ...p, role: e.target.value }))}>
+                  <option value="editor">Editor</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Nueva contraseña <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(dejar vacío para no cambiar)</span></label>
+                <input className="input" type="password" value={editForm.password} onChange={e => setEditForm(p => ({ ...p, password: e.target.value }))} placeholder="••••••••" minLength={6} />
+              </div>
+              {editingUser.id === user.id && editForm.password && (
+                <div className="form-group">
+                  <label>Contraseña actual <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(para confirmar el cambio)</span></label>
+                  <input className="input" type="password" value={editForm.current_password} onChange={e => setEditForm(p => ({ ...p, current_password: e.target.value }))} placeholder="••••••••" required />
+                </div>
+              )}
+              {error && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12, background: 'rgba(240,92,92,0.08)', padding: '8px 12px', borderRadius: 8 }}>{error}</p>}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setEditingUser(null)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={loading}>
+                  {loading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : 'Guardar cambios'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -234,8 +236,9 @@ export default function Team() {
                   const done = t.filter(x => x.status === 'done').length;
                   const review = t.filter(x => x.status === 'review').length;
                   const p = detailData.projects;
-                  const totalPaid = p.filter(x => x.editor_paid === 'paid').reduce((s, x) => s + (x.payment_type === 'hourly' ? (x.payment_amount || 0) * (x.payment_hours || 0) : (x.payment_amount || 0)), 0);
-                  const totalPending = p.filter(x => x.editor_paid !== 'paid').reduce((s, x) => s + (x.payment_type === 'hourly' ? (x.payment_amount || 0) * (x.payment_hours || 0) : (x.payment_amount || 0)), 0);
+                  const projectTotal = x => x.payment_type === 'hourly' ? (parseFloat(x.payment_amount) || 0) * (parseFloat(x.payment_hours) || 0) : (parseFloat(x.payment_amount) || 0);
+                  const totalPaid = p.filter(x => x.editor_paid === 'paid').reduce((s, x) => s + projectTotal(x), 0);
+                  const totalPending = p.filter(x => x.editor_paid !== 'paid').reduce((s, x) => s + projectTotal(x), 0);
                   return (
                     <>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 20 }}>
@@ -292,7 +295,7 @@ export default function Team() {
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             {p.map(proj => {
-                              const amount = proj.payment_type === 'hourly' ? (proj.payment_amount || 0) * (proj.payment_hours || 0) : (proj.payment_amount || 0);
+                              const amount = projectTotal(proj);
                               const paid = proj.editor_paid === 'paid';
                               return (
                                 <div key={proj.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}>

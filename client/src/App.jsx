@@ -16,10 +16,10 @@ function PrivateRoute({ children }) {
   return user ? children : <Navigate to="/login" />;
 }
 
+// Siempre anidado dentro de PrivateRoute (ver abajo), que ya espera a que loading resuelva
+// y a que haya user antes de montar cualquier ruta hija — repetir esos chequeos acá sería código muerto.
 function AdminRoute({ children }) {
-  const { user, loading } = useAuth();
-  if (loading) return null;
-  if (!user) return <Navigate to="/login" />;
+  const { user } = useAuth();
   if (user.role !== 'admin') return <Navigate to="/" />;
   return children;
 }

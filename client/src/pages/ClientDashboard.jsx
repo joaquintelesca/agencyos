@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { initials, deadlineLabel } from '../utils/format';
 
 const STATUS_LABELS = { todo: 'Por hacer', in_progress: 'En progreso', review: 'En revisión', done: 'Listo' };
 const STATUS_COLORS = { todo: 'var(--text3)', in_progress: 'var(--blue)', review: 'var(--yellow)', done: 'var(--green)' };
@@ -33,18 +34,6 @@ export default function ClientDashboard() {
       api(`/api/projects/${p.id}/tasks`).then(t => setTasks(prev => ({ ...prev, [p.id]: t }))).catch(console.error);
     });
   }, [projectIds]);
-
-  const initials = (name) => name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-
-  const deadlineLabel = (d) => {
-    if (!d) return null;
-    const diff = Math.ceil((new Date(d) - new Date()) / 86400000);
-    if (diff < 0) return { label: 'Vencido', color: 'var(--red)', bg: 'rgba(240,92,92,0.12)' };
-    if (diff === 0) return { label: 'Vence hoy', color: 'var(--red)', bg: 'rgba(240,92,92,0.12)' };
-    if (diff === 1) return { label: 'Mañana', color: 'var(--yellow)', bg: 'rgba(240,168,58,0.12)' };
-    if (diff <= 7) return { label: `En ${diff} días`, color: 'var(--yellow)', bg: 'rgba(240,168,58,0.12)' };
-    return { label: `En ${diff} días`, color: 'var(--green)', bg: 'rgba(34,201,122,0.12)' };
-  };
 
   const allTasks = Object.values(tasks).flat();
   const totalTasks = allTasks.length;

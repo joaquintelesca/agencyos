@@ -21,6 +21,12 @@ function parseReadBy(val) {
   }
 }
 
+// Un JSON corrupto en un solo comentario no debe tirar abajo con 500 el listado completo.
+function safeJsonParse(val) {
+  if (!val) return null;
+  try { return JSON.parse(val); } catch { return null; }
+}
+
 const app = express();
 const server = http.createServer(app);
 
@@ -45,6 +51,16 @@ const uploadsDir = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
   : path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+// Borra un archivo subido sin tirar el request si falta o falla — se llama siempre después
+// de que la DB ya quedó consistente, así que un error acá es solo una fuga de disco, no de datos.
+function safeUnlink(filename) {
+  if (!filename) return;
+  try {
+    const filePath = path.join(uploadsDir, filename);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch (e) { console.error('No se pudo borrar el archivo', filename, e.message); }
+}
 
 // La extensión del archivo en disco sale siempre del mimetype ya validado, nunca del nombre
 // original (que el cliente controla) — evita subir un .html/.js disfrazado de un tipo permitido.
@@ -572,16 +588,6 @@ app.delete('/api/users/:id', auth, async (req, res) => {
     const uid = req.params.id;
     const target = await db('users').where({ id: uid }).first();
     if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
-    if (target.role === 'admin') {
-      const adminCount = await db('users').where({ role: 'admin' }).count('id as c').first();
-      if (Number(adminCount.c) <= 1) return res.status(400).json({ error: 'No se puede eliminar el último administrador' });
-    }
-    await db('notifications').where({ user_id: uid }).orWhere({ actor_id: uid }).delete();
-    await db('messages').where({ sender_id: uid }).delete();
-    await db('chat_messages').where({ sender_id: uid }).orWhere({ receiver_id: uid }).delete();
-    await db('chat_channel_members').where({ user_id: uid }).delete();
-    await db('project_members').where({ user_id: uid }).delete();
-    await db('tasks').where({ assigned_to: uid }).update({ assigned_to: null });
 
     // Comentarios/respuestas: hay que limpiar en ambas direcciones — lo que el usuario escribió,
     // y lo que otros escribieron respondiendo a sus comentarios (quedarían huérfanos si no).
@@ -591,16 +597,38 @@ app.delete('/api/users/:id', auth, async (req, res) => {
       ? await db('comment_replies').whereIn('comment_id', ownCommentIds).pluck('id')
       : [];
     const replyIdsToClean = [...new Set([...ownReplyIds, ...repliesToOwnComments])];
+    const commentAttachments = ownCommentIds.length ? await db('comment_attachments').whereIn('comment_id', ownCommentIds) : [];
+    const replyAttachments = replyIdsToClean.length ? await db('reply_attachments').whereIn('reply_id', replyIdsToClean) : [];
 
-    if (replyIdsToClean.length) {
-      await db('reply_attachments').whereIn('reply_id', replyIdsToClean).delete();
-      await db('comment_replies').whereIn('id', replyIdsToClean).delete();
-    }
-    if (ownCommentIds.length) {
-      await db('comment_attachments').whereIn('comment_id', ownCommentIds).delete();
-      await db('video_comments').whereIn('id', ownCommentIds).delete();
-    }
-    await db('users').where({ id: uid }).delete();
+    // El chequeo de "último admin" y el borrado quedan en la misma transacción: bajo concurrencia,
+    // dos requests que demoran/borran a los dos únicos admins ya no pueden colarse ambos a la vez.
+    let blocked = false;
+    await db.transaction(async trx => {
+      if (target.role === 'admin') {
+        const adminCount = await trx('users').where({ role: 'admin' }).count('id as c').first();
+        if (Number(adminCount.c) <= 1) { blocked = true; return; }
+      }
+      await trx('notifications').where({ user_id: uid }).orWhere({ actor_id: uid }).delete();
+      await trx('messages').where({ sender_id: uid }).delete();
+      await trx('chat_messages').where({ sender_id: uid }).orWhere({ receiver_id: uid }).delete();
+      await trx('chat_channel_members').where({ user_id: uid }).delete();
+      await trx('project_members').where({ user_id: uid }).delete();
+      await trx('tasks').where({ assigned_to: uid }).update({ assigned_to: null });
+      if (replyIdsToClean.length) {
+        await trx('reply_attachments').whereIn('reply_id', replyIdsToClean).delete();
+        await trx('comment_replies').whereIn('id', replyIdsToClean).delete();
+      }
+      if (ownCommentIds.length) {
+        await trx('comment_attachments').whereIn('comment_id', ownCommentIds).delete();
+        await trx('video_comments').whereIn('id', ownCommentIds).delete();
+      }
+      await trx('users').where({ id: uid }).delete();
+    });
+
+    if (blocked) return res.status(400).json({ error: 'No se puede eliminar el último administrador' });
+
+    commentAttachments.forEach(a => safeUnlink(a.filename));
+    replyAttachments.forEach(a => safeUnlink(a.filename));
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -619,12 +647,10 @@ app.patch('/api/users/:id', auth, async (req, res) => {
       if (existing) return res.status(400).json({ error: 'Email ya en uso por otro usuario' });
       updateData.email = email;
     }
+    let checkLastAdminOnDemote = false;
     if (role && req.user.role === 'admin') {
       const target = await db('users').where({ id: req.params.id }).first();
-      if (target?.role === 'admin' && role !== 'admin') {
-        const adminCount = await db('users').where({ role: 'admin' }).count('id as c').first();
-        if (Number(adminCount.c) <= 1) return res.status(400).json({ error: 'No se puede cambiar el rol del último administrador' });
-      }
+      if (target?.role === 'admin' && role !== 'admin') checkLastAdminOnDemote = true;
       updateData.role = role;
     }
     if (avatar_color) updateData.avatar_color = avatar_color;
@@ -641,7 +667,16 @@ app.patch('/api/users/:id', auth, async (req, res) => {
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ error: 'No hay campos para actualizar' });
     }
-    await db('users').where({ id: req.params.id }).update(updateData);
+    // El chequeo de "último admin" y el update quedan en la misma transacción (ver DELETE /api/users/:id).
+    let blocked = false;
+    await db.transaction(async trx => {
+      if (checkLastAdminOnDemote) {
+        const adminCount = await trx('users').where({ role: 'admin' }).count('id as c').first();
+        if (Number(adminCount.c) <= 1) { blocked = true; return; }
+      }
+      await trx('users').where({ id: req.params.id }).update(updateData);
+    });
+    if (blocked) return res.status(400).json({ error: 'No se puede cambiar el rol del último administrador' });
     const updated = await db('users').where({ id: req.params.id }).select('id', 'name', 'email', 'role', 'avatar_color', 'created_at').first();
     res.json(updated);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -730,9 +765,11 @@ app.put('/api/projects/:id', auth, async (req, res) => {
       client_id: client_id || null,
       deadline: deadline || null,
       payment_editor_id: payment_editor_id || null,
-      payment_type, payment_amount, payment_hours, payment_status, upwork_status
+      payment_type, payment_status, upwork_status
     };
-    if (client_amount !== undefined) update.client_amount = parseFloat(client_amount) || 0;
+    if (payment_amount !== undefined) update.payment_amount = Math.max(0, parseFloat(payment_amount) || 0);
+    if (payment_hours !== undefined) update.payment_hours = Math.max(0, parseFloat(payment_hours) || 0);
+    if (client_amount !== undefined) update.client_amount = Math.max(0, parseFloat(client_amount) || 0);
     await db('projects').where({ id: req.params.id }).update(update);
     if (payment_editor_id) await addProjectMember(req.params.id, payment_editor_id);
     if (payment_editor_id && payment_editor_id !== existing.payment_editor_id) {
@@ -750,32 +787,33 @@ app.delete('/api/projects/:id', auth, async (req, res) => {
     const projectId = req.params.id;
 
     const videos = await db('videos').where({ project_id: projectId });
-    for (const video of videos) {
-      const filePath = path.join(uploadsDir, video.filename);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    const videoIds = videos.map(v => v.id);
+    const commentIds = videoIds.length ? await db('video_comments').whereIn('video_id', videoIds).pluck('id') : [];
+    const replyIds = commentIds.length ? await db('comment_replies').whereIn('comment_id', commentIds).pluck('id') : [];
+    const commentAttachments = commentIds.length ? await db('comment_attachments').whereIn('comment_id', commentIds) : [];
+    const replyAttachments = replyIds.length ? await db('reply_attachments').whereIn('reply_id', replyIds) : [];
 
-      const commentIds = await db('video_comments').where({ video_id: video.id }).pluck('id');
-      if (commentIds.length > 0) {
-        const replyIds = await db('comment_replies').whereIn('comment_id', commentIds).pluck('id');
-        if (replyIds.length > 0) {
-          await db('reply_attachments').whereIn('reply_id', replyIds).delete();
-        }
-        await db('comment_attachments').whereIn('comment_id', commentIds).delete();
-        await db('comment_replies').whereIn('comment_id', commentIds).delete();
-        await db('video_comments').whereIn('id', commentIds).delete();
-      }
-    }
-    await db('videos').where({ project_id: projectId }).delete();
-
-    await db('tasks').where({ project_id: projectId }).delete();
-    await db('messages').where({ project_id: projectId }).delete();
-    await db('notifications').where({ project_id: projectId }).delete();
-
-    // Emitir antes de borrar miembros para que llegue a los destinatarios correctos
+    // Emitir antes de borrar miembros/proyecto para que llegue a los destinatarios correctos.
     await emitToProject(projectId, 'project:deleted', { id: projectId });
-    await db('project_members').where({ project_id: projectId }).delete();
 
-    await db('projects').where({ id: projectId }).delete();
+    await db.transaction(async trx => {
+      if (replyIds.length) await trx('reply_attachments').whereIn('reply_id', replyIds).delete();
+      if (commentIds.length) await trx('comment_attachments').whereIn('comment_id', commentIds).delete();
+      if (replyIds.length) await trx('comment_replies').whereIn('id', replyIds).delete();
+      if (commentIds.length) await trx('video_comments').whereIn('id', commentIds).delete();
+      await trx('videos').where({ project_id: projectId }).delete();
+      await trx('tasks').where({ project_id: projectId }).delete();
+      await trx('messages').where({ project_id: projectId }).delete();
+      await trx('notifications').where({ project_id: projectId }).delete();
+      await trx('project_members').where({ project_id: projectId }).delete();
+      await trx('projects').where({ id: projectId }).delete();
+    });
+
+    // Recién con la DB consistente borramos los archivos físicos (best-effort).
+    videos.forEach(v => safeUnlink(v.filename));
+    commentAttachments.forEach(a => safeUnlink(a.filename));
+    replyAttachments.forEach(a => safeUnlink(a.filename));
+
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1036,6 +1074,9 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
       if (existing.assigned_to !== req.user.id) return res.status(403).json({ error: 'Solo podés cambiar el estado de tus tareas asignadas' });
       await db('tasks').where({ id: req.params.id }).update({ status, updated_at: new Date().toISOString() });
     } else {
+      if (assigned_to && !await db('users').where({ id: assigned_to }).first()) {
+        return res.status(400).json({ error: 'El usuario asignado no existe' });
+      }
       await db('tasks').where({ id: req.params.id }).update({ title, description, status, priority, assigned_to: assigned_to || null, due_date: due_date || null, updated_at: new Date().toISOString() });
       if (assigned_to) {
         await addProjectMember(existing.project_id, assigned_to);
@@ -1074,6 +1115,7 @@ app.delete('/api/tasks/:id', auth, async (req, res) => {
     if (req.user.role !== 'admin' && existing.assigned_to !== req.user.id) {
       return res.status(403).json({ error: 'Solo podés eliminar tus tareas asignadas' });
     }
+    await db('videos').where({ task_id: req.params.id }).update({ task_id: null });
     await db('tasks').where({ id: req.params.id }).delete();
     await emitToProject(existing.project_id, 'task:deleted', { id: req.params.id });
     res.json({ success: true });
@@ -1134,7 +1176,7 @@ app.post('/api/projects/:projectId/videos', auth, requireProjectAccess(), (req, 
     const video = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id').leftJoin('tasks as tk', 'v.task_id', 'tk.id').where('v.id', id).select('v.*', 'u.name as uploader_name', 'tk.title as task_title').first();
     await emitToProject(req.params.projectId, 'video:uploaded', video);
     // Check storage after upload
-    const bytes = getUploadsSize();
+    const bytes = await getUploadsSize();
     if (bytes >= STORAGE_WARN_BYTES) {
       const admins = await db('users').where({ role: 'admin' }).pluck('id');
       admins.forEach(adminId => io.to(`user:${adminId}`).emit('storage:warning', { bytes, gb: (bytes / (1024 ** 3)).toFixed(2) }));
@@ -1147,21 +1189,28 @@ app.delete('/api/videos/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     const video = await db('videos').where({ id: req.params.id }).first();
+    let commentAttachments = [], replyAttachments = [];
     if (video) {
-      const filePath = path.join(uploadsDir, video.filename);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       const commentIds = await db('video_comments').where({ video_id: req.params.id }).pluck('id');
-      if (commentIds.length > 0) {
-        const replyIds = await db('comment_replies').whereIn('comment_id', commentIds).pluck('id');
-        if (replyIds.length > 0) {
-          await db('reply_attachments').whereIn('reply_id', replyIds).delete();
-        }
-        await db('comment_attachments').whereIn('comment_id', commentIds).delete();
-        await db('comment_replies').whereIn('comment_id', commentIds).delete();
-      }
-      await db('video_comments').where({ video_id: req.params.id }).delete();
+      const replyIds = commentIds.length ? await db('comment_replies').whereIn('comment_id', commentIds).pluck('id') : [];
+      commentAttachments = commentIds.length ? await db('comment_attachments').whereIn('comment_id', commentIds) : [];
+      replyAttachments = replyIds.length ? await db('reply_attachments').whereIn('reply_id', replyIds) : [];
+
+      await db.transaction(async trx => {
+        if (replyIds.length) await trx('reply_attachments').whereIn('reply_id', replyIds).delete();
+        if (commentIds.length) await trx('comment_attachments').whereIn('comment_id', commentIds).delete();
+        if (replyIds.length) await trx('comment_replies').whereIn('id', replyIds).delete();
+        if (commentIds.length) await trx('video_comments').whereIn('id', commentIds).delete();
+        await trx('videos').where({ id: req.params.id }).delete();
+      });
+    } else {
+      await db('videos').where({ id: req.params.id }).delete();
     }
-    await db('videos').where({ id: req.params.id }).delete();
+
+    safeUnlink(video?.filename);
+    commentAttachments.forEach(a => safeUnlink(a.filename));
+    replyAttachments.forEach(a => safeUnlink(a.filename));
+
     if (video) await emitToProject(video.project_id, 'video:deleted', { id: req.params.id });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -1222,31 +1271,33 @@ const STORAGE_CACHE_TTL = 60_000; // 60 segundos
 let _storageCacheBytes = null;
 let _storageCacheTime = 0;
 
-function _scanUploadsSize(dir = uploadsDir) {
+// Versión async (fs.promises) — la versión sync bloqueaba el event loop entero (HTTP y
+// sockets de todos los usuarios) mientras escaneaba un directorio de uploads de varios GB.
+async function _scanUploadsSize(dir = uploadsDir) {
   if (!fs.existsSync(dir)) return 0;
   let total = 0;
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     try {
-      if (entry.isDirectory()) total += _scanUploadsSize(fullPath);
-      else total += fs.statSync(fullPath).size;
+      if (entry.isDirectory()) total += await _scanUploadsSize(fullPath);
+      else total += (await fs.promises.stat(fullPath)).size;
     } catch {}
   }
   return total;
 }
 
-function getUploadsSize() {
+async function getUploadsSize() {
   const now = Date.now();
   if (_storageCacheBytes !== null && (now - _storageCacheTime) < STORAGE_CACHE_TTL) return _storageCacheBytes;
-  _storageCacheBytes = _scanUploadsSize();
+  _storageCacheBytes = await _scanUploadsSize();
   _storageCacheTime = now;
   return _storageCacheBytes;
 }
 
 app.get('/api/storage', auth, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-  const bytes = getUploadsSize();
+  const bytes = await getUploadsSize();
   res.json({ bytes, gb: (bytes / (1024 ** 3)).toFixed(2), warning: bytes >= STORAGE_WARN_BYTES });
 });
 
@@ -1268,7 +1319,7 @@ app.get('/api/videos/:videoId/comments', auth, async (req, res) => {
       replies: await db('comment_replies as r').join('users as u', 'r.user_id', 'u.id').where('r.comment_id', c.id).select('r.*', 'u.name as user_name', 'u.avatar_color').orderBy('r.created_at', 'asc').then(replies =>
         Promise.all(replies.map(async r => ({ ...r, attachments: await db('reply_attachments').where({ reply_id: r.id }) })))
       ),
-      annotation: c.annotation ? JSON.parse(c.annotation) : null
+      annotation: safeJsonParse(c.annotation)
     })));
     res.json(withAttachments);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -1286,6 +1337,10 @@ app.post('/api/videos/:videoId/comments', auth, async (req, res, next) => {
 }, attachmentUploadMiddleware, async (req, res) => {
   try {
     const { content, timestamp_sec, timestamp_end, annotation } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
+    if (annotation && safeJsonParse(annotation) === null) {
+      return res.status(400).json({ error: 'Anotación inválida' });
+    }
     const id = uuidv4();
     await db('video_comments').insert({
       id, video_id: req.params.videoId, user_id: req.user.id, content,
@@ -1298,7 +1353,7 @@ app.post('/api/videos/:videoId/comments', auth, async (req, res, next) => {
     }
     const comment = await db('video_comments as vc').join('users as u', 'vc.user_id', 'u.id').where('vc.id', id).select('vc.*', 'u.name as user_name', 'u.avatar_color').first();
     const attachments = await db('comment_attachments').where({ comment_id: id });
-    const full = { ...comment, attachments, annotation: annotation ? JSON.parse(annotation) : null };
+    const full = { ...comment, attachments, annotation: safeJsonParse(annotation) };
     const video = await db('videos').where({ id: req.params.videoId }).first();
     if (video) await emitToProject(video.project_id, 'comment:created', full);
     if (video) {
@@ -1343,12 +1398,20 @@ app.delete('/api/comments/:id', auth, async (req, res) => {
       return res.status(403).json({ error: 'Sin acceso' });
     }
     const replyIds = await db('comment_replies').where({ comment_id: req.params.id }).pluck('id');
-    if (replyIds.length > 0) {
-      await db('reply_attachments').whereIn('reply_id', replyIds).delete();
-    }
-    await db('comment_attachments').where({ comment_id: req.params.id }).delete();
-    await db('comment_replies').where({ comment_id: req.params.id }).delete();
-    await db('video_comments').where({ id: req.params.id }).delete();
+    const commentAttachments = await db('comment_attachments').where({ comment_id: req.params.id });
+    const replyAttachments = replyIds.length ? await db('reply_attachments').whereIn('reply_id', replyIds) : [];
+
+    await db.transaction(async trx => {
+      if (replyIds.length) await trx('reply_attachments').whereIn('reply_id', replyIds).delete();
+      await trx('comment_attachments').where({ comment_id: req.params.id }).delete();
+      await trx('comment_replies').where({ comment_id: req.params.id }).delete();
+      await trx('video_comments').where({ id: req.params.id }).delete();
+      await trx('notifications').where({ comment_id: req.params.id }).delete();
+    });
+
+    commentAttachments.forEach(a => safeUnlink(a.filename));
+    replyAttachments.forEach(a => safeUnlink(a.filename));
+
     await emitToProject(video.project_id, 'comment:deleted', { id: req.params.id });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -1390,6 +1453,7 @@ app.post('/api/comments/:id/replies', auth, async (req, res, next) => {
 }, attachmentUploadMiddleware, async (req, res) => {
   try {
     const { content } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: 'La respuesta no puede estar vacía' });
     const id = uuidv4();
     await db('comment_replies').insert({ id, comment_id: req.params.id, user_id: req.user.id, content });
     if (req.files?.length) {
@@ -1791,6 +1855,15 @@ io.on('connection', (socket) => {
     await db('messages').insert({ id, project_id, sender_id: socket.userId, receiver_id: null, content, type: type || 'project' });
     const msg = { id, project_id, sender_id: socket.userId, receiver_id: null, content, type, sender_name: sender.name, sender_color: sender.avatar_color, created_at: new Date().toISOString() };
     io.to(`project:${project_id}`).emit('message:new', msg);
+
+    // Antes solo se emitía por socket — un usuario offline nunca se enteraba de mensajes perdidos.
+    const memberIds = await db('project_members').where({ project_id }).pluck('user_id');
+    const adminIds = await db('users').where({ role: 'admin' }).pluck('id');
+    const notifyIds = new Set([...memberIds, ...adminIds]);
+    notifyIds.delete(socket.userId);
+    for (const uid of notifyIds) {
+      await createNotification({ userId: uid, type: 'project_message', actorId: socket.userId, projectId: project_id, preview: content?.slice(0, 80) });
+    }
   });
   socket.on('disconnect', async () => {
     for (const [userId, info] of onlineUsers.entries()) {
