@@ -43,7 +43,26 @@
       "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@agencyos.com\",\"password\":\"admin123\"}')",
       "Bash(curl -s -o /dev/null -w \"Backend: %{http_code}\\\\n\" http://localhost:3001/api/projects -H \"Authorization: Bearer $\\(curl -s -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@agencyos.com\",\"password\":\"admin123\"}')",
       "Bash(git init *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(git push *)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(cat /tmp/agencyos-server.log; echo \"---ps---\"; ps aux | grep \"[n]ode server/index.js\")",
+      "Read(//private/tmp/**)",
+      "Bash(cat /tmp/agencyos-client.log; echo \"---ps---\"; ps aux | grep \"[v]ite\")",
+      "Read(//private/tmp/claude-501/bundled-skills/2.1.215/**)",
+      "Bash(find / -maxdepth 4 -iname \"*chromium-cli*\")",
+      "Read(//private/tmp/claude-501/bundled-skills/**)",
+      "Bash(npx --no-install playwright --version)",
+      "Read(//Users/joaquintelesca/Library/Caches/ms-playwright/**)",
+      "Bash(npx --yes playwright --version)",
+      "Bash(npm init *)",
+      "Bash(node test_notif_badge.js)",
+      "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"__test2_notif__@example.com\",\"password\":\"test123456\"}')",
+      "Bash(kill 5894)"
     ]
   }
 }
