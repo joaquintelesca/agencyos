@@ -5,12 +5,18 @@ import { useNavigate, useOutletContext } from 'react-router-dom';
 export default function Notifications() {
   const { api } = useAuth();
   const [notifs, setNotifs] = useState([]);
+  const [error, setError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
   const navigate = useNavigate();
   const { setUnreadNotifs } = useOutletContext();
 
   useEffect(() => {
-    api('/api/notifications').then(setNotifs).catch(console.error);
-  }, []);
+    setError('');
+    api('/api/notifications').then(setNotifs).catch(e => {
+      console.error(e);
+      setError('No se pudieron cargar las notificaciones. Puede ser un problema de conexión.');
+    });
+  }, [retryCount]);
 
   const markAll = async () => {
     await api('/api/notifications/read-all', { method: 'PATCH' });
@@ -70,7 +76,14 @@ export default function Notifications() {
         {unread > 0 && <button onClick={markAll} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 12px', color: 'var(--accent2)', fontSize: 12, cursor: 'pointer' }}>Marcar todo como leído</button>}
       </div>
 
-      {notifs.length === 0 && (
+      {error && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'rgba(240,92,92,0.08)', border: '1px solid rgba(240,92,92,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: 'var(--red)' }}>
+          <span>⚠️ {error}</span>
+          <button onClick={() => setRetryCount(c => c + 1)} style={{ background: 'transparent', border: '1px solid var(--red)', borderRadius: 6, padding: '3px 10px', color: 'var(--red)', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>Reintentar</button>
+        </div>
+      )}
+
+      {!error && notifs.length === 0 && (
         <div className="empty"><div className="empty-icon">🔔</div><p>Sin notificaciones</p></div>
       )}
 

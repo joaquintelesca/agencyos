@@ -25,6 +25,8 @@ export default function Layout() {
   const [editingProject, setEditingProject] = useState(null);
   const [editProjectForm, setEditProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '', payment_editor_id: '', payment_type: 'fixed', payment_amount: '', client_amount: '', payment_hours: '' });
   const [storageWarning, setStorageWarning] = useState(null); // { gb, bytes } | null
+  const [sidebarError, setSidebarError] = useState('');
+  const [sidebarRetryCount, setSidebarRetryCount] = useState(0);
   const [expandedClients, setExpandedClients] = useState([]); // string[] de client IDs
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current_password: '', password: '', confirm: '' });
@@ -33,15 +35,18 @@ export default function Layout() {
 
   useEffect(() => {
     if (!user) return; // wait for auth
-    api('/api/projects').then(setProjects).catch(console.error);
+    setSidebarError('');
+    // Proyectos y clientes son lo que arma el sidebar entero — si fallan, antes el usuario
+    // se quedaba con un sidebar vacío sin saber si es que no tiene nada o si hubo un error real.
+    api('/api/projects').then(setProjects).catch(e => { console.error(e); setSidebarError('No se pudieron cargar los proyectos.'); });
     if (user?.role === 'admin') {
       api('/api/users').then(setUsers).catch(console.error);
       api('/api/storage').then(s => { if (s.warning) setStorageWarning(s); }).catch(console.error);
     }
-    api('/api/clients').then(setClients).catch(console.error);
+    api('/api/clients').then(setClients).catch(e => { console.error(e); setSidebarError(prev => prev || 'No se pudieron cargar los clientes.'); });
     api('/api/notifications').then(n => setUnreadNotifs(n.filter(x => !x.read).length)).catch(console.error);
     api('/api/chat/unread').then(setChatUnread).catch(console.error);
-  }, [user?.id]);
+  }, [user?.id, sidebarRetryCount]);
 
   useEffect(() => {
     if (!socket) return;
@@ -49,11 +54,30 @@ export default function Layout() {
     const onRead = () => { api('/api/chat/unread').then(setChatUnread).catch(console.error); };
     const onStorageWarn = (s) => setStorageWarning(s);
     const onChatMessage = () => { api('/api/chat/unread').then(setChatUnread).catch(console.error); };
+    // Antes el sidebar solo se refrescaba vía notification:new (que no llega a todos los admins,
+    // solo al editor asignado) — otro admin no veía un proyecto/cliente nuevo hasta recargar la
+    // página a mano. Ahora se actualiza el estado local directo con estos eventos.
+    const onProjectCreated = (p) => setProjects(prev => prev.some(x => x.id === p.id) ? prev : [p, ...prev]);
+    const onProjectUpdated = (p) => setProjects(prev => prev.some(x => x.id === p.id) ? prev.map(x => x.id === p.id ? p : x) : [p, ...prev]);
+    const onProjectDeleted = ({ id }) => setProjects(prev => prev.filter(p => p.id !== id));
+    const onClientCreated = (c) => setClients(prev => prev.some(x => x.id === c.id) ? prev : [...prev, c].sort((a, b) => a.name.localeCompare(b.name)));
+    const onClientUpdated = (c) => setClients(prev => prev.map(x => x.id === c.id ? c : x));
+    const onClientDeleted = ({ id }) => setClients(prev => prev.filter(c => c.id !== id));
     socket.on('notification:new', onNotif);
     socket.on('chat:read', onRead);
     socket.on('chat:message', onChatMessage);
     socket.on('storage:warning', onStorageWarn);
-    return () => { socket.off('notification:new', onNotif); socket.off('chat:read', onRead); socket.off('chat:message', onChatMessage); socket.off('storage:warning', onStorageWarn); };
+    socket.on('project:created', onProjectCreated);
+    socket.on('project:updated', onProjectUpdated);
+    socket.on('project:deleted', onProjectDeleted);
+    socket.on('client:created', onClientCreated);
+    socket.on('client:updated', onClientUpdated);
+    socket.on('client:deleted', onClientDeleted);
+    return () => {
+      socket.off('notification:new', onNotif); socket.off('chat:read', onRead); socket.off('chat:message', onChatMessage); socket.off('storage:warning', onStorageWarn);
+      socket.off('project:created', onProjectCreated); socket.off('project:updated', onProjectUpdated); socket.off('project:deleted', onProjectDeleted);
+      socket.off('client:created', onClientCreated); socket.off('client:updated', onClientUpdated); socket.off('client:deleted', onClientDeleted);
+    };
   }, [socket]);
 
   const openNewProject = () => { setStep(1); setProjectForm({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' }); setPaymentForm({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '' }); setShowNewProject(true); };
@@ -212,6 +236,13 @@ export default function Layout() {
               <button onClick={() => setShowNewClient(true)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 4px' }} title="Nuevo cliente">＋</button>
             )}
           </div>
+
+          {sidebarError && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(240,92,92,0.08)', border: '1px solid rgba(240,92,92,0.3)', borderRadius: 7, padding: '6px 8px', marginBottom: 6, fontSize: 11, color: 'var(--red)' }}>
+              <span style={{ flex: 1 }}>⚠️ {sidebarError}</span>
+              <button onClick={() => setSidebarRetryCount(c => c + 1)} style={{ background: 'transparent', border: '1px solid var(--red)', borderRadius: 5, padding: '2px 6px', color: 'var(--red)', fontSize: 10, cursor: 'pointer', flexShrink: 0 }}>Reintentar</button>
+            </div>
+          )}
 
           {/* Projects grouped by client — click to expand */}
           {clients.map(c => {

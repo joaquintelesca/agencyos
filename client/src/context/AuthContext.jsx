@@ -42,6 +42,25 @@ export function AuthProvider({ children }) {
     }
   }, [user, token, socket]);
 
+  // El evento 'storage' solo dispara en OTRAS pestañas, nunca en la que hizo el cambio — justo
+  // lo que hace falta para propagar un logout (o un cambio de cuenta) entre pestañas abiertas.
+  // Antes cada pestaña vivía con su propio estado en memoria hasta que un fetch le fallara solo.
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key !== 'token' && e.key !== 'user') return;
+      const newToken = localStorage.getItem('token');
+      const newUser = localStorage.getItem('user');
+      if (!newToken || !newUser) {
+        setToken(null); setUser(null);
+      } else {
+        setToken(newToken);
+        setUser(JSON.parse(newUser));
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   const login = async (email, password) => {
     const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
@@ -73,7 +92,7 @@ export function AuthProvider({ children }) {
 
   const api = async (path, options = {}) => {
     const currentToken = token || localStorage.getItem('token');
-    const res = await fetch(`${API_BASE}${path}`, {
+    const fetchOptions = {
       ...options,
       headers: {
         ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
@@ -82,7 +101,29 @@ export function AuthProvider({ children }) {
         ...options.headers
       },
       body: options.body instanceof FormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined)
-    });
+    };
+    let res;
+    try {
+      res = await fetch(`${API_BASE}${path}`, fetchOptions);
+    } catch {
+      // Fallo de red transitorio (WiFi cortado un instante, DNS momentáneo) — un solo
+      // reintento rápido resuelve la mayoría de los casos sin que el usuario tenga que
+      // notar nada ni volver a hacer clic.
+      await new Promise(r => setTimeout(r, 800));
+      try {
+        res = await fetch(`${API_BASE}${path}`, fetchOptions);
+      } catch {
+        throw new Error('Sin conexión. Revisá tu internet e intentá de nuevo.');
+      }
+    }
+
+    // Token vencido/inválido: antes cada pantalla mostraba un alert distinto ("jwt expired", etc.)
+    // y el usuario se quedaba en una app rota sin entender por qué. Ahora se cierra sesión al toque
+    // y PrivateRoute manda a /login solo (ver App.jsx).
+    if (res.status === 401) {
+      logout();
+      throw new Error('Tu sesión expiró. Volvé a iniciar sesión.');
+    }
 
     const contentType = res.headers.get('content-type') || '';
     let data;
@@ -94,11 +135,11 @@ export function AuthProvider({ children }) {
       }
     } else {
       const text = await res.text().catch(() => '');
-      if (!res.ok) throw new Error(text || `Error HTTP ${res.status}`);
+      if (!res.ok) { const err = new Error(text || `Error HTTP ${res.status}`); err.status = res.status; throw err; }
       return text;
     }
 
-    if (!res.ok) throw new Error(data?.error || data?.message || `Error ${res.status}`);
+    if (!res.ok) { const err = new Error(data?.error || data?.message || `Error ${res.status}`); err.status = res.status; throw err; }
     return data;
   };
 

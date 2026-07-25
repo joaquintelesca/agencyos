@@ -70,12 +70,24 @@ export default function Project() {
     };
     const onTaskDel = ({ id: tid }) => setTasks(prev => prev.filter(t => t.id !== tid));
     const onMsg = (m) => { if (m.project_id === id && m.type === 'project') setMessages(prev => [...prev, m]); };
+    // Al reconectar, el socket es el mismo objeto pero el server le asigna un socket.id nuevo:
+    // las rooms del lado del server no sobreviven, hay que volver a unirse. Aprovechamos para
+    // resincronizar tareas y mensajes por si algo se perdió mientras estuvo desconectado.
+    const onReconnect = () => {
+      socket.emit('project:join', id);
+      api(`/api/projects/${id}/tasks`).then(setTasks).catch(console.error);
+      api(`/api/projects/${id}/messages`).then(msgs => { setMessages(msgs); setHasMore(msgs.length >= 50); }).catch(console.error);
+    };
     socket.emit('project:join', id);
+    socket.on('connect', onReconnect);
     socket.on('task:created', onTask);
     socket.on('task:updated', onTask);
     socket.on('task:deleted', onTaskDel);
     socket.on('message:new', onMsg);
-    return () => { socket.off('task:created', onTask); socket.off('task:updated', onTask); socket.off('task:deleted', onTaskDel); socket.off('message:new', onMsg); };
+    return () => {
+      socket.emit('project:leave', id);
+      socket.off('connect', onReconnect); socket.off('task:created', onTask); socket.off('task:updated', onTask); socket.off('task:deleted', onTaskDel); socket.off('message:new', onMsg);
+    };
   }, [socket, id]);
 
   const loadOlderMessages = useCallback(async () => {
@@ -130,21 +142,39 @@ export default function Project() {
   const sendMessage = (e) => {
     e.preventDefault();
     if (!newMsg.trim() || !socket) return;
-    socket.emit('message:send', {
-      project_id: id, content: newMsg, type: 'project',
-      sender_id: user.id, sender_name: user.name, sender_color: user.avatar_color
-    });
+    const content = newMsg;
     setNewMsg('');
+    // .timeout() + callback: antes era fire-and-forget (el input se vaciaba sin esperar nada).
+    // Si el socket estaba desconectado en ese instante, el mensaje se perdía en silencio.
+    socket.timeout(8000).emit('message:send', {
+      project_id: id, content, type: 'project',
+      sender_id: user.id, sender_name: user.name, sender_color: user.avatar_color
+    }, (err, response) => {
+      if (err) {
+        alert('No se pudo enviar el mensaje (sin respuesta del servidor). Reintentá.');
+        setNewMsg(prev => prev || content);
+      } else if (response?.error) {
+        alert('No se pudo enviar el mensaje: ' + response.error);
+        setNewMsg(prev => prev || content);
+      }
+    });
   };
 
   const onDragStart = (task) => setDragTask(task);
   const onDrop = async (status) => {
-    if (!dragTask || dragTask.status === status) return;
-    await api(`/api/tasks/${dragTask.id}`, { method: 'PUT', body: { ...dragTask, status } });
-    if (status === 'review' && dragTask.status !== 'review') {
-      setReviewReminderTask({ ...dragTask, status });
-    }
+    const task = dragTask;
     setDragTask(null);
+    if (!task || task.status === status) return;
+    try {
+      // Solo se manda el campo que cambió: mandar la tarea entera (snapshot capturado al
+      // agarrarla) podía pisar una edición concurrente de otra persona con datos viejos.
+      await api(`/api/tasks/${task.id}`, { method: 'PUT', body: { status } });
+      if (status === 'review' && task.status !== 'review') {
+        setReviewReminderTask({ ...task, status });
+      }
+    } catch (e) {
+      alert('Error al mover la tarea: ' + e.message);
+    }
   };
 
   const formatTime = (ts) => new Date(ts).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });

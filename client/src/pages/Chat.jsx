@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { initials as initialsBase } from '../utils/format';
+import { uploadWithProgress } from '../utils/upload';
 
 export default function Chat() {
-  const { user, api, socket, onlineUsers, mediaUrl } = useAuth();
+  const { user, api, socket, onlineUsers, mediaUrl, token } = useAuth();
   const [conversations, setConversations] = useState([]);
   const [channels, setChannels] = useState([]);
   const [activeConv, setActiveConv] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
   const [recording, setRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
@@ -16,6 +18,8 @@ export default function Chat() {
   const [allUsers, setAllUsers] = useState([]);
   const [unreadCounts, setUnreadCounts] = useState({});
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const uploadXhrRef = useRef(null);
   const [search, setSearch] = useState('');
   const [dmsCollapsed, setDmsCollapsed] = useState(false);
   const [channelsCollapsed, setChannelsCollapsed] = useState(false);
@@ -113,12 +117,29 @@ export default function Chat() {
       });
     };
 
+    // Tras una reconexión (WiFi cortado, pestaña dormida) pueden haber quedado mensajes sin
+    // enterarse — se resincroniza la lista de conversaciones, los no leídos, y si hay una
+    // conversación abierta, sus mensajes.
+    const onReconnect = () => {
+      loadConversations();
+      api('/api/chat/unread').then(setUnreadCountsRef.current).catch(() => {});
+      const conv = activeConvRef.current;
+      if (conv) {
+        const tabParam = (conv.type === 'dm' && activeTabRef.current) ? `&client_id=${activeTabRef.current}` : '';
+        api(`/api/chat/messages?type=${conv.type}&id=${conv.id}${tabParam}`)
+          .then(msgs => setMessagesRef.current(msgs))
+          .catch(() => {});
+      }
+    };
+
     socket.on('chat:message', handleChatMessage);
     socket.on('chat:read', handleChatRead);
+    socket.on('connect', onReconnect);
 
     return () => {
       socket.off('chat:message', handleChatMessage);
       socket.off('chat:read', handleChatRead);
+      socket.off('connect', onReconnect);
     };
   }, [socket]); // solo depende del socket, no de activeConv ni user
 
@@ -144,6 +165,10 @@ export default function Chat() {
     setDmTabs([]);
     setActiveTab(null);
     activeTabRef.current = null;
+    // Antes, apenas se limpiaba messages a [] ya se mostraba "sin mensajes todavía" mientras
+    // la carga real seguía en vuelo — un parpadeo confuso en conexiones lentas. Con este flag,
+    // el placeholder de vacío solo aparece cuando de verdad terminó de cargar y no hay nada.
+    setLoadingMessages(true);
 
     const key = conv.type === 'dm' ? `dm:${conv.id}` : `channel:${conv.id}`;
     setUnreadCounts(prev => { const n = { ...prev }; delete n[key]; return n; });
@@ -165,6 +190,8 @@ export default function Chat() {
       await api('/api/chat/read', { method: 'POST', body: { type: conv.type, id: conv.id } });
     } catch (e) {
       console.error('Error cargando mensajes:', e);
+    } finally {
+      if (!isStale()) setLoadingMessages(false);
     }
   };
 
@@ -240,14 +267,14 @@ export default function Chat() {
     if (!file) return;
 
     setUploadingFile(true);
+    setUploadProgress(0);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      const res = await uploadWithProgress('/api/chat/upload', file, token, {
+        onProgress: setUploadProgress,
+        xhrRef: uploadXhrRef
+      });
 
-      const res = await api('/api/chat/upload', { method: 'POST', body: formData });
-
-      // res puede ser objeto {url, name} o string dependiendo del content-type
-      const fileUrl = typeof res === 'string' ? null : res.url;
+      const fileUrl = res?.url;
       if (!fileUrl) throw new Error('No se pudo obtener la URL del archivo');
 
       let fileType = 'file';
@@ -258,12 +285,16 @@ export default function Chat() {
 
       await sendMessage('', fileUrl, fileType, file.name);
     } catch (err) {
-      alert('Error al subir archivo: ' + err.message);
+      if (err.name !== 'AbortError') alert('Error al subir archivo: ' + err.message);
     } finally {
       setUploadingFile(false);
+      setUploadProgress(0);
+      uploadXhrRef.current = null;
       e.target.value = '';
     }
   };
+
+  const cancelFileUpload = () => { uploadXhrRef.current?.abort(); };
 
   const startRecording = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -566,7 +597,10 @@ export default function Chat() {
                 </button>
               </div>
             )}
-            {messages.length === 0 && (
+            {loadingMessages && messages.length === 0 && (
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 60 }}><div className="spinner" /></div>
+            )}
+            {!loadingMessages && messages.length === 0 && (
               <div style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 13, marginTop: 60 }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>👋</div>
                 <p>{activeConv.type === 'channel' ? `Inicio de #${activeConv.name}` : activeTab ? `Sin mensajes sobre ${dmTabs.find(t => t.id === activeTab)?.name || 'este cliente'}` : `Inicio de la conversación con ${activeConv.name}`}</p>
@@ -584,6 +618,7 @@ export default function Chat() {
                   isMe={msg.sender_id === user?.id}
                   compact={compact}
                   initials={initials}
+                  mediaUrl={mediaUrl}
                 />
               );
             })}
@@ -608,6 +643,15 @@ export default function Chat() {
               >
                 {uploadingFile ? '⏳' : '📎'}
               </button>
+              {uploadingFile && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text3)' }}>
+                  {uploadProgress}%
+                  <button onClick={cancelFileUpload} title="Cancelar subida"
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 12, padding: 0 }}>
+                    ✕
+                  </button>
+                </span>
+              )}
               <button
                 onClick={recording ? stopRecording : startRecording}
                 style={{ ...btnStyle, color: recording ? 'var(--red)' : undefined }}
@@ -761,7 +805,7 @@ function SidebarItem({ label, subtitle, active, unread, online, color, isUser, i
   );
 }
 
-function Message({ msg, isMe, compact, initials }) {
+function Message({ msg, isMe, compact, initials, mediaUrl }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   return (
     <div style={{ display: 'flex', gap: 10, padding: compact ? '1px 0' : '8px 0 2px', alignItems: 'flex-start' }}>

@@ -10,15 +10,18 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState({}); // { projectId: [tasks] }
   const [clients, setClients] = useState([]);
   const [pendingVideos, setPendingVideos] = useState([]);
+  const [error, setError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
 
   const projectIds = projects.map(p => p.id).join(',');
   useEffect(() => {
-    api('/api/clients').then(setClients).catch(console.error);
-    api('/api/dashboard/pending-videos').then(setPendingVideos).catch(console.error);
+    setError('');
+    api('/api/clients').then(setClients).catch(e => { console.error(e); setError('No se pudo cargar toda la información del dashboard. Puede ser un problema de conexión.'); });
+    api('/api/dashboard/pending-videos').then(setPendingVideos).catch(e => { console.error(e); setError('No se pudo cargar toda la información del dashboard. Puede ser un problema de conexión.'); });
     projects.forEach(p => {
       api(`/api/projects/${p.id}/tasks`).then(t => setTasks(prev => ({ ...prev, [p.id]: t }))).catch(console.error);
     });
-  }, [projectIds]);
+  }, [projectIds, retryCount]);
 
   const allTasks = Object.values(tasks).flat();
   const pendingTasks = allTasks.filter(t => t.status !== 'done');
@@ -29,6 +32,13 @@ export default function Dashboard() {
       <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>Hola, {user?.name?.split(' ')[0]} 👋</h1>
       </div>
+
+      {error && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'rgba(240,92,92,0.08)', border: '1px solid rgba(240,92,92,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: 'var(--red)' }}>
+          <span>⚠️ {error}</span>
+          <button onClick={() => setRetryCount(c => c + 1)} style={{ background: 'transparent', border: '1px solid var(--red)', borderRadius: 6, padding: '3px 10px', color: 'var(--red)', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>Reintentar</button>
+        </div>
+      )}
 
       {/* Stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>

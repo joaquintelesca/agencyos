@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { initials } from '../utils/format';
+import { uploadVideoChunked } from '../utils/upload';
 
 const DARK = {
   bg0: '#0d0d0f', bg1: '#141417', bg2: '#1c1c21', bg3: '#2a2a31',
@@ -11,7 +12,7 @@ const DARK = {
 };
 
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
-  const { api, user, socket, mediaUrl } = useAuth();
+  const { api, user, socket, mediaUrl, token } = useAuth();
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const appliedInitialVideoRef = useRef(null);
@@ -19,8 +20,10 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const [comments, setComments] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadForm, setUploadForm] = useState({ title: '', version: '', task_id: '' });
   const [uploadFile, setUploadFile] = useState(null);
+  const uploadAbortRef = useRef(null);
 
   // Player state
   const videoRef = useRef(null);
@@ -71,7 +74,11 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     if (!socket) return;
     const onVideoUpdated = (data) => { if (data.projectId === projectId) reloadVideos(); };
     socket.on('video:updated', onVideoUpdated);
-    return () => { socket.off('video:updated', onVideoUpdated); };
+    // Tras una reconexión (WiFi cortado, laptop cerrada) pueden haber quedado videos o
+    // comentarios sin enterarse — reloadVideos() dispara también el refetch de comentarios
+    // del video seleccionado, porque ese efecto depende de [selectedVideo, videos].
+    socket.on('connect', reloadVideos);
+    return () => { socket.off('video:updated', onVideoUpdated); socket.off('connect', reloadVideos); };
   }, [socket, projectId, reloadVideos]);
 
   // Deep link desde una notificación (?tab=videos&video=X): seleccionar ese video apenas cargue.
@@ -303,6 +310,11 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     canvasRef.current?.getContext('2d')?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
   };
 
+  // Un clic accidental en "Volver" o en el selector de versión no debe borrar un comentario
+  // largo (con dibujo incluido) que el usuario todavía no envió.
+  const hasUnsavedDraft = () => commentText.trim().length > 0 || annotations.length > 0 || commentFiles.length > 0;
+  const confirmDiscardDraft = () => !hasUnsavedDraft() || confirm('Tenés un comentario sin enviar. ¿Salir de todos modos? Se va a perder.');
+
   const submitComment = async () => {
     if (!commentText.trim()) return;
     // Use capturedTs or fall back to current video time
@@ -346,13 +358,21 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     try {
       await api(`/api/comments/${cid}`, { method: 'DELETE' });
       setComments(prev => prev.filter(c => c.id !== cid));
-    } catch (e) { console.error(e); alert('Error al eliminar el comentario: ' + e.message); }
+    } catch (e) {
+      // 404: alguien más ya lo borró mientras tanto — no es un error real, solo hay que
+      // sacarlo de la lista local (el 'comment:deleted' por socket ya venía en camino).
+      if (e.status === 404) { setComments(prev => prev.filter(c => c.id !== cid)); return; }
+      console.error(e); alert('Error al eliminar el comentario: ' + e.message);
+    }
   };
   const resolveComment = async (cid) => {
     try {
       const updated = await api(`/api/comments/${cid}/resolve`, { method: 'PATCH' });
       setComments(prev => prev.map(c => c.id === cid ? { ...c, resolved: updated.resolved } : c));
-    } catch (e) { console.error(e); alert('Error al resolver el comentario: ' + e.message); }
+    } catch (e) {
+      if (e.status === 404) { setComments(prev => prev.filter(c => c.id !== cid)); return; }
+      console.error(e); alert('Error al resolver el comentario: ' + e.message);
+    }
   };
 
   const submitReply = async (commentId) => {
@@ -373,24 +393,38 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
 
   const uploadVideo = async () => {
     if (!uploadFile) return;
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
     setUploading(true);
-    const fd = new FormData();
-    fd.append('video', uploadFile);
-    fd.append('title', uploadForm.title || uploadFile.name);
-    fd.append('version', uploadForm.version || '1');
-    if (uploadForm.task_id) fd.append('task_id', uploadForm.task_id);
-    if (selectedVideo) fd.append('stack_with', selectedVideo.id);
+    setUploadProgress(0);
     try {
-      const v = await api(`/api/projects/${projectId}/videos`, { method: 'POST', body: fd });
+      const v = await uploadVideoChunked({
+        file: uploadFile,
+        projectId,
+        title: uploadForm.title || uploadFile.name,
+        version: uploadForm.version || '1',
+        taskId: uploadForm.task_id || null,
+        stackWith: selectedVideo ? selectedVideo.id : null,
+        token,
+        onProgress: setUploadProgress,
+        signal: controller.signal
+      });
       setVideos(prev => [v, ...prev]);
       setSelectedVideo(v);
       setShowUpload(false);
       setUploadFile(null);
       setUploadForm({ title: '', version: '', task_id: '' });
       reloadVideos();
-    } catch (e) { console.error(e); alert('Error al subir el video: ' + e.message); }
-    finally { setUploading(false); }
+    } catch (e) {
+      if (e.name !== 'AbortError') { console.error(e); alert('Error al subir el video: ' + e.message); }
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      uploadAbortRef.current = null;
+    }
   };
+
+  const cancelUpload = () => { uploadAbortRef.current?.abort(); };
 
   const handleDrop = async (targetVideoId) => {
     if (!dragVideoId || dragVideoId === targetVideoId) return;
@@ -534,7 +568,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           })}
         </div>
         {showUpload && (
-          <div className="modal-overlay" onClick={() => setShowUpload(false)}>
+          <div className="modal-overlay" onClick={() => !uploading && setShowUpload(false)}>
             <div className="modal" onClick={e => e.stopPropagation()}>
               <h2>Subir video</h2>
               <div className="form-group">
@@ -558,10 +592,20 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                   </select>
                 </div>
               )}
+              {uploading && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <div style={{ flex: 1, height: 6, background: 'var(--bg3)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ width: `${uploadProgress}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.2s' }} />
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--text3)', minWidth: 32, textAlign: 'right' }}>{uploadProgress}%</span>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button className="btn btn-ghost" onClick={() => setShowUpload(false)}>Cancelar</button>
+                <button className="btn btn-ghost" onClick={() => uploading ? cancelUpload() : setShowUpload(false)}>
+                  {uploading ? 'Cancelar subida' : 'Cancelar'}
+                </button>
                 <button className="btn btn-primary" onClick={uploadVideo} disabled={!uploadFile || uploading}>
-                  {uploading ? '⏳ Subiendo...' : '⬆ Subir'}
+                  {uploading ? `⏳ Subiendo... ${uploadProgress}%` : '⬆ Subir'}
                 </button>
               </div>
             </div>
@@ -581,13 +625,13 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
 
       {/* Top bar: back, version dropdown, title */}
       <div style={{ padding: '8px 14px', background: DARK.bg1, borderBottom: `1px solid ${DARK.border}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        <button onClick={() => setSelectedVideo(null)}
+        <button onClick={() => { if (confirmDiscardDraft()) setSelectedVideo(null); }}
           style={{ background: 'transparent', border: `1px solid ${DARK.border}`, borderRadius: 6, padding: '4px 10px', color: DARK.text2, fontSize: 12, cursor: 'pointer' }}>
           ← Volver
         </button>
         {/* Version selector */}
         <select value={selectedVideo.id}
-          onChange={e => { const v = videos.find(x => x.id === e.target.value); if (v) setSelectedVideo(v); }}
+          onChange={e => { if (!confirmDiscardDraft()) return; const v = videos.find(x => x.id === e.target.value); if (v) setSelectedVideo(v); }}
           style={{ background: DARK.bg2, border: `1px solid ${DARK.border}`, borderRadius: 7, color: DARK.text, fontSize: 12, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
           {/* All versions of all videos — grouped by title */}
           {videos.map(v => (
@@ -939,7 +983,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
 
       {/* Upload modal */}
       {showUpload && (
-        <div className="modal-overlay" onClick={() => setShowUpload(false)}>
+        <div className="modal-overlay" onClick={() => !uploading && setShowUpload(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h2>Subir nueva versión</h2>
             <div className="form-group">
@@ -963,10 +1007,20 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                 </select>
               </div>
             )}
+            {uploading && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ flex: 1, height: 6, background: 'var(--bg3)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ width: `${uploadProgress}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.2s' }} />
+                </div>
+                <span style={{ fontSize: 11, color: 'var(--text3)', minWidth: 32, textAlign: 'right' }}>{uploadProgress}%</span>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button className="btn btn-ghost" onClick={() => setShowUpload(false)}>Cancelar</button>
+              <button className="btn btn-ghost" onClick={() => uploading ? cancelUpload() : setShowUpload(false)}>
+                {uploading ? 'Cancelar subida' : 'Cancelar'}
+              </button>
               <button className="btn btn-primary" onClick={uploadVideo} disabled={!uploadFile || uploading}>
-                {uploading ? '⏳ Subiendo...' : '⬆ Subir'}
+                {uploading ? `⏳ Subiendo... ${uploadProgress}%` : '⬆ Subir'}
               </button>
             </div>
           </div>

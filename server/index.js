@@ -35,6 +35,11 @@ const server = http.createServer(app);
 const corsOrigin = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
   : '*';
+// DATABASE_URL solo se define en producción (Railway) — si llegó hasta acá sin CORS_ORIGIN,
+// es fácil que haya quedado sin configurar por error, no a propósito.
+if (process.env.DATABASE_URL && !process.env.CORS_ORIGIN) {
+  console.warn('⚠️  CORS_ORIGIN no está configurado en producción — la API acepta requests de cualquier origen. Definí CORS_ORIGIN con la URL pública de la app.');
+}
 
 const io = new Server(server, {
   cors: { origin: corsOrigin, methods: ['GET', 'POST', 'PUT', 'DELETE'] }
@@ -64,6 +69,12 @@ function safeUnlink(filename) {
 
 // La extensión del archivo en disco sale siempre del mimetype ya validado, nunca del nombre
 // original (que el cliente controla) — evita subir un .html/.js disfrazado de un tipo permitido.
+// Límite duro de disco: pasado este punto, se rechazan subidas nuevas con un error claro
+// en vez de dejar que el disco se llene y las escrituras empiecen a fallar de forma críptica.
+// Configurable vía STORAGE_LIMIT_GB (ej: tamaño del Volume de Railway); 25GB por defecto,
+// un poco arriba del aviso de 20GB que ya reciben los admins.
+const STORAGE_HARD_LIMIT_BYTES = (Number(process.env.STORAGE_LIMIT_GB) || 25) * 1024 * 1024 * 1024;
+
 function makeUploader(mimeExtMap, { fileSize = 3 * 1024 * 1024 * 1024 } = {}) {
   const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadsDir),
@@ -72,9 +83,13 @@ function makeUploader(mimeExtMap, { fileSize = 3 * 1024 * 1024 * 1024 } = {}) {
   return multer({
     storage,
     limits: { fileSize },
-    fileFilter: (req, file, cb) => {
-      if (mimeExtMap[file.mimetype]) cb(null, true);
-      else cb(new Error('INVALID_FILE_TYPE'));
+    fileFilter: async (req, file, cb) => {
+      if (!mimeExtMap[file.mimetype]) return cb(new Error('INVALID_FILE_TYPE'));
+      try {
+        const bytes = await getUploadsSize();
+        if (bytes >= STORAGE_HARD_LIMIT_BYTES) return cb(new Error('STORAGE_FULL'));
+      } catch { /* si falla el chequeo de espacio, no bloqueamos la subida por eso */ }
+      cb(null, true);
     }
   });
 }
@@ -93,10 +108,10 @@ const VIDEO_MIME_EXT = {
   'video/x-msvideo': '.avi', 'video/x-matroska': '.mkv'
 };
 const attachmentUpload = makeUploader(SAFE_ATTACHMENT_MIME_EXT);
-const videoUpload = makeUploader(VIDEO_MIME_EXT);
 function attachmentUploadMiddleware(req, res, next) {
   attachmentUpload.array('attachments', 5)(req, res, (err) => {
     if (err && err.message === 'INVALID_FILE_TYPE') return res.status(400).json({ error: 'Tipo de archivo no permitido en el adjunto.' });
+    if (err && err.message === 'STORAGE_FULL') return res.status(507).json({ error: 'No hay espacio de almacenamiento disponible. Contactá al administrador.' });
     if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Archivo demasiado grande (máx. 3GB)' : (err.message || 'Error al subir archivo') });
     next();
   });
@@ -876,6 +891,7 @@ app.post('/api/clients', auth, async (req, res) => {
     const id = uuidv4();
     await db('clients').insert({ id, name, color: color || '#6366f1', email: email || null, phone: phone || null, notes: notes || null });
     const client = await db('clients').where({ id }).first();
+    io.to('admins').emit('client:created', client);
     res.json(client);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -887,6 +903,7 @@ app.patch('/api/clients/:id', auth, async (req, res) => {
     if (name !== undefined && !name?.trim()) return res.status(400).json({ error: 'El nombre del cliente es obligatorio' });
     await db('clients').where({ id: req.params.id }).update({ name, color, email, phone, notes });
     const client = await db('clients').where({ id: req.params.id }).first();
+    io.to('admins').emit('client:updated', client);
     res.json(client);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -897,6 +914,7 @@ app.delete('/api/clients/:id', auth, async (req, res) => {
     await db('projects').where({ client_id: req.params.id }).update({ client_id: null });
     await db('chat_messages').where({ client_id: req.params.id }).update({ client_id: null });
     await db('clients').where({ id: req.params.id }).delete();
+    io.to('admins').emit('client:deleted', { id: req.params.id });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1077,7 +1095,19 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
       if (assigned_to && !await db('users').where({ id: assigned_to }).first()) {
         return res.status(400).json({ error: 'El usuario asignado no existe' });
       }
-      await db('tasks').where({ id: req.params.id }).update({ title, description, status, priority, assigned_to: assigned_to || null, due_date: due_date || null, updated_at: new Date().toISOString() });
+      // Update parcial: solo se tocan los campos que realmente vinieron en el body. Antes se
+      // sobreescribían todos los campos con lo que mandara el cliente (incluidos los que no
+      // cambiaron) — si dos personas editaban la misma tarea casi a la vez (típicamente arrastrar
+      // una tarjeta en el Kanban, que solo quiere cambiar el status), la segunda pisaba con datos
+      // viejos lo que la primera acababa de guardar.
+      const update = { updated_at: new Date().toISOString() };
+      if (title !== undefined) update.title = title;
+      if (description !== undefined) update.description = description;
+      if (status !== undefined) update.status = status;
+      if (priority !== undefined) update.priority = priority;
+      if (assigned_to !== undefined) update.assigned_to = assigned_to || null;
+      if (due_date !== undefined) update.due_date = due_date || null;
+      await db('tasks').where({ id: req.params.id }).update(update);
       if (assigned_to) {
         await addProjectMember(existing.project_id, assigned_to);
         const project = await db('projects').where({ id: existing.project_id }).first();
@@ -1151,31 +1181,111 @@ app.get('/api/projects/:projectId/videos', auth, requireProjectAccess(), async (
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-app.post('/api/projects/:projectId/videos', auth, requireProjectAccess(), (req, res, next) => {
-  videoUpload.single('video')(req, res, (err) => {
-    if (err && err.message === 'INVALID_FILE_TYPE') return res.status(400).json({ error: 'Tipo de archivo no permitido. Solo se aceptan videos.' });
-    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Archivo demasiado grande (máx. 3GB)' : (err.message || 'Error al subir archivo') });
-    next();
-  });
-}, async (req, res) => {
+// ─── SUBIDA DE VIDEO POR PARTES ──────────────────────────────────────────────
+// El video es el archivo más grande y más frecuente en esta app; una sola conexión
+// larga (multipart, un solo POST) no aguanta bien conexiones inestables — un corte
+// a mitad de subida obligaba a reiniciar de cero. Se sube en partes de 5MB: si se
+// corta la conexión, el cliente puede reconsultar cuánto se recibió y retomar ahí,
+// sin perder lo ya subido.
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+const CHUNK_UPLOAD_TTL = 6 * 60 * 60 * 1000; // 6h — después de esto se considera abandonada
+const VIDEO_MAX_BYTES = 3 * 1024 * 1024 * 1024; // 3GB, igual al límite anterior de multer
+const chunksDir = path.join(uploadsDir, '.chunks');
+if (!fs.existsSync(chunksDir)) fs.mkdirSync(chunksDir, { recursive: true });
+
+// uploadId -> { userId, projectId, mimetype, ext, tempPath, totalSize, receivedBytes, meta, createdAt }
+const uploadSessions = new Map();
+
+// Barrido periódico de subidas abandonadas (pestaña cerrada a mitad de subida, etc.)
+// para no dejar archivos temporales sueltos en disco indefinidamente.
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, session] of uploadSessions.entries()) {
+    if (now - session.createdAt > CHUNK_UPLOAD_TTL) {
+      fs.promises.unlink(session.tempPath).catch(() => {});
+      uploadSessions.delete(id);
+    }
+  }
+}, 30 * 60 * 1000);
+
+// Inicia una subida: valida tipo/tamaño y guarda los metadatos del video a crear
+// (se usan recién al completar, para no tener que volver a mandarlos en cada parte).
+app.post('/api/projects/:projectId/videos/upload/init', auth, requireProjectAccess(), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún video' });
-    const { title, version, task_id, stack_with } = req.body;
+    const { originalName, mimetype, fileSize, title, version, task_id, stack_with } = req.body;
+    const ext = VIDEO_MIME_EXT[mimetype];
+    if (!ext) return res.status(400).json({ error: 'Tipo de archivo no permitido. Solo se aceptan videos.' });
+    const size = Number(fileSize);
+    if (!size || size <= 0) return res.status(400).json({ error: 'Tamaño de archivo inválido' });
+    if (size > VIDEO_MAX_BYTES) return res.status(400).json({ error: 'Archivo demasiado grande (máx. 3GB)' });
+    const usedBytes = await getUploadsSize();
+    if (usedBytes + size > STORAGE_HARD_LIMIT_BYTES) {
+      return res.status(507).json({ error: 'No hay espacio de almacenamiento disponible. Contactá al administrador.' });
+    }
+    const uploadId = uuidv4();
+    const tempPath = path.join(chunksDir, uploadId);
+    await fs.promises.writeFile(tempPath, Buffer.alloc(0));
+    uploadSessions.set(uploadId, {
+      userId: req.user.id, projectId: req.params.projectId, mimetype, ext, tempPath,
+      totalSize: size, receivedBytes: 0, createdAt: Date.now(),
+      meta: { title: title || originalName, originalName: originalName || title, version, task_id: task_id || null, stack_with: stack_with || null }
+    });
+    res.json({ uploadId, chunkSize: CHUNK_SIZE });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// Recibe una parte del archivo. El offset lo manda el cliente pero manda la posta el servidor:
+// si no coincide con lo que ya se recibió, se rechaza con el offset correcto (permite retomar
+// tras una reconexión sin duplicar ni perder bytes).
+app.post('/api/videos/upload/:uploadId/chunk', auth, express.raw({ type: '*/*', limit: CHUNK_SIZE + 1024 * 1024 }), async (req, res) => {
+  try {
+    const session = uploadSessions.get(req.params.uploadId);
+    if (!session) return res.status(404).json({ error: 'Subida no encontrada o expirada' });
+    if (session.userId !== req.user.id) return res.status(403).json({ error: 'Sin acceso' });
+    const offset = Number(req.query.offset);
+    if (offset !== session.receivedBytes) {
+      return res.status(409).json({ error: 'Desincronizado', expectedOffset: session.receivedBytes });
+    }
+    const chunk = req.body;
+    if (!Buffer.isBuffer(chunk) || chunk.length === 0) return res.status(400).json({ error: 'Parte vacía' });
+    if (session.receivedBytes + chunk.length > session.totalSize) {
+      return res.status(400).json({ error: 'La subida excede el tamaño declarado' });
+    }
+    await fs.promises.appendFile(session.tempPath, chunk);
+    session.receivedBytes += chunk.length;
+    res.json({ receivedBytes: session.receivedBytes });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// Finaliza: renombra el temporal a su nombre definitivo y crea el registro del video
+// (misma lógica que antes tenía el endpoint multipart de un solo POST).
+app.post('/api/videos/upload/:uploadId/complete', auth, async (req, res) => {
+  try {
+    const session = uploadSessions.get(req.params.uploadId);
+    if (!session) return res.status(404).json({ error: 'Subida no encontrada o expirada' });
+    if (session.userId !== req.user.id) return res.status(403).json({ error: 'Sin acceso' });
+    if (session.receivedBytes !== session.totalSize) {
+      return res.status(400).json({ error: 'Subida incompleta' });
+    }
+    const filename = `${uuidv4()}${session.ext}`;
+    await fs.promises.rename(session.tempPath, path.join(uploadsDir, filename));
+    uploadSessions.delete(req.params.uploadId);
+
+    const { title, originalName, version, task_id, stack_with } = session.meta;
     const id = uuidv4();
     let groupId = null;
     if (stack_with) {
       const parentVideo = await db('videos').where({ id: stack_with }).first();
-      if (parentVideo && parentVideo.project_id === req.params.projectId) {
+      if (parentVideo && parentVideo.project_id === session.projectId) {
         groupId = parentVideo.group_id || uuidv4();
         if (!parentVideo.group_id) {
           await db('videos').where({ id: stack_with }).update({ group_id: groupId });
         }
       }
     }
-    await db('videos').insert({ id, project_id: req.params.projectId, title: title || req.file.originalname, filename: req.file.filename, original_name: req.file.originalname, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: req.file.size, task_id: task_id || null, group_id: groupId });
+    await db('videos').insert({ id, project_id: session.projectId, title, filename, original_name: originalName || title, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: session.totalSize, task_id: task_id || null, group_id: groupId });
     const video = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id').leftJoin('tasks as tk', 'v.task_id', 'tk.id').where('v.id', id).select('v.*', 'u.name as uploader_name', 'tk.title as task_title').first();
-    await emitToProject(req.params.projectId, 'video:uploaded', video);
-    // Check storage after upload
+    await emitToProject(session.projectId, 'video:uploaded', video);
     const bytes = await getUploadsSize();
     if (bytes >= STORAGE_WARN_BYTES) {
       const admins = await db('users').where({ role: 'admin' }).pluck('id');
@@ -1183,6 +1293,17 @@ app.post('/api/projects/:projectId/videos', auth, requireProjectAccess(), (req, 
     }
     res.json(video);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// Cancela una subida en curso (botón "Cancelar" del cliente, o limpieza al desmontar).
+app.delete('/api/videos/upload/:uploadId', auth, async (req, res) => {
+  const session = uploadSessions.get(req.params.uploadId);
+  if (session) {
+    if (session.userId !== req.user.id) return res.status(403).json({ error: 'Sin acceso' });
+    await fs.promises.unlink(session.tempPath).catch(() => {});
+    uploadSessions.delete(req.params.uploadId);
+  }
+  res.json({ success: true });
 });
 
 app.delete('/api/videos/:id', auth, async (req, res) => {
@@ -1295,6 +1416,51 @@ async function getUploadsSize() {
   return _storageCacheBytes;
 }
 
+// Los archivos físicos se borran DESPUÉS de que la transacción de DB ya confirmó el delete
+// (ver comentario en safeUnlink) — si el proceso se cae justo en esa ventana, el archivo queda
+// huérfano en disco para siempre. Barrido periódico: cualquier archivo en uploads/ que no esté
+// referenciado por ninguna fila de la DB, y que no sea sospechosamente reciente (podría estar
+// subiéndose en este momento), se borra.
+async function cleanupOrphanedFiles() {
+  try {
+    const entries = await fs.promises.readdir(uploadsDir, { withFileTypes: true });
+    const candidates = entries.filter(e => e.isFile()).map(e => e.name);
+    if (candidates.length === 0) return;
+    const [videoFiles, commentFiles, replyFiles, chatFiles] = await Promise.all([
+      db('videos').pluck('filename'),
+      db('comment_attachments').pluck('filename'),
+      db('reply_attachments').pluck('filename'),
+      db('chat_messages').whereNotNull('file_url').pluck('file_url'),
+    ]);
+    const referenced = new Set([
+      ...videoFiles, ...commentFiles, ...replyFiles,
+      ...chatFiles.map(u => u.split('/').pop()),
+    ]);
+    const ONE_HOUR = 60 * 60 * 1000;
+    for (const name of candidates) {
+      if (referenced.has(name)) continue;
+      const filePath = path.join(uploadsDir, name);
+      try {
+        const stat = await fs.promises.stat(filePath);
+        if (Date.now() - stat.mtimeMs < ONE_HOUR) continue;
+        await fs.promises.unlink(filePath);
+      } catch {}
+    }
+  } catch (e) { console.error('Error en limpieza de archivos huérfanos:', e); }
+}
+setInterval(cleanupOrphanedFiles, 6 * 60 * 60 * 1000); // cada 6h
+
+// Notificaciones leídas y viejas no aportan nada — sin esto la tabla crece sin límite para
+// siempre. Las no leídas nunca se borran, sin importar la antigüedad.
+async function pruneOldNotifications() {
+  try {
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    await db('notifications').where({ read: true }).andWhere('created_at', '<', cutoff).delete();
+  } catch (e) { console.error('Error podando notificaciones viejas:', e); }
+}
+setInterval(pruneOldNotifications, 24 * 60 * 60 * 1000); // 1 vez por día
+pruneOldNotifications();
+
 app.get('/api/storage', auth, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
   const bytes = await getUploadsSize();
@@ -1313,14 +1479,37 @@ app.get('/api/videos/:videoId/comments', auth, async (req, res) => {
       .where('vc.video_id', req.params.videoId)
       .select('vc.*', 'u.name as user_name', 'u.avatar_color')
       .orderBy('vc.timestamp_sec', 'asc');
-    const withAttachments = await Promise.all(comments.map(async c => ({
+
+    // Antes se hacía una query de attachments + otra de replies (y otra de attachments) POR
+    // comentario — con muchos comentarios eso son decenas de round-trips por cada carga del
+    // video. Ahora se trae todo en 3 queries batched (por comment_id / reply_id) y se arma
+    // en memoria con maps, sin importar cuántos comentarios haya.
+    const commentIds = comments.map(c => c.id);
+    const [allAttachments, allReplies] = commentIds.length
+      ? await Promise.all([
+          db('comment_attachments').whereIn('comment_id', commentIds),
+          db('comment_replies as r').join('users as u', 'r.user_id', 'u.id').whereIn('r.comment_id', commentIds)
+            .select('r.*', 'u.name as user_name', 'u.avatar_color').orderBy('r.created_at', 'asc')
+        ])
+      : [[], []];
+    const replyIds = allReplies.map(r => r.id);
+    const allReplyAttachments = replyIds.length ? await db('reply_attachments').whereIn('reply_id', replyIds) : [];
+
+    const attachmentsByComment = {};
+    for (const a of allAttachments) (attachmentsByComment[a.comment_id] ??= []).push(a);
+    const replyAttachmentsByReply = {};
+    for (const a of allReplyAttachments) (replyAttachmentsByReply[a.reply_id] ??= []).push(a);
+    const repliesByComment = {};
+    for (const r of allReplies) {
+      (repliesByComment[r.comment_id] ??= []).push({ ...r, attachments: replyAttachmentsByReply[r.id] || [] });
+    }
+
+    const withAttachments = comments.map(c => ({
       ...c,
-      attachments: await db('comment_attachments').where({ comment_id: c.id }),
-      replies: await db('comment_replies as r').join('users as u', 'r.user_id', 'u.id').where('r.comment_id', c.id).select('r.*', 'u.name as user_name', 'u.avatar_color').orderBy('r.created_at', 'asc').then(replies =>
-        Promise.all(replies.map(async r => ({ ...r, attachments: await db('reply_attachments').where({ reply_id: r.id }) })))
-      ),
+      attachments: attachmentsByComment[c.id] || [],
+      replies: repliesByComment[c.id] || [],
       annotation: safeJsonParse(c.annotation)
-    })));
+    }));
     res.json(withAttachments);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1624,32 +1813,39 @@ app.get('/api/chat/conversations', auth, async (req, res) => {
     const userId = req.user.id;
     const isAdmin = req.user.role === 'admin';
 
-    let dms = [];
-    if (isAdmin) {
-      const allUsers = await db('users').where('id', '!=', userId).select('id', 'name', 'avatar_color');
-      dms = await Promise.all(allUsers.map(async u => {
-        const last = await db('chat_messages')
-          .where(function() { this.where({ sender_id: userId, receiver_id: u.id, type: 'dm' }).orWhere({ sender_id: u.id, receiver_id: userId, type: 'dm' }); })
-          .orderBy('created_at', 'desc').first();
-        return { id: u.id, name: u.name, color: u.avatar_color, last_message: last?.content || (last?.file_type ? '📎 Archivo' : null), unread: 0 };
-      }));
-    } else {
-      const admins = await db('users').where({ role: 'admin' }).select('id', 'name', 'avatar_color');
-      dms = await Promise.all(admins.map(async (admin) => {
-        const last = await db('chat_messages')
-          .where(function() { this.where({ sender_id: userId, receiver_id: admin.id, type: 'dm' }).orWhere({ sender_id: admin.id, receiver_id: userId, type: 'dm' }); })
-          .orderBy('created_at', 'desc').first();
-        return { id: admin.id, name: admin.name, color: admin.avatar_color, last_message: last?.content || (last?.file_type ? '📎 Archivo' : null), unread: 0 };
-      }));
+    // Antes: una query de "último mensaje" POR usuario listado, y otra de "cantidad de
+    // miembros" POR canal — con varios editores/canales eran decenas de round-trips en cada
+    // apertura del chat. Ahora se trae todo en queries batched y se arma en memoria.
+    const otherUsers = isAdmin
+      ? await db('users').where('id', '!=', userId).select('id', 'name', 'avatar_color')
+      : await db('users').where({ role: 'admin' }).select('id', 'name', 'avatar_color');
+
+    const myDms = await db('chat_messages')
+      .where({ type: 'dm' })
+      .andWhere(function() { this.where({ sender_id: userId }).orWhere({ receiver_id: userId }); })
+      .select('sender_id', 'receiver_id', 'content', 'file_type', 'created_at')
+      .orderBy('created_at', 'desc')
+      .limit(1000);
+    const lastByOther = {};
+    for (const m of myDms) {
+      const otherId = m.sender_id === userId ? m.receiver_id : m.sender_id;
+      if (!(otherId in lastByOther)) lastByOther[otherId] = m;
     }
+    const dms = otherUsers.map(u => {
+      const last = lastByOther[u.id];
+      return { id: u.id, name: u.name, color: u.avatar_color, last_message: last?.content || (last?.file_type ? '📎 Archivo' : null), unread: 0 };
+    });
 
     let channels = [];
     if (isAdmin) {
       const allChannels = await db('chat_channels').orderBy('created_at', 'asc');
-      channels = await Promise.all(allChannels.map(async c => {
-        const [{ count }] = await db('chat_channel_members').where({ channel_id: c.id }).count('user_id as count');
-        return { ...c, member_count: Number(count) };
-      }));
+      const memberCounts = allChannels.length
+        ? await db('chat_channel_members').whereIn('channel_id', allChannels.map(c => c.id))
+            .select('channel_id').count('user_id as count').groupBy('channel_id')
+        : [];
+      const countByChannel = {};
+      for (const row of memberCounts) countByChannel[row.channel_id] = Number(row.count);
+      channels = allChannels.map(c => ({ ...c, member_count: countByChannel[c.id] || 0 }));
     } else {
       const memberOf = await db('chat_channel_members').where({ user_id: userId }).pluck('channel_id');
       if (memberOf.length > 0) {
@@ -1749,6 +1945,9 @@ app.post('/api/chat/upload', auth, (req, res) => {
     if (err && err.message === 'INVALID_FILE_TYPE') {
       return res.status(400).json({ error: 'Tipo de archivo no permitido. Se aceptan imágenes, videos, audios, PDFs y texto.' });
     }
+    if (err && err.message === 'STORAGE_FULL') {
+      return res.status(507).json({ error: 'No hay espacio de almacenamiento disponible. Contactá al administrador.' });
+    }
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ error: 'Archivo demasiado grande (máx. 3GB)' });
@@ -1844,17 +2043,29 @@ io.on('connection', (socket) => {
     if (!allowed) return;
     socket.join(`project:${projectId}`);
   });
-  socket.on('message:send', async (data) => {
+  // Sin esto, un socket que navegó por muchos proyectos en una sesión larga se queda unido a
+  // todas esas rooms para siempre (solo había join, nunca leave) — recibe eventos de proyectos
+  // que ya no está mirando, acumulando tráfico innecesario.
+  socket.on('project:leave', (projectId) => {
+    if (!projectId) return;
+    socket.leave(`project:${projectId}`);
+  });
+  // Acepta un callback opcional de ack: antes esto era "fire and forget" — el input se
+  // vaciaba apenas se emitía, sin esperar confirmación. Si el socket estaba desconectado en
+  // ese instante, el mensaje se perdía sin que el usuario se enterara. Con .timeout() del lado
+  // del cliente, la ausencia de ack pasa a ser un error visible en vez de un silencio.
+  socket.on('message:send', async (data, callback) => {
     const { project_id, content, type } = data;
-    if (!project_id || !content?.trim()) return;
+    if (!project_id || !content?.trim()) return callback?.({ error: 'Mensaje inválido' });
     const sender = await db('users').where({ id: socket.userId }).first();
-    if (!sender) return;
+    if (!sender) return callback?.({ error: 'Usuario no válido' });
     const allowed = await isProjectMember(socket.userId, socket.userRole, project_id);
-    if (!allowed) return;
+    if (!allowed) return callback?.({ error: 'No tenés acceso a este proyecto' });
     const id = uuidv4();
     await db('messages').insert({ id, project_id, sender_id: socket.userId, receiver_id: null, content, type: type || 'project' });
     const msg = { id, project_id, sender_id: socket.userId, receiver_id: null, content, type, sender_name: sender.name, sender_color: sender.avatar_color, created_at: new Date().toISOString() };
     io.to(`project:${project_id}`).emit('message:new', msg);
+    callback?.({ success: true, message: msg });
 
     // Antes solo se emitía por socket — un usuario offline nunca se enteraba de mensajes perdidos.
     const memberIds = await db('project_members').where({ project_id }).pluck('user_id');
