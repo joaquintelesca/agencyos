@@ -150,12 +150,18 @@ export default function Project() {
       project_id: id, content, type: 'project',
       sender_id: user.id, sender_name: user.name, sender_color: user.avatar_color
     }, (err, response) => {
-      if (err) {
-        alert('No se pudo enviar el mensaje (sin respuesta del servidor). Reintentá.');
-        setNewMsg(prev => prev || content);
-      } else if (response?.error) {
-        alert('No se pudo enviar el mensaje: ' + response.error);
-        setNewMsg(prev => prev || content);
+      if (err || response?.error) {
+        const reason = err ? 'sin respuesta del servidor' : response.error;
+        // Si mientras tanto ya empezaste a escribir otra cosa, no la pisamos — pero tampoco
+        // podemos perder el texto que falló en silencio, así que va en el aviso.
+        setNewMsg(prev => {
+          if (prev) {
+            alert(`No se pudo enviar el mensaje (${reason}). Tu mensaje sin enviar era: "${content}"`);
+            return prev;
+          }
+          alert(`No se pudo enviar el mensaje (${reason}). Reintentá.`);
+          return content;
+        });
       }
     });
   };

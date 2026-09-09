@@ -125,9 +125,15 @@ export default function Chat() {
       api('/api/chat/unread').then(setUnreadCountsRef.current).catch(() => {});
       const conv = activeConvRef.current;
       if (conv) {
-        const tabParam = (conv.type === 'dm' && activeTabRef.current) ? `&client_id=${activeTabRef.current}` : '';
+        const tab = activeTabRef.current;
+        const tabParam = (conv.type === 'dm' && tab) ? `&client_id=${tab}` : '';
+        // Igual que en openConv: si el usuario cambió de conversación/tab mientras esta
+        // respuesta de reconexión estaba en vuelo, no pisar lo que se está mostrando ahora.
         api(`/api/chat/messages?type=${conv.type}&id=${conv.id}${tabParam}`)
-          .then(msgs => setMessagesRef.current(msgs))
+          .then(msgs => {
+            if (activeConvRef.current?.id !== conv.id || activeConvRef.current?.type !== conv.type || activeTabRef.current !== tab) return;
+            setMessagesRef.current(msgs);
+          })
           .catch(() => {});
       }
     };

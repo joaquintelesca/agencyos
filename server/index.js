@@ -87,7 +87,11 @@ function makeUploader(mimeExtMap, { fileSize = 3 * 1024 * 1024 * 1024 } = {}) {
       if (!mimeExtMap[file.mimetype]) return cb(new Error('INVALID_FILE_TYPE'));
       try {
         const bytes = await getUploadsSize();
-        if (bytes >= STORAGE_HARD_LIMIT_BYTES) return cb(new Error('STORAGE_FULL'));
+        // El tamaño del archivo todavía no se conoce en este punto del streaming, así que
+        // usamos Content-Length del request completo como cota superior — evita aceptar un
+        // archivo grande cuando ya casi no queda margen contra el límite duro.
+        const incomingBytes = Number(req.headers['content-length']) || 0;
+        if (bytes + incomingBytes > STORAGE_HARD_LIMIT_BYTES) return cb(new Error('STORAGE_FULL'));
       } catch { /* si falla el chequeo de espacio, no bloqueamos la subida por eso */ }
       cb(null, true);
     }
@@ -1242,6 +1246,9 @@ app.post('/api/videos/upload/:uploadId/chunk', auth, express.raw({ type: '*/*', 
     const session = uploadSessions.get(req.params.uploadId);
     if (!session) return res.status(404).json({ error: 'Subida no encontrada o expirada' });
     if (session.userId !== req.user.id) return res.status(403).json({ error: 'Sin acceso' });
+    if (!await isProjectMember(req.user.id, req.user.role, session.projectId)) {
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+    }
     const offset = Number(req.query.offset);
     if (offset !== session.receivedBytes) {
       return res.status(409).json({ error: 'Desincronizado', expectedOffset: session.receivedBytes });
@@ -1264,6 +1271,9 @@ app.post('/api/videos/upload/:uploadId/complete', auth, async (req, res) => {
     const session = uploadSessions.get(req.params.uploadId);
     if (!session) return res.status(404).json({ error: 'Subida no encontrada o expirada' });
     if (session.userId !== req.user.id) return res.status(403).json({ error: 'Sin acceso' });
+    if (!await isProjectMember(req.user.id, req.user.role, session.projectId)) {
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+    }
     if (session.receivedBytes !== session.totalSize) {
       return res.status(400).json({ error: 'Subida incompleta' });
     }
@@ -1440,6 +1450,21 @@ async function cleanupOrphanedFiles() {
     for (const name of candidates) {
       if (referenced.has(name)) continue;
       const filePath = path.join(uploadsDir, name);
+      try {
+        const stat = await fs.promises.stat(filePath);
+        if (Date.now() - stat.mtimeMs < ONE_HOUR) continue;
+        await fs.promises.unlink(filePath);
+      } catch {}
+    }
+
+    // El propio TTL de uploadSessions no alcanza si el proceso se reinicia (la Map en memoria
+    // se pierde), así que este barrido también revisa .chunks/ por su cuenta: cualquier temporal
+    // sin sesión activa y no reciente es una subida abandonada o huérfana por un reinicio.
+    const chunkEntries = await fs.promises.readdir(chunksDir, { withFileTypes: true }).catch(() => []);
+    for (const entry of chunkEntries) {
+      if (!entry.isFile()) continue;
+      if (uploadSessions.has(entry.name)) continue;
+      const filePath = path.join(chunksDir, entry.name);
       try {
         const stat = await fs.promises.stat(filePath);
         if (Date.now() - stat.mtimeMs < ONE_HOUR) continue;
@@ -1820,16 +1845,25 @@ app.get('/api/chat/conversations', auth, async (req, res) => {
       ? await db('users').where('id', '!=', userId).select('id', 'name', 'avatar_color')
       : await db('users').where({ role: 'admin' }).select('id', 'name', 'avatar_color');
 
-    const myDms = await db('chat_messages')
-      .where({ type: 'dm' })
-      .andWhere(function() { this.where({ sender_id: userId }).orWhere({ receiver_id: userId }); })
-      .select('sender_id', 'receiver_id', 'content', 'file_type', 'created_at')
-      .orderBy('created_at', 'desc')
-      .limit(1000);
+    // Un LIMIT global sobre todos los DMs mezclados perdía el último mensaje de contactos
+    // poco activos (quedaban fuera de la ventana si otras conversaciones eran más recientes).
+    // ROW_NUMBER() por contraparte trae el último mensaje real de cada uno en una sola query.
+    const myDmsRows = await db.raw(`
+      SELECT sender_id, receiver_id, content, file_type, created_at FROM (
+        SELECT sender_id, receiver_id, content, file_type, created_at,
+          ROW_NUMBER() OVER (
+            PARTITION BY CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END
+            ORDER BY created_at DESC
+          ) as rn
+        FROM chat_messages
+        WHERE type = 'dm' AND (sender_id = ? OR receiver_id = ?)
+      ) t WHERE rn = 1
+    `, [userId, userId, userId]);
+    const myDms = myDmsRows.rows || myDmsRows;
     const lastByOther = {};
     for (const m of myDms) {
       const otherId = m.sender_id === userId ? m.receiver_id : m.sender_id;
-      if (!(otherId in lastByOther)) lastByOther[otherId] = m;
+      lastByOther[otherId] = m;
     }
     const dms = otherUsers.map(u => {
       const last = lastByOther[u.id];

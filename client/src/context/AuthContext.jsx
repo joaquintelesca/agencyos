@@ -27,7 +27,10 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (user && token && !socket) {
       const s = io(SOCKET_URL, { extraHeaders: { 'ngrok-skip-browser-warning': 'true' }, auth: { token } });
-      s.emit('user:online', user.id);
+      // Las rooms del servidor (admins, user:<id>) no sobreviven a una reconexión — hay que
+      // volver a unirse cada vez que el socket conecta, no solo la primera vez, o el cliente
+      // deja de recibir eventos en vivo después de cualquier corte de red.
+      s.on('connect', () => s.emit('user:online', user.id));
       s.on('users:online', setOnlineUsers);
       s.on('connect_error', (err) => {
         if (err.message === 'No token' || err.message === 'Token inválido') {
@@ -102,13 +105,17 @@ export function AuthProvider({ children }) {
       },
       body: options.body instanceof FormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined)
     };
+    const method = (options.method || 'GET').toUpperCase();
+    const isIdempotent = method === 'GET' || method === 'HEAD';
     let res;
     try {
       res = await fetch(`${API_BASE}${path}`, fetchOptions);
     } catch {
+      if (!isIdempotent) throw new Error('Sin conexión. Revisá tu internet e intentá de nuevo.');
       // Fallo de red transitorio (WiFi cortado un instante, DNS momentáneo) — un solo
       // reintento rápido resuelve la mayoría de los casos sin que el usuario tenga que
-      // notar nada ni volver a hacer clic.
+      // notar nada ni volver a hacer clic. Solo para GET/HEAD: reintentar un POST/PUT/DELETE
+      // podría repetir una acción que en realidad ya se aplicó del lado del servidor.
       await new Promise(r => setTimeout(r, 800));
       try {
         res = await fetch(`${API_BASE}${path}`, fetchOptions);
