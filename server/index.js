@@ -10,6 +10,15 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+
+// 'file-type' es ESM-only (no se puede require() desde CommonJS) — se carga una sola vez con
+// import() dinámico y se cachea la promesa para no repetir el import en cada verificación.
+let _fileTypePromise = null;
+function getFileType() {
+  if (!_fileTypePromise) _fileTypePromise = import('file-type');
+  return _fileTypePromise;
+}
 
 function parseReadBy(val) {
   if (!val) return [];
@@ -111,12 +120,42 @@ const VIDEO_MIME_EXT = {
   'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov',
   'video/x-msvideo': '.avi', 'video/x-matroska': '.mkv'
 };
+// El mimetype que usa multer para fijar la extensión sale del header Content-Type que manda
+// el cliente en esa parte del multipart — no prueba nada sobre lo que realmente hay en el
+// archivo. Esto lee los primeros bytes reales del archivo ya guardado y los compara contra
+// la categoría declarada. text/plain no tiene firma binaria (cualquier byte es "texto plano"
+// válido) así que no se puede verificar por contenido, pero tampoco hace falta: la extensión
+// en disco queda forzada a .txt de todas formas y nunca se sirve con un Content-Type ejecutable.
+async function verifyFileSignature(filePath, declaredMimetype) {
+  if (declaredMimetype === 'text/plain') return true;
+  const { fileTypeFromFile } = await getFileType();
+  const detected = await fileTypeFromFile(filePath).catch(() => null);
+  if (!detected) return false;
+  if (declaredMimetype === 'application/pdf') return detected.mime === 'application/pdf';
+  return detected.mime.split('/')[0] === declaredMimetype.split('/')[0];
+}
+
+// Verifica una lista de archivos ya guardados por multer; si alguno no coincide con lo que
+// declaró, borra todos los de la tanda (son parte del mismo comentario/mensaje) y corta ahí.
+async function verifyUploadedFiles(files) {
+  for (const f of files) {
+    if (!await verifyFileSignature(f.path, f.mimetype)) {
+      for (const file of files) await fs.promises.unlink(file.path).catch(() => {});
+      return false;
+    }
+  }
+  return true;
+}
+
 const attachmentUpload = makeUploader(SAFE_ATTACHMENT_MIME_EXT);
 function attachmentUploadMiddleware(req, res, next) {
-  attachmentUpload.array('attachments', 5)(req, res, (err) => {
+  attachmentUpload.array('attachments', 5)(req, res, async (err) => {
     if (err && err.message === 'INVALID_FILE_TYPE') return res.status(400).json({ error: 'Tipo de archivo no permitido en el adjunto.' });
     if (err && err.message === 'STORAGE_FULL') return res.status(507).json({ error: 'No hay espacio de almacenamiento disponible. Contactá al administrador.' });
     if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Archivo demasiado grande (máx. 3GB)' : (err.message || 'Error al subir archivo') });
+    if (req.files?.length && !await verifyUploadedFiles(req.files)) {
+      return res.status(400).json({ error: 'El contenido de uno de los adjuntos no coincide con el tipo de archivo declarado.' });
+    }
     next();
   });
 }
@@ -439,6 +478,31 @@ async function initDB() {
   }
 }
 
+// Headers de seguridad HTTP. CSP explícita (useDefaults: false) en vez de confiar en la
+// default de helmet, porque esta app necesita permisos puntuales que esa default no da:
+// Google Fonts (stylesheet + archivos de fuente) y estilos inline (toda la UI usa style={{...}}
+// en vez de CSS modules, así que style-src necesita 'unsafe-inline'; no hay <script> inline en
+// ningún lado, así que script-src se mantiene estricto). crossOriginEmbedderPolicy se apaga:
+// esta app no usa SharedArrayBuffer/WASM threads que necesiten aislamiento cross-origin, y
+// dejarlo prendido arriesga romper la carga de Google Fonts sin ningún beneficio real acá.
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      mediaSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'none'"]
+    }
+  },
+  crossOriginEmbedderPolicy: false
+}));
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
@@ -1277,6 +1341,11 @@ app.post('/api/videos/upload/:uploadId/complete', auth, async (req, res) => {
     if (session.receivedBytes !== session.totalSize) {
       return res.status(400).json({ error: 'Subida incompleta' });
     }
+    if (!await verifyFileSignature(session.tempPath, session.mimetype)) {
+      await fs.promises.unlink(session.tempPath).catch(() => {});
+      uploadSessions.delete(req.params.uploadId);
+      return res.status(400).json({ error: 'El contenido del archivo no coincide con el tipo de video declarado.' });
+    }
     const filename = `${uuidv4()}${session.ext}`;
     await fs.promises.rename(session.tempPath, path.join(uploadsDir, filename));
     uploadSessions.delete(req.params.uploadId);
@@ -1975,7 +2044,7 @@ app.post('/api/chat/messages', auth, async (req, res) => {
 
 // POST upload file for chat — reusa el whitelist compartido de adjuntos seguros.
 app.post('/api/chat/upload', auth, (req, res) => {
-  attachmentUpload.single('file')(req, res, (err) => {
+  attachmentUpload.single('file')(req, res, async (err) => {
     if (err && err.message === 'INVALID_FILE_TYPE') {
       return res.status(400).json({ error: 'Tipo de archivo no permitido. Se aceptan imágenes, videos, audios, PDFs y texto.' });
     }
@@ -1990,6 +2059,10 @@ app.post('/api/chat/upload', auth, (req, res) => {
     }
     if (!req.file) {
       return res.status(400).json({ error: 'No se recibió ningún archivo' });
+    }
+    if (!await verifyFileSignature(req.file.path, req.file.mimetype)) {
+      await fs.promises.unlink(req.file.path).catch(() => {});
+      return res.status(400).json({ error: 'El contenido del archivo no coincide con el tipo de archivo declarado.' });
     }
     res.json({
       url: `/uploads/${req.file.filename}`,
