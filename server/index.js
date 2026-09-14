@@ -41,6 +41,11 @@ function safeJsonParse(val) {
 }
 
 const app = express();
+// Render (y Railway antes) ponen la app detrás de un único proxy reverso, que agrega el header
+// X-Forwarded-For con la IP real del cliente. Sin esto, Express usa la IP del proxy para TODOS
+// los requests — el rate-limiter de login (por IP) terminaría compartiendo un solo "balde" entre
+// todos los usuarios en vez de limitar por persona.
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 
 // CORS: lista separada por comas (ej: "https://app.midominio.com,https://otro.com").
