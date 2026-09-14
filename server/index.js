@@ -11,6 +11,10 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand,
+  ListObjectsV2Command, ListMultipartUploadsCommand, CreateMultipartUploadCommand,
+  UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 // 'file-type' es ESM-only (no se puede require() desde CommonJS) — se carga una sola vez con
 // import() dinámico y se cachea la promesa para no repetir el import en cada verificación.
@@ -66,13 +70,39 @@ const uploadsDir = process.env.UPLOAD_DIR
   : path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
+// Storage de archivos: Cloudflare R2 si hay credenciales configuradas (producción — Render no
+// tiene disco persistente compartido entre instancias), si no cae a disco local (desarrollo),
+// mismo patrón que ya usa `db` para elegir entre Postgres y SQLite según DATABASE_URL.
+const R2_BUCKET = process.env.R2_BUCKET;
+const useR2 = !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && R2_BUCKET);
+const s3 = useR2 ? new S3Client({
+  region: 'auto',
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY }
+}) : null;
+console.log(useR2 ? `📦 Storage: Cloudflare R2 (bucket "${R2_BUCKET}")` : `📦 Storage: disco local (${uploadsDir})`);
+
+// Sirve un archivo ya autorizado: redirige a una URL firmada de R2 (expira en 5 min, no hace
+// falta que el bucket sea público) o lo sirve directo desde disco en desarrollo.
+async function serveFile(res, filename) {
+  if (useR2) {
+    const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: R2_BUCKET, Key: filename }), { expiresIn: 300 });
+    return res.redirect(url);
+  }
+  return res.sendFile(path.join(uploadsDir, filename));
+}
+
 // Borra un archivo subido sin tirar el request si falta o falla — se llama siempre después
-// de que la DB ya quedó consistente, así que un error acá es solo una fuga de disco, no de datos.
-function safeUnlink(filename) {
+// de que la DB ya quedó consistente, así que un error acá es solo una fuga de storage, no de datos.
+async function safeUnlink(filename) {
   if (!filename) return;
   try {
-    const filePath = path.join(uploadsDir, filename);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    if (useR2) {
+      await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: filename }));
+    } else {
+      const filePath = path.join(uploadsDir, filename);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
   } catch (e) { console.error('No se pudo borrar el archivo', filename, e.message); }
 }
 
@@ -85,7 +115,10 @@ function safeUnlink(filename) {
 const STORAGE_HARD_LIMIT_BYTES = (Number(process.env.STORAGE_LIMIT_GB) || 25) * 1024 * 1024 * 1024;
 
 function makeUploader(mimeExtMap, { fileSize = 3 * 1024 * 1024 * 1024 } = {}) {
-  const storage = multer.diskStorage({
+  // Con R2 no hay disco donde escribir directo desde multer — se recibe en memoria (el archivo
+  // más grande de esta ruta compartida es un adjunto de chat/comentario, no un video, así que
+  // buffear en RAM es razonable) y se sube a R2 recién después de verificar el contenido real.
+  const storage = useR2 ? multer.memoryStorage() : multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadsDir),
     filename: (req, file, cb) => cb(null, `${uuidv4()}${mimeExtMap[file.mimetype] || ''}`)
   });
@@ -126,22 +159,34 @@ const VIDEO_MIME_EXT = {
 // la categoría declarada. text/plain no tiene firma binaria (cualquier byte es "texto plano"
 // válido) así que no se puede verificar por contenido, pero tampoco hace falta: la extensión
 // en disco queda forzada a .txt de todas formas y nunca se sirve con un Content-Type ejecutable.
-async function verifyFileSignature(filePath, declaredMimetype) {
+async function verifyFileSignature(source, declaredMimetype) {
   if (declaredMimetype === 'text/plain') return true;
-  const { fileTypeFromFile } = await getFileType();
-  const detected = await fileTypeFromFile(filePath).catch(() => null);
+  const { fileTypeFromFile, fileTypeFromBuffer } = await getFileType();
+  const detected = Buffer.isBuffer(source)
+    ? await fileTypeFromBuffer(source).catch(() => null)
+    : await fileTypeFromFile(source).catch(() => null);
   if (!detected) return false;
   if (declaredMimetype === 'application/pdf') return detected.mime === 'application/pdf';
   return detected.mime.split('/')[0] === declaredMimetype.split('/')[0];
 }
 
-// Verifica una lista de archivos ya guardados por multer; si alguno no coincide con lo que
-// declaró, borra todos los de la tanda (son parte del mismo comentario/mensaje) y corta ahí.
-async function verifyUploadedFiles(files) {
+// Verifica el contenido real de cada archivo de la tanda (son parte del mismo comentario/mensaje,
+// se aceptan o rechazan juntos) y, si todos pasan, recién ahí los persiste. Con disco local ya
+// están escritos por multer — si alguno falla, se borran. Con R2 todavía están solo en memoria
+// (multer.memoryStorage) — si alguno falla no se subió nada; si todos pasan, se suben ahora y se
+// les asigna `filename`, para que el resto del código no note la diferencia entre uno u otro backend.
+async function verifyAndPersistFiles(files, mimeExtMap) {
   for (const f of files) {
-    if (!await verifyFileSignature(f.path, f.mimetype)) {
-      for (const file of files) await fs.promises.unlink(file.path).catch(() => {});
+    const source = useR2 ? f.buffer : f.path;
+    if (!await verifyFileSignature(source, f.mimetype)) {
+      if (!useR2) { for (const file of files) await fs.promises.unlink(file.path).catch(() => {}); }
       return false;
+    }
+  }
+  if (useR2) {
+    for (const f of files) {
+      f.filename = `${uuidv4()}${mimeExtMap[f.mimetype] || ''}`;
+      await s3.send(new PutObjectCommand({ Bucket: R2_BUCKET, Key: f.filename, Body: f.buffer, ContentType: f.mimetype }));
     }
   }
   return true;
@@ -153,7 +198,7 @@ function attachmentUploadMiddleware(req, res, next) {
     if (err && err.message === 'INVALID_FILE_TYPE') return res.status(400).json({ error: 'Tipo de archivo no permitido en el adjunto.' });
     if (err && err.message === 'STORAGE_FULL') return res.status(507).json({ error: 'No hay espacio de almacenamiento disponible. Contactá al administrador.' });
     if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Archivo demasiado grande (máx. 3GB)' : (err.message || 'Error al subir archivo') });
-    if (req.files?.length && !await verifyUploadedFiles(req.files)) {
+    if (req.files?.length && !await verifyAndPersistFiles(req.files, SAFE_ATTACHMENT_MIME_EXT)) {
       return res.status(400).json({ error: 'El contenido de uno de los adjuntos no coincide con el tipo de archivo declarado.' });
     }
     next();
@@ -530,14 +575,17 @@ app.get('/uploads/:filename', auth, async (req, res) => {
   if (!filename || filename.includes('..') || filename.includes('/')) {
     return res.status(400).json({ error: 'Nombre de archivo inválido' });
   }
-  const filePath = path.join(uploadsDir, filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+  // Con disco local se puede chequear existencia antes de gastar queries; con R2 no vale la pena
+  // el viaje extra (HeadObject) — si no existe, el redirect a la signed URL simplemente 404ea.
+  if (!useR2 && !fs.existsSync(path.join(uploadsDir, filename))) {
+    return res.status(404).json({ error: 'Archivo no encontrado' });
+  }
 
-  if (req.user.role === 'admin') return res.sendFile(filePath);
+  if (req.user.role === 'admin') return serveFile(res, filename);
 
   const video = await db('videos').where({ filename }).first();
   if (video) {
-    if (await isProjectMember(req.user.id, req.user.role, video.project_id)) return res.sendFile(filePath);
+    if (await isProjectMember(req.user.id, req.user.role, video.project_id)) return serveFile(res, filename);
     return res.status(403).json({ error: 'Sin acceso' });
   }
 
@@ -548,7 +596,7 @@ app.get('/uploads/:filename', auth, async (req, res) => {
     .select('v.project_id')
     .first();
   if (commentAttachment) {
-    if (await isProjectMember(req.user.id, req.user.role, commentAttachment.project_id)) return res.sendFile(filePath);
+    if (await isProjectMember(req.user.id, req.user.role, commentAttachment.project_id)) return serveFile(res, filename);
     return res.status(403).json({ error: 'Sin acceso' });
   }
 
@@ -560,16 +608,16 @@ app.get('/uploads/:filename', auth, async (req, res) => {
     .select('v.project_id')
     .first();
   if (replyAttachment) {
-    if (await isProjectMember(req.user.id, req.user.role, replyAttachment.project_id)) return res.sendFile(filePath);
+    if (await isProjectMember(req.user.id, req.user.role, replyAttachment.project_id)) return serveFile(res, filename);
     return res.status(403).json({ error: 'Sin acceso' });
   }
 
   const chatMsg = await db('chat_messages').where({ file_url: `/uploads/${filename}` }).first();
   if (chatMsg) {
-    if (chatMsg.sender_id === req.user.id || chatMsg.receiver_id === req.user.id) return res.sendFile(filePath);
+    if (chatMsg.sender_id === req.user.id || chatMsg.receiver_id === req.user.id) return serveFile(res, filename);
     if (chatMsg.channel_id) {
       const member = await db('chat_channel_members').where({ channel_id: chatMsg.channel_id, user_id: req.user.id }).first();
-      if (member) return res.sendFile(filePath);
+      if (member) return serveFile(res, filename);
     }
     return res.status(403).json({ error: 'Sin acceso' });
   }
@@ -1259,18 +1307,29 @@ const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
 const CHUNK_UPLOAD_TTL = 6 * 60 * 60 * 1000; // 6h — después de esto se considera abandonada
 const VIDEO_MAX_BYTES = 3 * 1024 * 1024 * 1024; // 3GB, igual al límite anterior de multer
 const chunksDir = path.join(uploadsDir, '.chunks');
-if (!fs.existsSync(chunksDir)) fs.mkdirSync(chunksDir, { recursive: true });
+if (!useR2 && !fs.existsSync(chunksDir)) fs.mkdirSync(chunksDir, { recursive: true });
 
-// uploadId -> { userId, projectId, mimetype, ext, tempPath, totalSize, receivedBytes, meta, createdAt }
+// uploadId -> { userId, projectId, mimetype, ext, totalSize, receivedBytes, meta, createdAt,
+//   + disco local: tempPath
+//   + R2: key, r2UploadId, parts (Map<partNumber, {ETag, PartNumber}>) }
 const uploadSessions = new Map();
 
+// Aborta/limpia lo que haya quedado de una sesión, según el backend activo.
+async function discardUploadSession(session) {
+  if (useR2) {
+    await s3.send(new AbortMultipartUploadCommand({ Bucket: R2_BUCKET, Key: session.key, UploadId: session.r2UploadId })).catch(() => {});
+  } else {
+    await fs.promises.unlink(session.tempPath).catch(() => {});
+  }
+}
+
 // Barrido periódico de subidas abandonadas (pestaña cerrada a mitad de subida, etc.)
-// para no dejar archivos temporales sueltos en disco indefinidamente.
+// para no dejar temporales sueltos (en disco, o partes multipart facturables en R2) indefinidamente.
 setInterval(() => {
   const now = Date.now();
   for (const [id, session] of uploadSessions.entries()) {
     if (now - session.createdAt > CHUNK_UPLOAD_TTL) {
-      fs.promises.unlink(session.tempPath).catch(() => {});
+      discardUploadSession(session);
       uploadSessions.delete(id);
     }
   }
@@ -1291,20 +1350,31 @@ app.post('/api/projects/:projectId/videos/upload/init', auth, requireProjectAcce
       return res.status(507).json({ error: 'No hay espacio de almacenamiento disponible. Contactá al administrador.' });
     }
     const uploadId = uuidv4();
-    const tempPath = path.join(chunksDir, uploadId);
-    await fs.promises.writeFile(tempPath, Buffer.alloc(0));
-    uploadSessions.set(uploadId, {
-      userId: req.user.id, projectId: req.params.projectId, mimetype, ext, tempPath,
+    const key = `${uuidv4()}${ext}`;
+    const session = {
+      userId: req.user.id, projectId: req.params.projectId, mimetype, ext,
       totalSize: size, receivedBytes: 0, createdAt: Date.now(),
       meta: { title: title || originalName, originalName: originalName || title, version, task_id: task_id || null, stack_with: stack_with || null }
-    });
+    };
+    if (useR2) {
+      const created = await s3.send(new CreateMultipartUploadCommand({ Bucket: R2_BUCKET, Key: key, ContentType: mimetype }));
+      session.key = key;
+      session.r2UploadId = created.UploadId;
+      session.parts = new Map();
+    } else {
+      session.tempPath = path.join(chunksDir, uploadId);
+      await fs.promises.writeFile(session.tempPath, Buffer.alloc(0));
+    }
+    uploadSessions.set(uploadId, session);
     res.json({ uploadId, chunkSize: CHUNK_SIZE });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // Recibe una parte del archivo. El offset lo manda el cliente pero manda la posta el servidor:
 // si no coincide con lo que ya se recibió, se rechaza con el offset correcto (permite retomar
-// tras una reconexión sin duplicar ni perder bytes).
+// tras una reconexión sin duplicar ni perder bytes). Con R2, el offset determina el número de
+// parte (son partes fijas de CHUNK_SIZE) — reintentar la misma parte simplemente la pisa, es
+// idempotente por diseño, no hace falta lógica extra de deduplicación.
 app.post('/api/videos/upload/:uploadId/chunk', auth, express.raw({ type: '*/*', limit: CHUNK_SIZE + 1024 * 1024 }), async (req, res) => {
   try {
     const session = uploadSessions.get(req.params.uploadId);
@@ -1322,14 +1392,29 @@ app.post('/api/videos/upload/:uploadId/chunk', auth, express.raw({ type: '*/*', 
     if (session.receivedBytes + chunk.length > session.totalSize) {
       return res.status(400).json({ error: 'La subida excede el tamaño declarado' });
     }
-    await fs.promises.appendFile(session.tempPath, chunk);
+    if (useR2) {
+      const partNumber = Math.floor(offset / CHUNK_SIZE) + 1;
+      // La primera parte siempre trae la firma/header real del archivo — verificarla acá, antes
+      // de gastar ancho de banda subiendo el resto de un archivo que en realidad no es un video.
+      if (partNumber === 1 && !await verifyFileSignature(chunk, session.mimetype)) {
+        await discardUploadSession(session);
+        uploadSessions.delete(req.params.uploadId);
+        return res.status(400).json({ error: 'El contenido del archivo no coincide con el tipo de video declarado.' });
+      }
+      const uploaded = await s3.send(new UploadPartCommand({
+        Bucket: R2_BUCKET, Key: session.key, UploadId: session.r2UploadId, PartNumber: partNumber, Body: chunk
+      }));
+      session.parts.set(partNumber, { ETag: uploaded.ETag, PartNumber: partNumber });
+    } else {
+      await fs.promises.appendFile(session.tempPath, chunk);
+    }
     session.receivedBytes += chunk.length;
     res.json({ receivedBytes: session.receivedBytes });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
-// Finaliza: renombra el temporal a su nombre definitivo y crea el registro del video
-// (misma lógica que antes tenía el endpoint multipart de un solo POST).
+// Finaliza: cierra la subida (multipart complete en R2, o renombra el temporal a disco) y crea
+// el registro del video (misma lógica que antes tenía el endpoint multipart de un solo POST).
 app.post('/api/videos/upload/:uploadId/complete', auth, async (req, res) => {
   try {
     const session = uploadSessions.get(req.params.uploadId);
@@ -1341,13 +1426,24 @@ app.post('/api/videos/upload/:uploadId/complete', auth, async (req, res) => {
     if (session.receivedBytes !== session.totalSize) {
       return res.status(400).json({ error: 'Subida incompleta' });
     }
-    if (!await verifyFileSignature(session.tempPath, session.mimetype)) {
-      await fs.promises.unlink(session.tempPath).catch(() => {});
-      uploadSessions.delete(req.params.uploadId);
-      return res.status(400).json({ error: 'El contenido del archivo no coincide con el tipo de video declarado.' });
+    let filename;
+    if (useR2) {
+      const parts = Array.from(session.parts.values()).sort((a, b) => a.PartNumber - b.PartNumber);
+      await s3.send(new CompleteMultipartUploadCommand({
+        Bucket: R2_BUCKET, Key: session.key, UploadId: session.r2UploadId, MultipartUpload: { Parts: parts }
+      }));
+      filename = session.key;
+    } else {
+      // Con disco local la firma recién se puede verificar acá (no hay forma barata de ver el
+      // primer chunk por separado del resto una vez que appendFile los concatenó todos juntos).
+      if (!await verifyFileSignature(session.tempPath, session.mimetype)) {
+        await fs.promises.unlink(session.tempPath).catch(() => {});
+        uploadSessions.delete(req.params.uploadId);
+        return res.status(400).json({ error: 'El contenido del archivo no coincide con el tipo de video declarado.' });
+      }
+      filename = `${uuidv4()}${session.ext}`;
+      await fs.promises.rename(session.tempPath, path.join(uploadsDir, filename));
     }
-    const filename = `${uuidv4()}${session.ext}`;
-    await fs.promises.rename(session.tempPath, path.join(uploadsDir, filename));
     uploadSessions.delete(req.params.uploadId);
 
     const { title, originalName, version, task_id, stack_with } = session.meta;
@@ -1379,7 +1475,7 @@ app.delete('/api/videos/upload/:uploadId', auth, async (req, res) => {
   const session = uploadSessions.get(req.params.uploadId);
   if (session) {
     if (session.userId !== req.user.id) return res.status(403).json({ error: 'Sin acceso' });
-    await fs.promises.unlink(session.tempPath).catch(() => {});
+    await discardUploadSession(session);
     uploadSessions.delete(req.params.uploadId);
   }
   res.json({ success: true });
@@ -1487,24 +1583,33 @@ async function _scanUploadsSize(dir = uploadsDir) {
   return total;
 }
 
+// Suma el tamaño de todos los objetos del bucket, paginando (ListObjectsV2 devuelve como
+// máximo 1000 objetos por página).
+async function _scanR2Size() {
+  let total = 0, token;
+  do {
+    const listed = await s3.send(new ListObjectsV2Command({ Bucket: R2_BUCKET, ContinuationToken: token }));
+    for (const obj of (listed.Contents || [])) total += obj.Size || 0;
+    token = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+  } while (token);
+  return total;
+}
+
 async function getUploadsSize() {
   const now = Date.now();
   if (_storageCacheBytes !== null && (now - _storageCacheTime) < STORAGE_CACHE_TTL) return _storageCacheBytes;
-  _storageCacheBytes = await _scanUploadsSize();
+  _storageCacheBytes = useR2 ? await _scanR2Size() : await _scanUploadsSize();
   _storageCacheTime = now;
   return _storageCacheBytes;
 }
 
 // Los archivos físicos se borran DESPUÉS de que la transacción de DB ya confirmó el delete
 // (ver comentario en safeUnlink) — si el proceso se cae justo en esa ventana, el archivo queda
-// huérfano en disco para siempre. Barrido periódico: cualquier archivo en uploads/ que no esté
-// referenciado por ninguna fila de la DB, y que no sea sospechosamente reciente (podría estar
-// subiéndose en este momento), se borra.
+// huérfano para siempre. Barrido periódico: cualquier archivo (en R2 o en uploads/ local) que
+// no esté referenciado por ninguna fila de la DB, y que no sea sospechosamente reciente (podría
+// estar subiéndose en este momento), se borra.
 async function cleanupOrphanedFiles() {
   try {
-    const entries = await fs.promises.readdir(uploadsDir, { withFileTypes: true });
-    const candidates = entries.filter(e => e.isFile()).map(e => e.name);
-    if (candidates.length === 0) return;
     const [videoFiles, commentFiles, replyFiles, chatFiles] = await Promise.all([
       db('videos').pluck('filename'),
       db('comment_attachments').pluck('filename'),
@@ -1516,6 +1621,32 @@ async function cleanupOrphanedFiles() {
       ...chatFiles.map(u => u.split('/').pop()),
     ]);
     const ONE_HOUR = 60 * 60 * 1000;
+
+    if (useR2) {
+      let token;
+      do {
+        const listed = await s3.send(new ListObjectsV2Command({ Bucket: R2_BUCKET, ContinuationToken: token }));
+        for (const obj of (listed.Contents || [])) {
+          if (referenced.has(obj.Key)) continue;
+          if (Date.now() - obj.LastModified.getTime() < ONE_HOUR) continue;
+          await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: obj.Key })).catch(() => {});
+        }
+        token = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+      } while (token);
+
+      // Multipart uploads abandonados (subida cortada antes de llegar a un primer chunk fallido
+      // que dispare la limpieza propia) no aparecen en ListObjectsV2 hasta completarse — hay que
+      // barrerlos aparte, o quedan facturando storage sin que ninguna sesión los sepa referenciar.
+      const abandoned = await s3.send(new ListMultipartUploadsCommand({ Bucket: R2_BUCKET })).catch(() => ({ Uploads: [] }));
+      for (const up of (abandoned.Uploads || [])) {
+        if (Date.now() - up.Initiated.getTime() < ONE_HOUR) continue;
+        await s3.send(new AbortMultipartUploadCommand({ Bucket: R2_BUCKET, Key: up.Key, UploadId: up.UploadId })).catch(() => {});
+      }
+      return;
+    }
+
+    const entries = await fs.promises.readdir(uploadsDir, { withFileTypes: true });
+    const candidates = entries.filter(e => e.isFile()).map(e => e.name);
     for (const name of candidates) {
       if (referenced.has(name)) continue;
       const filePath = path.join(uploadsDir, name);
@@ -2060,8 +2191,7 @@ app.post('/api/chat/upload', auth, (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No se recibió ningún archivo' });
     }
-    if (!await verifyFileSignature(req.file.path, req.file.mimetype)) {
-      await fs.promises.unlink(req.file.path).catch(() => {});
+    if (!await verifyAndPersistFiles([req.file], SAFE_ATTACHMENT_MIME_EXT)) {
       return res.status(400).json({ error: 'El contenido del archivo no coincide con el tipo de archivo declarado.' });
     }
     res.json({
