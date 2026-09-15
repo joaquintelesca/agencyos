@@ -209,6 +209,12 @@ export default function Project() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color }} />
           <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18 }}>{project.name}</h2>
+          {project.client_name && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: project.client_color || 'var(--text3)' }} />
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>{project.client_name}</span>
+            </div>
+          )}
           <span style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8 }}>{tasks.length} tareas</span>
           {project.payment_editor_name && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
