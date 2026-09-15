@@ -13,6 +13,11 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [recording, setRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
+  const WAVE_BARS = 24;
+  const [waveLevels, setWaveLevels] = useState(() => Array(WAVE_BARS).fill(0));
+  const audioCtxRef = useRef(null);
+  const analyserRef = useRef(null);
+  const waveRafRef = useRef(null);
   const [showNewChannel, setShowNewChannel] = useState(false);
   const [channelForm, setChannelForm] = useState({ name: '', members: [] });
   const [allUsers, setAllUsers] = useState([]);
@@ -41,6 +46,11 @@ export default function Chat() {
   const setChannelsRef = useRef(setChannels);
 
   // Mantener refs siempre actualizados
+  // Si se navega fuera del chat a mitad de una grabación, cierra el AudioContext de la forma
+  // de onda igual — si no, queda vivo en segundo plano (el stream del micrófono ya se corta
+  // solo al desmontar por el cleanup de mediaRecorder, pero el AudioContext es independiente).
+  useEffect(() => () => { if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current); audioCtxRef.current?.close().catch(() => {}); }, []);
+
   useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { userRef.current = user; }, [user]);
@@ -302,6 +312,43 @@ export default function Chat() {
 
   const cancelFileUpload = () => { uploadXhrRef.current?.abort(); };
 
+  // Forma de onda en vivo mientras se graba (estilo WhatsApp/Slack), vía Web Audio API sobre
+  // el mismo stream del micrófono — no toca nada de la grabación en sí, es puramente visual.
+  const startWaveform = (stream) => {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return; // navegador sin soporte: la grabación sigue andando igual
+    const audioCtx = new AudioContextClass();
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    audioCtx.createMediaStreamSource(stream).connect(analyser);
+    audioCtxRef.current = audioCtx;
+    analyserRef.current = analyser;
+
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const tick = () => {
+      analyser.getByteTimeDomainData(data);
+      // RMS de la desviación respecto al centro (128 = silencio) normalizado a 0-1.
+      let sumSquares = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128;
+        sumSquares += v * v;
+      }
+      const level = Math.min(1, Math.sqrt(sumSquares / data.length) * 4);
+      setWaveLevels(prev => [...prev.slice(1), level]);
+      waveRafRef.current = requestAnimationFrame(tick);
+    };
+    waveRafRef.current = requestAnimationFrame(tick);
+  };
+
+  const stopWaveform = () => {
+    if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current);
+    waveRafRef.current = null;
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    analyserRef.current = null;
+    setWaveLevels(Array(WAVE_BARS).fill(0));
+  };
+
   const startRecording = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       alert('Tu navegador no soporta grabación. Usá Chrome o Firefox.');
@@ -309,6 +356,7 @@ export default function Chat() {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      startWaveform(stream);
 
       // Detectar codec compatible
       const mimeType =
@@ -323,6 +371,7 @@ export default function Chat() {
 
       mr.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
+        stopWaveform();
         if (chunks.length === 0) return;
         const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
         const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
@@ -339,6 +388,7 @@ export default function Chat() {
 
       mr.onerror = () => {
         stream.getTracks().forEach(t => t.stop());
+        stopWaveform();
         setRecording(false);
         setMediaRecorder(null);
       };
@@ -666,7 +716,21 @@ export default function Chat() {
                 {recording ? '⏹' : '🎙'}
               </button>
               {recording && (
-                <span style={{ fontSize: 11, color: 'var(--red)', userSelect: 'none' }}>● Grabando...</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none' }}>
+                  <span style={{ fontSize: 10, color: 'var(--red)' }}>●</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 20 }}>
+                    {waveLevels.map((lvl, i) => (
+                      <div key={i} style={{
+                        width: 2.5,
+                        height: Math.max(2, lvl * 18),
+                        borderRadius: 2,
+                        background: 'var(--red)',
+                        opacity: 0.5 + lvl * 0.5,
+                        transition: 'height 0.05s linear'
+                      }} />
+                    ))}
+                  </div>
+                </div>
               )}
               <input
                 value={input}
