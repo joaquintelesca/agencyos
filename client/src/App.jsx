@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Project from './pages/Project';
 import Payments from './pages/Payments';
+import VideosDashboard from './pages/VideosDashboard';
 import Team from './pages/Team';
 import Chat from './pages/Chat';
 import Notifications from './pages/Notifications';
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="chat" element={<Chat />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="payments" element={<AdminRoute><Payments /></AdminRoute>} />
+            <Route path="videos" element={<AdminRoute><VideosDashboard /></AdminRoute>} />
           </Route>
         </Routes>
       </BrowserRouter>

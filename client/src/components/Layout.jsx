@@ -241,7 +241,10 @@ export default function Layout() {
           <NavItem to="/team" label="Equipo" icon="👥" active={isActive('/team')} />
           <NavItem to="/notifications" label="Notificaciones" icon="🔔" active={isActive('/notifications')} badge={unreadNotifs} badgeRed />
           {user?.role === 'admin' && (
-            <NavItem to="/payments" label="Pagos" icon="💰" active={isActive('/payments')} admin />
+            <>
+              <NavItem to="/videos" label="Videos" icon="🎬" active={isActive('/videos')} admin />
+              <NavItem to="/payments" label="Pagos" icon="💰" active={isActive('/payments')} admin />
+            </>
           )}
         </div>
 

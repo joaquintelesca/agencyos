@@ -1095,6 +1095,36 @@ app.get('/api/dashboard/pending-videos', auth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
+// Todos los videos de la plataforma con su categoría ya calculada (admin only) — misma
+// distinción review/comentarios-sin-resolver que /pending-videos de arriba, más "aprobado"
+// para todo lo que no está en ninguno de esos dos estados.
+app.get('/api/dashboard/videos-overview', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const unresolvedSub = db('video_comments')
+      .where({ resolved: false })
+      .groupBy('video_id')
+      .select('video_id', db.raw('count(*) as unresolved_count'));
+    const videos = await db('videos as v')
+      .join('projects as p', 'v.project_id', 'p.id')
+      .leftJoin('clients as c', 'p.client_id', 'c.id')
+      .leftJoin('users as u', 'v.uploaded_by', 'u.id')
+      .leftJoin('tasks as tk', 'v.task_id', 'tk.id')
+      .leftJoin(unresolvedSub.as('uc'), 'uc.video_id', 'v.id')
+      .select(
+        'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at', 'v.file_size',
+        'p.name as project_name', 'p.color as project_color',
+        'c.name as client_name',
+        'u.name as uploader_name',
+        'tk.title as task_title', 'tk.status as task_status',
+        db.raw('COALESCE(uc.unresolved_count, 0) as unresolved_count'),
+        db.raw(`CASE WHEN tk.status = 'review' THEN 'review' WHEN COALESCE(uc.unresolved_count, 0) > 0 THEN 'editing' ELSE 'approved' END as category`)
+      )
+      .orderBy('v.created_at', 'desc');
+    res.json(videos);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
 // ─── EDITOR DETAIL (admin only) ─────────────────────────────────────────────
 app.get('/api/users/:id/detail', auth, async (req, res) => {
   try {
