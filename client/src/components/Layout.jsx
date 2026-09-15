@@ -34,6 +34,32 @@ export default function Layout() {
   const [expandedClients, setExpandedClients] = useState([]); // string[] de client IDs
   const [draggedClientId, setDraggedClientId] = useState(null);
   const [draggedProjectId, setDraggedProjectId] = useState(null);
+  const SIDEBAR_MIN = 180, SIDEBAR_MAX = 420;
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sidebarCollapsed') === 'true');
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = Number(localStorage.getItem('sidebarWidth'));
+    return saved >= SIDEBAR_MIN && saved <= SIDEBAR_MAX ? saved : 220;
+  });
+  const [resizingSidebar, setResizingSidebar] = useState(false);
+
+  useEffect(() => { localStorage.setItem('sidebarCollapsed', String(sidebarCollapsed)); }, [sidebarCollapsed]);
+  useEffect(() => { localStorage.setItem('sidebarWidth', String(sidebarWidth)); }, [sidebarWidth]);
+
+  // Arrastrar el borde de la sidebar para agrandarla/achicarla — igual que un slider, pero
+  // como divisor de panel (el patrón estándar para esto, más cómodo que un <input type="range">).
+  useEffect(() => {
+    if (!resizingSidebar) return;
+    document.body.style.userSelect = 'none';
+    const onMove = e => setSidebarWidth(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, e.clientX)));
+    const onUp = () => setResizingSidebar(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [resizingSidebar]);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current_password: '', password: '', confirm: '' });
   const [passwordError, setPasswordError] = useState('');
@@ -277,10 +303,12 @@ export default function Layout() {
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
       {/* Sidebar */}
-      <aside style={{ width: 220, background: 'var(--bg2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      {!sidebarCollapsed && (
+      <aside style={{ width: sidebarWidth, background: 'var(--bg2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 30, height: 30, background: 'var(--accent)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🎬</div>
-          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em' }}>AgencyOS</span>
+          <div style={{ width: 30, height: 30, background: 'var(--accent)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🎬</div>
+          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>AgencyOS</span>
+          <button onClick={() => setSidebarCollapsed(true)} title="Ocultar sidebar" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 15, padding: 4, flexShrink: 0 }}>◀</button>
         </div>
 
         <div style={{ padding: '12px 8px 6px' }}>
@@ -411,6 +439,23 @@ export default function Layout() {
           <button onClick={logout} title="Cerrar sesión" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>⏻</button>
         </div>
       </aside>
+      )}
+
+      {!sidebarCollapsed && (
+        <div
+          onMouseDown={() => setResizingSidebar(true)}
+          title="Arrastrar para cambiar el ancho"
+          style={{ width: 5, flexShrink: 0, cursor: 'col-resize', background: resizingSidebar ? 'var(--accent)' : 'transparent' }}
+        />
+      )}
+
+      {sidebarCollapsed && (
+        <button onClick={() => setSidebarCollapsed(false)} title="Mostrar sidebar" style={{
+          position: 'fixed', left: 10, top: 12, zIndex: 50, width: 32, height: 32, borderRadius: 8,
+          background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 14
+        }}>▶</button>
+      )}
 
       <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {storageWarning && user?.role === 'admin' && (
