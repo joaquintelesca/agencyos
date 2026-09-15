@@ -534,6 +534,33 @@ async function initDB() {
     await seedProjectMembers();
   }
 
+  // Orden manual (drag & drop) de clientes y proyectos en el sidebar. Al agregar la columna se
+  // hace un backfill único con el orden que ya se veía (alfabético para clientes, más reciente
+  // primero para proyectos dentro de cada cliente) para no pegarle un salto visual a nadie.
+  const hasClientSortOrder = await db.schema.hasColumn('clients', 'sort_order');
+  if (!hasClientSortOrder) {
+    await db.schema.table('clients', t => { t.integer('sort_order').nullable(); });
+    const existingClients = await db('clients').orderBy('name', 'asc').select('id');
+    for (let i = 0; i < existingClients.length; i++) {
+      await db('clients').where({ id: existingClients[i].id }).update({ sort_order: i });
+    }
+  }
+  const hasProjectSortOrder = await db.schema.hasColumn('projects', 'sort_order');
+  if (!hasProjectSortOrder) {
+    await db.schema.table('projects', t => { t.integer('sort_order').nullable(); });
+    const allProjects = await db('projects').orderBy('created_at', 'desc').select('id', 'client_id');
+    const byClient = {};
+    for (const p of allProjects) {
+      const key = p.client_id || '__none__';
+      (byClient[key] = byClient[key] || []).push(p.id);
+    }
+    for (const ids of Object.values(byClient)) {
+      for (let i = 0; i < ids.length; i++) {
+        await db('projects').where({ id: ids[i] }).update({ sort_order: i });
+      }
+    }
+  }
+
   // Seed admin: solo si NINGÚN admin existe todavía, no si falta ese email puntual — antes
   // buscaba por el email exacto 'admin@agencyos.com', así que una vez que ese usuario cambiaba
   // de email (ej: consolidar la cuenta seed con la cuenta real de alguien) este chequeo volvía
@@ -850,7 +877,7 @@ app.get('/api/projects', auth, async (req, res) => {
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .leftJoin('users as eu', 'p.payment_editor_id', 'eu.id')
       .select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color')
-      .orderBy('p.created_at', 'desc');
+      .orderBy([{ column: 'p.sort_order', order: 'asc' }, { column: 'p.created_at', order: 'desc' }]);
 
     if (req.user.role !== 'admin') {
       const memberProjectIds = await db('project_members')
@@ -958,6 +985,25 @@ app.put('/api/projects/:id', auth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
+// Reordena los proyectos DENTRO de un mismo cliente (o sin cliente) — `order` ya viene acotado
+// a ese grupo desde el front, no hace falta el client_id acá para nada más que loguear/validar.
+app.patch('/api/projects/reorder', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const { order } = req.body;
+    if (!Array.isArray(order) || order.some(id => typeof id !== 'string')) {
+      return res.status(400).json({ error: 'order debe ser un array de ids' });
+    }
+    await db.transaction(async trx => {
+      for (let i = 0; i < order.length; i++) {
+        await trx('projects').where({ id: order[i] }).update({ sort_order: i });
+      }
+    });
+    io.to('admins').emit('projects:reordered', { order });
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
 app.delete('/api/projects/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
@@ -1031,7 +1077,7 @@ app.delete('/api/projects/:projectId/members/:userId', auth, async (req, res) =>
 // de clientes de la agencia (nombre, email, teléfono, notas internas son datos de negocio sensibles).
 app.get('/api/clients', auth, async (req, res) => {
   try {
-    let query = db('clients').orderBy('name', 'asc');
+    let query = db('clients').orderBy([{ column: 'sort_order', order: 'asc' }, { column: 'name', order: 'asc' }]);
     if (req.user.role !== 'admin') {
       const clientIds = await db('project_members as pm')
         .join('projects as p', 'pm.project_id', 'p.id')
@@ -1055,6 +1101,24 @@ app.post('/api/clients', auth, async (req, res) => {
     const client = await db('clients').where({ id }).first();
     io.to('admins').emit('client:created', client);
     res.json(client);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// Nota: tiene que ir ANTES de /api/clients/:id — si no, Express matchea "reorder" como :id.
+app.patch('/api/clients/reorder', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const { order } = req.body;
+    if (!Array.isArray(order) || order.some(id => typeof id !== 'string')) {
+      return res.status(400).json({ error: 'order debe ser un array de ids' });
+    }
+    await db.transaction(async trx => {
+      for (let i = 0; i < order.length; i++) {
+        await trx('clients').where({ id: order[i] }).update({ sort_order: i });
+      }
+    });
+    io.to('admins').emit('clients:reordered', { order });
+    res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 

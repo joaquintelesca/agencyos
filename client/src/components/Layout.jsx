@@ -32,6 +32,8 @@ export default function Layout() {
   const [sidebarError, setSidebarError] = useState('');
   const [sidebarRetryCount, setSidebarRetryCount] = useState(0);
   const [expandedClients, setExpandedClients] = useState([]); // string[] de client IDs
+  const [draggedClientId, setDraggedClientId] = useState(null);
+  const [draggedProjectId, setDraggedProjectId] = useState(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current_password: '', password: '', confirm: '' });
   const [passwordError, setPasswordError] = useState('');
@@ -67,6 +69,10 @@ export default function Layout() {
     const onClientCreated = (c) => setClients(prev => prev.some(x => x.id === c.id) ? prev : [...prev, c].sort((a, b) => a.name.localeCompare(b.name)));
     const onClientUpdated = (c) => setClients(prev => prev.map(x => x.id === c.id ? c : x));
     const onClientDeleted = ({ id }) => setClients(prev => prev.filter(c => c.id !== id));
+    // Reordenar (drag & drop) es más simple de refrescar entero que de mergear a mano — no
+    // pasa tan seguido como para que valga la pena optimizar el request extra.
+    const onClientsReordered = () => api('/api/clients').then(setClients).catch(console.error);
+    const onProjectsReordered = () => api('/api/projects').then(setProjects).catch(console.error);
     socket.on('notification:new', onNotif);
     socket.on('chat:read', onRead);
     socket.on('chat:message', onChatMessage);
@@ -77,10 +83,13 @@ export default function Layout() {
     socket.on('client:created', onClientCreated);
     socket.on('client:updated', onClientUpdated);
     socket.on('client:deleted', onClientDeleted);
+    socket.on('clients:reordered', onClientsReordered);
+    socket.on('projects:reordered', onProjectsReordered);
     return () => {
       socket.off('notification:new', onNotif); socket.off('chat:read', onRead); socket.off('chat:message', onChatMessage); socket.off('storage:warning', onStorageWarn);
       socket.off('project:created', onProjectCreated); socket.off('project:updated', onProjectUpdated); socket.off('project:deleted', onProjectDeleted);
       socket.off('client:created', onClientCreated); socket.off('client:updated', onClientUpdated); socket.off('client:deleted', onClientDeleted);
+      socket.off('clients:reordered', onClientsReordered); socket.off('projects:reordered', onProjectsReordered);
     };
   }, [socket]);
 
@@ -180,6 +189,39 @@ export default function Layout() {
     });
   };
 
+  // Reordena clientes por drag & drop: mueve el arrastrado a la posición del que recibió el
+  // drop, actualiza el sidebar al toque, y persiste el orden completo en el servidor.
+  const reorderClients = (draggedId, targetId) => {
+    if (draggedId === targetId) return;
+    setClients(prev => {
+      const arr = [...prev];
+      const fromIdx = arr.findIndex(c => c.id === draggedId);
+      const toIdx = arr.findIndex(c => c.id === targetId);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+      const [moved] = arr.splice(fromIdx, 1);
+      arr.splice(toIdx, 0, moved);
+      api('/api/clients/reorder', { method: 'PATCH', body: { order: arr.map(c => c.id) } }).catch(console.error);
+      return arr;
+    });
+  };
+
+  // Mismo patrón pero acotado a los proyectos de UN cliente (o sin cliente) — el resto de
+  // `projects` no se toca, solo se reordena el subgrupo y se manda su nuevo orden.
+  const reorderProjects = (clientId, draggedId, targetId) => {
+    if (draggedId === targetId) return;
+    setProjects(prev => {
+      const inGroup = prev.filter(p => (p.client_id || null) === clientId);
+      const others = prev.filter(p => (p.client_id || null) !== clientId);
+      const fromIdx = inGroup.findIndex(p => p.id === draggedId);
+      const toIdx = inGroup.findIndex(p => p.id === targetId);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+      const [moved] = inGroup.splice(fromIdx, 1);
+      inGroup.splice(toIdx, 0, moved);
+      api('/api/projects/reorder', { method: 'PATCH', body: { order: inGroup.map(p => p.id) } }).catch(console.error);
+      return [...others, ...inGroup];
+    });
+  };
+
   const goToStep2 = () => { if (!projectForm.name.trim()) return; setStep(2); };
 
   const createProject = async () => {
@@ -275,8 +317,13 @@ export default function Layout() {
             const clientProjects = projects.filter(p => p.client_id === c.id);
             const isExpanded = expandedClients.includes(c.id);
             return (
-              <div key={c.id} style={{ marginBottom: 2 }}>
+              <div key={c.id} style={{ marginBottom: 2, opacity: draggedClientId === c.id ? 0.4 : 1 }}>
                 <div className="sidebar-row" style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', transition: 'background 0.1s' }}
+                  draggable={user?.role === 'admin'}
+                  onDragStart={() => setDraggedClientId(c.id)}
+                  onDragOver={e => { if (user?.role === 'admin' && draggedClientId) e.preventDefault(); }}
+                  onDrop={e => { if (draggedClientId) { e.preventDefault(); reorderClients(draggedClientId, c.id); } }}
+                  onDragEnd={() => setDraggedClientId(null)}
                   onClick={() => setExpandedClients(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}
                   onDoubleClick={e => { e.stopPropagation(); navigate(`/client/${c.id}`); }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; }}
@@ -295,7 +342,12 @@ export default function Layout() {
                   )}
                 </div>
                 {isExpanded && clientProjects.map(p => (
-                  <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s' }}>
+                  <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s', opacity: draggedProjectId === p.id ? 0.4 : 1 }}
+                    draggable={user?.role === 'admin'}
+                    onDragStart={e => { e.stopPropagation(); setDraggedProjectId(p.id); }}
+                    onDragOver={e => { if (user?.role === 'admin' && draggedProjectId) e.preventDefault(); }}
+                    onDrop={e => { if (draggedProjectId) { e.preventDefault(); e.stopPropagation(); reorderProjects(c.id, draggedProjectId, p.id); } }}
+                    onDragEnd={() => setDraggedProjectId(null)}>
                     <Link to={`/project/${p.id}`} style={{ textDecoration: 'none', flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 26px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 11.5 }}>
                         <div style={{ width: 5, height: 5, borderRadius: '50%', background: p.color, flexShrink: 0, opacity: 0.8 }} />
@@ -321,7 +373,12 @@ export default function Layout() {
 
           {/* Projects without client */}
           {projects.filter(p => !p.client_id).map(p => (
-            <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s' }}>
+            <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s', opacity: draggedProjectId === p.id ? 0.4 : 1 }}
+              draggable={user?.role === 'admin'}
+              onDragStart={() => setDraggedProjectId(p.id)}
+              onDragOver={e => { if (user?.role === 'admin' && draggedProjectId) e.preventDefault(); }}
+              onDrop={e => { if (draggedProjectId) { e.preventDefault(); reorderProjects(null, draggedProjectId, p.id); } }}
+              onDragEnd={() => setDraggedProjectId(null)}>
               <Link to={`/project/${p.id}`} style={{ textDecoration: 'none', flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 13 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
