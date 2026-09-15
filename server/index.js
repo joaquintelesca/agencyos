@@ -1320,7 +1320,21 @@ app.get('/api/projects/:projectId/tasks', auth, requireProjectAccess(), async (r
     if (req.user.role !== 'admin') query = query.where('t.assigned_to', req.user.id);
     const tasks = await query
       .orderBy('t.created_at', 'asc');
-    res.json(tasks);
+
+    // Último video (mayor versión) enlazado a cada tarea, para poder saltar directo a él desde
+    // la tarjeta del kanban en vez de tener que buscarlo a mano en la pestaña Videos.
+    const linkedVideos = await db('videos')
+      .where({ project_id: req.params.projectId })
+      .whereNotNull('task_id')
+      .select('id', 'task_id', 'version', 'created_at');
+    const latestVideoByTask = {};
+    for (const v of linkedVideos) {
+      const cur = latestVideoByTask[v.task_id];
+      if (!cur || v.version > cur.version || (v.version === cur.version && new Date(v.created_at) > new Date(cur.created_at))) {
+        latestVideoByTask[v.task_id] = v;
+      }
+    }
+    res.json(tasks.map(t => ({ ...t, latest_video_id: latestVideoByTask[t.id]?.id || null })));
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 

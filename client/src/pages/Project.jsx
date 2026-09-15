@@ -16,7 +16,7 @@ const PRIORITIES = ['low', 'medium', 'high'];
 
 export default function Project() {
   const { id } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { api, user, socket } = useAuth();
   const { scheduleDelete } = useUndo();
   const [project, setProject] = useState(null);
@@ -174,6 +174,12 @@ export default function Project() {
     });
   };
 
+  // Salta directo a la última versión del video enlazado a la tarea, sin tener que buscarlo
+  // a mano en la pestaña Videos — reusa el mismo mecanismo de deep link que usan las notificaciones.
+  const openTaskVideo = (videoId) => {
+    setSearchParams({ tab: 'videos', video: videoId });
+  };
+
   const onDragStart = (task) => setDragTask(task);
   const onDrop = async (status) => {
     const task = dragTask;
@@ -267,6 +273,7 @@ export default function Project() {
                     onEdit={user.role === 'admin' ? () => openEditTask(task) : null}
                     onDelete={user.role === 'admin' ? () => deleteTask(task.id) : null}
                     onDragStart={() => onDragStart(task)} initials={initials}
+                    onOpenVideo={openTaskVideo}
                     canDrag={user.role === 'admin' || task.assigned_to === user.id} />
                 ))}
               </div>
@@ -421,7 +428,7 @@ export default function Project() {
   );
 }
 
-function TaskCard({ task, onEdit, onDelete, onDragStart, initials, canDrag = true }) {
+function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, canDrag = true }) {
   const priorityColors = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' };
   const priorityLabels = { high: 'Alta', medium: 'Media', low: 'Baja' };
   return (
@@ -432,6 +439,14 @@ function TaskCard({ task, onEdit, onDelete, onDragStart, initials, canDrag = tru
     onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
     onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
       <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', lineHeight: 1.45, marginBottom: 10 }}>{task.title}</div>
+      {task.latest_video_id && (
+        <button
+          onClick={e => { e.stopPropagation(); onOpenVideo(task.latest_video_id); }}
+          title="Ver el video de esta tarea"
+          style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 7, padding: '3px 8px', marginBottom: 10, color: 'var(--text2)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}>
+          🎬 Ver video
+        </button>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 8, background: `${priorityColors[task.priority]}18`, color: priorityColors[task.priority] }}>
           {priorityLabels[task.priority]}
