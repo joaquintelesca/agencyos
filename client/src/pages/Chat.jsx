@@ -20,6 +20,8 @@ export default function Chat() {
   const waveRafRef = useRef(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const recordingTimerRef = useRef(null);
+  const [recordedAudio, setRecordedAudio] = useState(null); // { blob, url, ext } — pendiente de enviar o descartar
+  const [sendingRecordedAudio, setSendingRecordedAudio] = useState(false);
   const [showNewChannel, setShowNewChannel] = useState(false);
   const [channelForm, setChannelForm] = useState({ name: '', members: [] });
   const [allUsers, setAllUsers] = useState([]);
@@ -380,21 +382,15 @@ export default function Chat() {
 
       mr.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
 
-      mr.onstop = async () => {
+      mr.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
         stopWaveform();
         if (chunks.length === 0) return;
         const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
         const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
-        const formData = new FormData();
-        formData.append('file', blob, `nota-de-voz.${ext}`);
-        try {
-          const res = await api('/api/chat/upload', { method: 'POST', body: formData });
-          const fileUrl = typeof res === 'string' ? null : res.url;
-          if (fileUrl) await sendMessage('', fileUrl, 'audio', `Nota de voz.${ext}`);
-        } catch (err) {
-          alert('Error al enviar nota de voz: ' + err.message);
-        }
+        // No se sube todavía — se muestra un preview escuchable (como Slack) y recién se sube
+        // si el usuario confirma con "Enviar". Descartar simplemente tira el blob, sin request.
+        setRecordedAudio({ blob, url: URL.createObjectURL(blob), ext });
       };
 
       mr.onerror = () => {
@@ -424,6 +420,28 @@ export default function Chat() {
     if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
     setMediaRecorder(null);
     setRecording(false);
+  };
+
+  const discardRecordedAudio = () => {
+    if (recordedAudio) URL.revokeObjectURL(recordedAudio.url);
+    setRecordedAudio(null);
+  };
+
+  const sendRecordedAudio = async () => {
+    if (!recordedAudio || sendingRecordedAudio) return;
+    setSendingRecordedAudio(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', recordedAudio.blob, `nota-de-voz.${recordedAudio.ext}`);
+      const res = await api('/api/chat/upload', { method: 'POST', body: formData });
+      const fileUrl = typeof res === 'string' ? null : res.url;
+      if (fileUrl) await sendMessage('', fileUrl, 'audio', `Nota de voz.${recordedAudio.ext}`);
+      discardRecordedAudio();
+    } catch (err) {
+      alert('Error al enviar nota de voz: ' + err.message);
+    } finally {
+      setSendingRecordedAudio(false);
+    }
   };
 
   const createChannel = async () => {
@@ -696,82 +714,111 @@ export default function Chat() {
 
           {/* Input */}
           <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg2)', borderRadius: 12, padding: '8px 12px', border: '1px solid var(--border)' }}>
-              <input
-                ref={fileInputRef}
-                type="file"
-                style={{ display: 'none' }}
-                onChange={handleFileUpload}
-                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.zip,.txt"
-              />
-              <button
-                onClick={() => !uploadingFile && fileInputRef.current?.click()}
-                style={{ ...btnStyle, opacity: uploadingFile ? 0.5 : 1 }}
-                title={uploadingFile ? 'Subiendo...' : 'Adjuntar archivo'}
-                disabled={uploadingFile}
-              >
-                {uploadingFile ? '⏳' : '📎'}
-              </button>
-              {uploadingFile && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text3)' }}>
-                  {uploadProgress}%
-                  <button onClick={cancelFileUpload} title="Cancelar subida"
-                    style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 12, padding: 0 }}>
-                    ✕
-                  </button>
-                </span>
-              )}
-              <button
-                onClick={recording ? stopRecording : startRecording}
-                style={{ ...btnStyle, color: recording ? 'var(--red)' : undefined }}
-                title={recording ? 'Detener grabación' : 'Nota de voz'}
-              >
-                {recording ? '⏹' : '🎙'}
-              </button>
-              {recording && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none' }}>
-                  <span style={{ fontSize: 10, color: 'var(--red)' }}>●</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 20 }}>
-                    {waveLevels.map((lvl, i) => (
-                      <div key={i} style={{
-                        width: 2.5,
-                        height: Math.max(2, lvl * 18),
-                        borderRadius: 2,
-                        background: 'var(--red)',
-                        opacity: 0.5 + lvl * 0.5,
-                        transition: 'height 0.05s linear'
-                      }} />
-                    ))}
+            {recordedAudio ? (
+              // Preview de la nota de voz ya grabada — nada se sube todavía, hace falta
+              // confirmar con "Enviar" (mismo patrón que Slack: grabar no es enviar).
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg2)', borderRadius: 12, padding: '8px 12px', border: '1px solid var(--border)' }}>
+                <button
+                  onClick={discardRecordedAudio}
+                  disabled={sendingRecordedAudio}
+                  style={{ ...btnStyle, color: 'var(--text3)' }}
+                  title="Descartar"
+                >
+                  🗑
+                </button>
+                <audio src={recordedAudio.url} controls style={{ flex: 1, height: 32 }} />
+                <button
+                  onClick={sendRecordedAudio}
+                  disabled={sendingRecordedAudio}
+                  style={{
+                    background: 'var(--accent)', border: 'none', borderRadius: 8, width: 32, height: 32,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: sendingRecordedAudio ? 'default' : 'pointer', opacity: sendingRecordedAudio ? 0.6 : 1,
+                    transition: 'all 0.15s', flexShrink: 0
+                  }}
+                  title="Enviar nota de voz"
+                >
+                  <span style={{ fontSize: 14, color: '#fff' }}>{sendingRecordedAudio ? '…' : '↑'}</span>
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg2)', borderRadius: 12, padding: '8px 12px', border: '1px solid var(--border)' }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  style={{ display: 'none' }}
+                  onChange={handleFileUpload}
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.zip,.txt"
+                />
+                <button
+                  onClick={() => !uploadingFile && fileInputRef.current?.click()}
+                  style={{ ...btnStyle, opacity: uploadingFile ? 0.5 : 1 }}
+                  title={uploadingFile ? 'Subiendo...' : 'Adjuntar archivo'}
+                  disabled={uploadingFile}
+                >
+                  {uploadingFile ? '⏳' : '📎'}
+                </button>
+                {uploadingFile && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text3)' }}>
+                    {uploadProgress}%
+                    <button onClick={cancelFileUpload} title="Cancelar subida"
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 12, padding: 0 }}>
+                      ✕
+                    </button>
+                  </span>
+                )}
+                <button
+                  onClick={recording ? stopRecording : startRecording}
+                  style={{ ...btnStyle, color: recording ? 'var(--red)' : undefined }}
+                  title={recording ? 'Detener grabación' : 'Nota de voz'}
+                >
+                  {recording ? '⏹' : '🎙'}
+                </button>
+                {recording && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none' }}>
+                    <span style={{ fontSize: 10, color: 'var(--red)' }}>●</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 20 }}>
+                      {waveLevels.map((lvl, i) => (
+                        <div key={i} style={{
+                          width: 2.5,
+                          height: Math.max(2, lvl * 18),
+                          borderRadius: 2,
+                          background: 'var(--red)',
+                          opacity: 0.5 + lvl * 0.5,
+                          transition: 'height 0.05s linear'
+                        }} />
+                      ))}
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums' }}>{formatRecordingTime(recordingSeconds)}</span>
                   </div>
-                  <span style={{ fontSize: 11, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums' }}>{formatRecordingTime(recordingSeconds)}</span>
-                </div>
-              )}
-              <input
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage(input);
-                  }
-                }}
-                placeholder={activeConv.type === 'channel' ? `Mensaje en #${activeConv.name}...` : activeTab ? `Mensaje a ${activeConv.name} sobre ${dmTabs.find(t => t.id === activeTab)?.name || 'cliente'}...` : `Mensaje a ${activeConv.name}...`}
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font)' }}
-              />
-              <button
-                onClick={() => sendMessage(input)}
-                disabled={!input.trim() && !recording}
-                style={{
-                  background: input.trim() ? 'var(--accent)' : 'var(--bg4)',
-                  border: 'none', borderRadius: 8, width: 32, height: 32,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: input.trim() ? 'pointer' : 'default',
-                  transition: 'all 0.15s', flexShrink: 0
-                }}
-              >
-                <span style={{ fontSize: 14, color: '#fff' }}>↑</span>
-              </button>
-            </div>
+                )}
+                <input
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage(input);
+                    }
+                  }}
+                  placeholder={activeConv.type === 'channel' ? `Mensaje en #${activeConv.name}...` : activeTab ? `Mensaje a ${activeConv.name} sobre ${dmTabs.find(t => t.id === activeTab)?.name || 'cliente'}...` : `Mensaje a ${activeConv.name}...`}
+                  style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font)' }}
+                />
+                <button
+                  onClick={() => sendMessage(input)}
+                  disabled={!input.trim() && !recording}
+                  style={{
+                    background: input.trim() ? 'var(--accent)' : 'var(--bg4)',
+                    border: 'none', borderRadius: 8, width: 32, height: 32,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: input.trim() ? 'pointer' : 'default',
+                    transition: 'all 0.15s', flexShrink: 0
+                  }}
+                >
+                  <span style={{ fontSize: 14, color: '#fff' }}>↑</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
