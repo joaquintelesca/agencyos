@@ -519,9 +519,12 @@ async function initDB() {
     await seedProjectMembers();
   }
 
-  // Seed admin
-  const admin = await db('users').where({ email: 'admin@agencyos.com' }).first();
-  if (!admin) {
+  // Seed admin: solo si NINGÚN admin existe todavía, no si falta ese email puntual — antes
+  // buscaba por el email exacto 'admin@agencyos.com', así que una vez que ese usuario cambiaba
+  // de email (ej: consolidar la cuenta seed con la cuenta real de alguien) este chequeo volvía
+  // a dar "no existe" en cada reinicio del server y recreaba un admin fantasma cada vez.
+  const anyAdmin = await db('users').where({ role: 'admin' }).first();
+  if (!anyAdmin) {
     const hash = bcrypt.hashSync('admin123', 10);
     await db('users').insert({ id: uuidv4(), name: 'Admin', email: 'admin@agencyos.com', password: hash, role: 'admin', avatar_color: '#f59e0b' });
     console.log('✅ Admin creado: admin@agencyos.com / admin123');
