@@ -172,6 +172,13 @@ async function verifyFileSignature(source, declaredMimetype) {
     : await fileTypeFromFile(source).catch(() => null);
   if (!detected) return false;
   if (declaredMimetype === 'application/pdf') return detected.mime === 'application/pdf';
+  // WebM (audio y video) comparten el mismo contenedor Matroska/EBML — file-type no siempre
+  // puede distinguir un WebM solo-audio (como el que graba MediaRecorder para notas de voz) de
+  // uno con video, y termina reportando 'video/webm' aunque el archivo declarado sea de audio.
+  // Es una limitación conocida del propio paquete, no una falla de seguridad real: ambos tipos
+  // ya están permitidos en la whitelist, así que aceptar esta ambigüedad puntual no abre nada
+  // que no estuviera ya abierto.
+  if (declaredMimetype === 'audio/webm' && detected.mime === 'video/webm') return true;
   return detected.mime.split('/')[0] === declaredMimetype.split('/')[0];
 }
 
@@ -538,6 +545,11 @@ async function initDB() {
 // ningún lado, así que script-src se mantiene estricto). crossOriginEmbedderPolicy se apaga:
 // esta app no usa SharedArrayBuffer/WASM threads que necesiten aislamiento cross-origin, y
 // dejarlo prendido arriesga romper la carga de Google Fonts sin ningún beneficio real acá.
+// Con R2, /uploads/:filename redirige (302) a una signed URL en <bucket>.<account>.r2.cloudflarestorage.com
+// — la CSP se evalúa sobre la URL final después del redirect, no la original, así que ese origen
+// tiene que estar permitido en img-src/media-src o el navegador bloquea la carga en silencio
+// (esto rompió imágenes/audio/video del chat la primera vez que se probó con contenido real).
+const r2Origin = useR2 ? `https://${R2_BUCKET}.${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : null;
 app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: false,
@@ -546,8 +558,8 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
-      imgSrc: ["'self'", 'data:', 'blob:'],
-      mediaSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'blob:', ...(r2Origin ? [r2Origin] : [])],
+      mediaSrc: ["'self'", ...(r2Origin ? [r2Origin] : [])],
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
