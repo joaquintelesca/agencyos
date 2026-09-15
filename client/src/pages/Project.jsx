@@ -6,10 +6,11 @@ import VideoReview from '../components/VideoReview';
 import { initials } from '../utils/format';
 
 const STATUSES = [
-  { key: 'todo', label: 'Por hacer', color: 'var(--text2)' },
-  { key: 'in_progress', label: 'En progreso', color: 'var(--blue)' },
-  { key: 'review', label: 'En revisión', color: 'var(--yellow)' },
-  { key: 'done', label: 'Listo', color: 'var(--green)' },
+  { key: 'todo', label: 'Por hacer', color: 'var(--text2)', description: 'Todavía no se empezó.' },
+  { key: 'in_progress', label: 'En progreso', color: 'var(--blue)', description: 'El editor la está trabajando.' },
+  { key: 'review', label: 'En revisión', color: 'var(--yellow)', description: 'Subió una versión, esperando que la mires.' },
+  { key: 'feedback', label: 'Aplicar feedback', color: 'var(--red)', description: 'Dejaste comentarios: el editor tiene que aplicarlos.' },
+  { key: 'done', label: 'Listo', color: 'var(--green)', description: 'Aprobado, sin cambios pendientes.' },
 ];
 const PRIORITIES = ['low', 'medium', 'high'];
 
@@ -243,14 +244,19 @@ export default function Project() {
           {STATUSES.map(col => (
             <div key={col.key} style={{ width: 250, flexShrink: 0, display: 'flex', flexDirection: 'column' }}
               onDragOver={e => e.preventDefault()} onDrop={() => onDrop(col.key)}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, padding: '0 4px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: col.color }}>{col.label}</span>
-                  <span style={{ fontSize: 11, background: 'var(--bg3)', color: 'var(--text3)', padding: '1px 7px', borderRadius: 8 }}>
-                    {tasks.filter(t => t.status === col.key).length}
-                  </span>
+              <div style={{ marginBottom: 10, padding: '0 4px' }}>
+                {col.description && (
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4, lineHeight: 1.3 }}>{col.description}</div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: col.color }}>{col.label}</span>
+                    <span style={{ fontSize: 11, background: 'var(--bg3)', color: 'var(--text3)', padding: '1px 7px', borderRadius: 8 }}>
+                      {tasks.filter(t => t.status === col.key).length}
+                    </span>
+                  </div>
+                  {user.role === 'admin' && <button onClick={() => openCreateTask(col.key)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>＋</button>}
                 </div>
-                {user.role === 'admin' && <button onClick={() => openCreateTask(col.key)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>＋</button>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
                 {tasks.filter(t => t.status === col.key).map(task => (

@@ -901,7 +901,8 @@ app.get('/api/projects', auth, async (req, res) => {
     // notificación como leída no lo apagaba aunque la tarea siguiera sin moverse de columna.
     // Es por usuario a propósito: cada admin tiene su propia notificación y su propio "visto".
     const unreadReviewRows = await db('notifications')
-      .where({ user_id: req.user.id, type: 'task_review', read: false })
+      .where({ user_id: req.user.id, read: false })
+      .whereIn('type', ['task_review', 'task_feedback'])
       .whereNotNull('project_id')
       .select('project_id')
       .count('* as count')
@@ -1385,6 +1386,13 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
       const project = await db('projects').where({ id: existing.project_id }).first();
       for (const admin of admins) {
         await createNotification({ userId: admin.id, type: 'task_review', actorId: req.user.id, projectId: existing.project_id, preview: `"${existing.title}" en ${project?.name || 'proyecto'}` });
+      }
+    }
+    if (status === 'feedback' && existing.status !== 'feedback') {
+      const targetUserId = task.assigned_to;
+      if (targetUserId && targetUserId !== req.user.id) {
+        const project = await db('projects').where({ id: existing.project_id }).first();
+        await createNotification({ userId: targetUserId, type: 'task_feedback', actorId: req.user.id, projectId: existing.project_id, preview: `"${existing.title}" en ${project?.name || 'proyecto'}` });
       }
     }
     res.json(task);
