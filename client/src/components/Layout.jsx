@@ -14,6 +14,8 @@ export default function Layout() {
   const [clients, setClients] = useState([]);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showNewClient, setShowNewClient] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [clientForm, setClientForm] = useState({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
   const [step, setStep] = useState(1);
   const [projectForm, setProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' });
@@ -83,7 +85,8 @@ export default function Layout() {
   const openNewProject = () => { setStep(1); setProjectForm({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' }); setPaymentForm({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '' }); setShowNewProject(true); };
 
   const createClient = async () => {
-    if (!clientForm.name.trim()) return;
+    if (!clientForm.name.trim() || isCreatingClient) return;
+    setIsCreatingClient(true);
     try {
       await api('/api/clients', { method: 'POST', body: clientForm });
       const updated = await api('/api/clients');
@@ -93,6 +96,8 @@ export default function Layout() {
     } catch (e) {
       console.error('Error creando cliente:', e);
       alert('Error: ' + e.message);
+    } finally {
+      setIsCreatingClient(false);
     }
   };
 
@@ -174,18 +179,29 @@ export default function Layout() {
   const goToStep2 = () => { if (!projectForm.name.trim()) return; setStep(2); };
 
   const createProject = async () => {
-    const body = { ...projectForm };
-    if (user?.role === 'admin' && paymentForm.payment_editor_id) {
-      body.payment_editor_id = paymentForm.payment_editor_id;
-      body.payment_type = paymentForm.payment_type;
-      body.payment_amount = paymentForm.payment_type === 'fixed' ? paymentForm.payment_amount : paymentForm.payment_rate;
-      body.payment_hours = paymentForm.payment_hours || 0;
-      body.client_amount = paymentForm.payment_type === 'fixed' ? paymentForm.client_amount : paymentForm.client_rate;
+    // Sin este guard, una respuesta lenta del server (ej: cold start en el free tier de Render)
+    // + un segundo click por impaciencia terminaba creando el proyecto duplicado.
+    if (isCreatingProject) return;
+    setIsCreatingProject(true);
+    try {
+      const body = { ...projectForm };
+      if (user?.role === 'admin' && paymentForm.payment_editor_id) {
+        body.payment_editor_id = paymentForm.payment_editor_id;
+        body.payment_type = paymentForm.payment_type;
+        body.payment_amount = paymentForm.payment_type === 'fixed' ? paymentForm.payment_amount : paymentForm.payment_rate;
+        body.payment_hours = paymentForm.payment_hours || 0;
+        body.client_amount = paymentForm.payment_type === 'fixed' ? paymentForm.client_amount : paymentForm.client_rate;
+      }
+      const p = await api('/api/projects', { method: 'POST', body });
+      setProjects(prev => [p, ...prev]);
+      setShowNewProject(false);
+      navigate(`/project/${p.id}`);
+    } catch (e) {
+      console.error('Error creando proyecto:', e);
+      alert('Error: ' + e.message);
+    } finally {
+      setIsCreatingProject(false);
     }
-    const p = await api('/api/projects', { method: 'POST', body });
-    setProjects(prev => [p, ...prev]);
-    setShowNewProject(false);
-    navigate(`/project/${p.id}`);
   };
 
   const isActive = (path) => location.pathname === path;
@@ -402,7 +418,7 @@ export default function Layout() {
                   <button className="btn btn-ghost" onClick={() => setShowNewProject(false)}>Cancelar</button>
                   {user?.role === 'admin'
                     ? <button className="btn btn-primary" onClick={goToStep2} disabled={!projectForm.name.trim()}>Siguiente →</button>
-                    : <button className="btn btn-primary" onClick={createProject} disabled={!projectForm.name.trim()}>Crear proyecto</button>
+                    : <button className="btn btn-primary" onClick={createProject} disabled={!projectForm.name.trim() || isCreatingProject}>{isCreatingProject ? 'Creando...' : 'Crear proyecto'}</button>
                   }
                 </div>
               </>
@@ -490,7 +506,7 @@ export default function Layout() {
                 )}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button className="btn btn-ghost" onClick={() => setStep(1)}>← Volver</button>
-                  <button className="btn btn-primary" onClick={createProject} disabled={!paymentForm.payment_editor_id || (paymentForm.payment_type === 'fixed' ? !paymentForm.payment_amount : !paymentForm.payment_rate)}>Crear proyecto</button>
+                  <button className="btn btn-primary" onClick={createProject} disabled={isCreatingProject || !paymentForm.payment_editor_id || (paymentForm.payment_type === 'fixed' ? !paymentForm.payment_amount : !paymentForm.payment_rate)}>{isCreatingProject ? 'Creando...' : 'Crear proyecto'}</button>
                 </div>
               </>
             )}
@@ -530,7 +546,7 @@ export default function Layout() {
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setShowNewClient(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={createClient} disabled={!clientForm.name.trim()}>Crear cliente</button>
+              <button className="btn btn-primary" onClick={createClient} disabled={!clientForm.name.trim() || isCreatingClient}>{isCreatingClient ? 'Creando...' : 'Crear cliente'}</button>
             </div>
           </div>
         </div>
