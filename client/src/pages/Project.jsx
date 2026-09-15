@@ -8,8 +8,8 @@ import { initials } from '../utils/format';
 const STATUSES = [
   { key: 'todo', label: 'Por hacer', color: 'var(--text2)', description: 'Todavía no se empezó.' },
   { key: 'in_progress', label: 'En progreso', color: 'var(--blue)', description: 'El editor la está trabajando.' },
-  { key: 'review', label: 'En revisión', color: 'var(--yellow)', description: 'El editor subió una nueva versión. Está esperando tu feedback.' },
-  { key: 'feedback', label: 'Aplicar feedback', color: 'var(--red)', description: 'Hay comentarios sin aplicar en el video.', note: '↻ Al terminar, movela de nuevo a "En revisión".' },
+  { key: 'review', label: 'En revisión', color: 'var(--yellow)', description: 'El editor subió una nueva versión, pendiente de feedback del admin.' },
+  { key: 'feedback', label: 'Aplicar feedback', color: 'var(--red)', description: 'Hay comentarios del admin sin aplicar en el video.', note: '↻ Al aplicarlos, el editor debe volver a moverla a "En revisión".' },
   { key: 'done', label: 'Listo', color: 'var(--green)', description: 'Aprobado, sin cambios pendientes.' },
 ];
 const PRIORITIES = ['low', 'medium', 'high'];
