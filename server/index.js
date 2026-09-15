@@ -1114,7 +1114,7 @@ app.get('/api/dashboard/videos-overview', auth, async (req, res) => {
       .select(
         'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at', 'v.file_size',
         'p.name as project_name', 'p.color as project_color',
-        'c.name as client_name',
+        'c.id as client_id', 'c.name as client_name', 'c.color as client_color',
         'u.name as uploader_name',
         'tk.title as task_title', 'tk.status as task_status',
         db.raw('COALESCE(uc.unresolved_count, 0) as unresolved_count'),
