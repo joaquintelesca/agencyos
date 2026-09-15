@@ -450,6 +450,14 @@ async function initDB() {
     await db.schema.table('chat_messages', t => { t.string('client_id').nullable(); });
   }
 
+  // Duración real (segundos) de notas de voz, tomada del cronómetro del cliente al grabar —
+  // los .webm de MediaRecorder no siempre reportan su propia duración de forma confiable, así
+  // que en vez de depender del navegador para mostrarla se guarda el valor ya conocido.
+  const hasFileDuration = await db.schema.hasColumn('chat_messages', 'file_duration');
+  if (!hasFileDuration) {
+    await db.schema.table('chat_messages', t => { t.integer('file_duration').nullable(); });
+  }
+
   const hasPaymentType = await db.schema.hasColumn('projects', 'payment_type');
   if (!hasPaymentType) {
     await db.schema.table('projects', t => {
@@ -2187,7 +2195,7 @@ app.get('/api/chat/messages', auth, async (req, res) => {
 // POST send a message
 app.post('/api/chat/messages', auth, async (req, res) => {
   try {
-    const { type, receiver_id, channel_id, content, file_url, file_type, file_name, client_id } = req.body;
+    const { type, receiver_id, channel_id, content, file_url, file_type, file_name, client_id, file_duration } = req.body;
     const senderId = req.user.id;
 
     if (req.user.role !== 'admin' && type === 'dm') {
@@ -2207,7 +2215,7 @@ app.post('/api/chat/messages', auth, async (req, res) => {
     }
 
     const id = uuidv4();
-    await db('chat_messages').insert({ id, sender_id: senderId, receiver_id: receiver_id || null, channel_id: channel_id || null, type, content: content || '', file_url: file_url || null, file_type: file_type || null, file_name: file_name || null, client_id: (type === 'dm' && client_id) ? client_id : null });
+    await db('chat_messages').insert({ id, sender_id: senderId, receiver_id: receiver_id || null, channel_id: channel_id || null, type, content: content || '', file_url: file_url || null, file_type: file_type || null, file_name: file_name || null, client_id: (type === 'dm' && client_id) ? client_id : null, file_duration: file_duration || null });
     const msg = await db('chat_messages as m').join('users as u', 'm.sender_id', 'u.id').where('m.id', id).select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color').first();
     // Los mensajes de chat ya tienen su propio contador de no leídos (chat_messages.read_by,
     // vía /api/chat/unread) que alimenta la burbuja del ítem "Chat" del sidebar — no se crea

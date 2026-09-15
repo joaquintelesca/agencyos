@@ -3,23 +3,69 @@ import { useAuth } from '../context/AuthContext';
 import { initials as initialsBase } from '../utils/format';
 import { uploadWithProgress } from '../utils/upload';
 
-// Los .webm que graba MediaRecorder no siempre escriben la duración real en el contenedor
-// (queda como Infinity/NaN) — los controles nativos del navegador entonces muestran "0:00" y
-// la barra de progreso no funciona, aunque el audio se reproduzca bien. Workaround estándar:
-// forzar un seek más allá del final hace que el navegador escanee el archivo y calcule la
-// duración real; después se vuelve a 0 para que arranque desde el principio como se espera.
-function fixAudioDuration(e) {
-  const audio = e.target;
-  // No solo Infinity/NaN: para un blob ya cerrado (no un stream en vivo) Chrome a veces
-  // directamente reporta 0 en vez de Infinity cuando no pudo leer la duración real del
-  // contenedor — un audio real de varios segundos nunca debería durar 0.
-  if (!isFinite(audio.duration) || audio.duration === 0) {
-    audio.currentTime = 1e101;
-    audio.ontimeupdate = () => {
-      audio.ontimeupdate = null;
-      audio.currentTime = 0;
-    };
-  }
+const formatRecordingTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+// Reproductor propio para notas de voz (estilo Slack) en vez de <audio controls> nativo: los
+// .webm que graba MediaRecorder no siempre reportan su propia duración de forma confiable en
+// los controles del navegador (queda en Infinity/NaN, o directamente 0), así que el total
+// mostrado viene de `knownDuration` (el cronómetro real del cliente al grabar, guardado en
+// chat_messages.file_duration) en vez de la metadata del archivo. La posición durante la
+// reproducción sí es siempre confiable vía el propio evento timeupdate del audio.
+function VoiceNotePlayer({ src, knownDuration }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [fallbackDuration, setFallbackDuration] = useState(null);
+  const total = knownDuration || fallbackDuration || 0;
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) audio.pause(); else audio.play();
+  };
+
+  const seek = (e) => {
+    const audio = audioRef.current;
+    if (!audio || !total) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * total;
+    setCurrentTime(audio.currentTime);
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 190 }}>
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); setCurrentTime(0); }}
+        onTimeUpdate={e => setCurrentTime(e.target.currentTime)}
+        onLoadedMetadata={e => {
+          // Solo se usa si no vino una duración ya conocida — best-effort para mensajes viejos.
+          if (!knownDuration && isFinite(e.target.duration) && e.target.duration > 0) {
+            setFallbackDuration(e.target.duration);
+          }
+        }}
+        style={{ display: 'none' }}
+      />
+      <button onClick={togglePlay} title={playing ? 'Pausar' : 'Reproducir'} style={{
+        background: 'var(--accent)', border: 'none', borderRadius: '50%', width: 26, height: 26,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        flexShrink: 0, color: '#fff', fontSize: 10
+      }}>
+        {playing ? '⏸' : '▶'}
+      </button>
+      <div onClick={seek} style={{ flex: 1, height: 4, background: 'var(--border)', borderRadius: 2, cursor: total ? 'pointer' : 'default', position: 'relative' }}>
+        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 2, background: 'var(--accent)', width: `${total ? Math.min(100, (currentTime / total) * 100) : 0}%` }} />
+      </div>
+      <span style={{ fontSize: 11, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+        {formatRecordingTime(currentTime)} / {total ? formatRecordingTime(total) : '--:--'}
+      </span>
+    </div>
+  );
 }
 
 export default function Chat() {
@@ -282,7 +328,7 @@ export default function Chat() {
     }
   }, [messages, loadingOlder, hasMore, api]);
 
-  const sendMessage = async (content, fileUrl, fileType, fileName) => {
+  const sendMessage = async (content, fileUrl, fileType, fileName, fileDuration) => {
     const conv = activeConvRef.current;
     if (!conv) return;
     if (!content?.trim() && !fileUrl) return;
@@ -295,6 +341,7 @@ export default function Chat() {
       file_url: fileUrl || null,
       file_type: fileType || null,
       file_name: fileName || null,
+      file_duration: fileDuration || null,
       client_id: conv.type === 'dm' ? (activeTabRef.current || null) : null,
     };
 
@@ -380,8 +427,6 @@ export default function Chat() {
     setRecordingSeconds(0);
   };
 
-  const formatRecordingTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-
   const startRecording = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       alert('Tu navegador no soporta grabación. Usá Chrome o Firefox.');
@@ -463,7 +508,7 @@ export default function Chat() {
       formData.append('file', recordedAudio.blob, `nota-de-voz.${recordedAudio.ext}`);
       const res = await api('/api/chat/upload', { method: 'POST', body: formData });
       const fileUrl = typeof res === 'string' ? null : res.url;
-      if (fileUrl) await sendMessage('', fileUrl, 'audio', `Nota de voz.${recordedAudio.ext}`);
+      if (fileUrl) await sendMessage('', fileUrl, 'audio', `Nota de voz.${recordedAudio.ext}`, recordedAudio.durationSec);
       discardRecordedAudio();
     } catch (err) {
       alert('Error al enviar nota de voz: ' + err.message);
@@ -754,10 +799,7 @@ export default function Chat() {
                 >
                   🗑
                 </button>
-                <span style={{ fontSize: 11, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                  {formatRecordingTime(recordedAudio.durationSec)}
-                </span>
-                <audio src={recordedAudio.url} controls onLoadedMetadata={fixAudioDuration} style={{ flex: 1, height: 32 }} />
+                <VoiceNotePlayer src={recordedAudio.url} knownDuration={recordedAudio.durationSec} />
                 <button
                   onClick={sendRecordedAudio}
                   disabled={sendingRecordedAudio}
@@ -1007,7 +1049,7 @@ function Message({ msg, isMe, compact, initials, mediaUrl }) {
         {msg.file_type === 'audio' && (
           <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 16, padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
             <span style={{ fontSize: 16 }}>🎙</span>
-            <audio src={mediaUrl(msg.file_url)} controls onLoadedMetadata={fixAudioDuration} style={{ height: 28, maxWidth: 220 }} />
+            <VoiceNotePlayer src={mediaUrl(msg.file_url)} knownDuration={msg.file_duration} />
           </div>
         )}
         {msg.file_type === 'file' && (
