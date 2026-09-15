@@ -910,7 +910,7 @@ app.get('/api/projects', auth, async (req, res) => {
     // Es por usuario a propósito: cada admin tiene su propia notificación y su propio "visto".
     const unreadReviewRows = await db('notifications')
       .where({ user_id: req.user.id, read: false })
-      .whereIn('type', ['task_review', 'task_feedback'])
+      .whereIn('type', ['task_review', 'task_feedback', 'video_uploaded'])
       .whereNotNull('project_id')
       .select('project_id')
       .count('* as count')
@@ -1617,10 +1617,16 @@ app.post('/api/videos/upload/:uploadId/complete', auth, async (req, res) => {
     await db('videos').insert({ id, project_id: session.projectId, title, filename, original_name: originalName || title, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: session.totalSize, task_id: task_id || null, group_id: groupId });
     const video = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id').leftJoin('tasks as tk', 'v.task_id', 'tk.id').where('v.id', id).select('v.*', 'u.name as uploader_name', 'tk.title as task_title').first();
     await emitToProject(session.projectId, 'video:uploaded', video);
+    // Subir un video no cambia el estado de ninguna tarea por sí solo (eso es una acción aparte
+    // del usuario), así que sin esto un admin podía no enterarse nunca de que hay contenido
+    // nuevo para revisar si nadie tocaba el kanban.
+    const admins = await db('users').where({ role: 'admin' }).select('id');
+    for (const admin of admins) {
+      await createNotification({ userId: admin.id, type: 'video_uploaded', actorId: req.user.id, projectId: session.projectId, videoId: id, preview: title });
+    }
     const bytes = await getUploadsSize();
     if (bytes >= STORAGE_WARN_BYTES) {
-      const admins = await db('users').where({ role: 'admin' }).pluck('id');
-      admins.forEach(adminId => io.to(`user:${adminId}`).emit('storage:warning', { bytes, gb: (bytes / (1024 ** 3)).toFixed(2) }));
+      admins.forEach(({ id: adminId }) => io.to(`user:${adminId}`).emit('storage:warning', { bytes, gb: (bytes / (1024 ** 3)).toFixed(2) }));
     }
     res.json(video);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }

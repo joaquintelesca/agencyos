@@ -43,7 +43,7 @@ export default function Notifications() {
     await api(`/api/notifications/${n.id}/read`, { method: 'PATCH' });
     setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
     setUnreadNotifs(prev => Math.max(0, prev - 1));
-    if (n.type === 'task_review' || n.type === 'task_feedback') refreshProjectDots();
+    if (n.type === 'task_review' || n.type === 'task_feedback' || n.type === 'video_uploaded') refreshProjectDots();
   };
 
   const handleClick = async (n) => {
@@ -51,7 +51,7 @@ export default function Notifications() {
       await api(`/api/notifications/${n.id}/read`, { method: 'PATCH' });
       setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
       setUnreadNotifs(prev => Math.max(0, prev - 1));
-      if (n.type === 'task_review' || n.type === 'task_feedback') refreshProjectDots();
+      if (n.type === 'task_review' || n.type === 'task_feedback' || n.type === 'video_uploaded') refreshProjectDots();
     }
     if (n.video_id && n.project_id) navigate(`/project/${n.project_id}?tab=videos&video=${n.video_id}`);
     else if (n.type === 'chat') navigate('/chat');
@@ -73,6 +73,7 @@ export default function Notifications() {
     if (type === 'reply') return '↩️';
     if (type === 'task_review') return '📋';
     if (type === 'task_feedback') return '📝';
+    if (type === 'video_uploaded') return '🎬';
     if (type === 'project_assigned') return '📁';
     if (type === 'task_assigned') return '✅';
     if (type === 'project_message') return '💬';
@@ -83,6 +84,7 @@ export default function Notifications() {
     if (n.type === 'reply') return <><strong>{n.actor_name}</strong> respondió tu comentario{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'task_review') return <><strong>{n.actor_name}</strong> pasó una tarea a revisión{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'task_feedback') return <><strong>{n.actor_name}</strong> te dejó feedback para aplicar en una tarea{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
+    if (n.type === 'video_uploaded') return <><strong>{n.actor_name}</strong> subió un video{n.preview ? <>: "{n.preview}"</> : ''}{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'project_assigned') return <><strong>{n.actor_name}</strong> te asignó un proyecto{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'task_assigned') return <><strong>{n.actor_name}</strong> te asignó una tarea{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'project_message') return <><strong>{n.actor_name}</strong> escribió en el chat del proyecto{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
