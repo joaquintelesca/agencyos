@@ -218,30 +218,18 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   };
 
   // Canvas drawing
-  // El <video> mantiene su aspect ratio dentro del contenedor (letterboxing si no es 16:9),
-  // pero el canvas cubre el contenedor entero — hay que mapear el click al área real del video,
-  // no al contenedor completo, o el dibujo queda desalineado en videos verticales/no 16:9.
-  const getVideoContentRect = () => {
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-    const containerW = canvas?.clientWidth || 0;
-    const containerH = canvas?.clientHeight || 0;
-    if (!video?.videoWidth || !video?.videoHeight) return { x: 0, y: 0, w: containerW, h: containerH };
-    const videoAspect = video.videoWidth / video.videoHeight;
-    const containerAspect = containerW / containerH;
-    let renderW, renderH;
-    if (videoAspect > containerAspect) { renderW = containerW; renderH = containerW / videoAspect; }
-    else { renderH = containerH; renderW = containerH * videoAspect; }
-    return { x: (containerW - renderW) / 2, y: (containerH - renderH) / 2, w: renderW, h: renderH };
-  };
-
+  // El canvas cubre el contenedor entero y el navegador lo estira 1:1 (mismo ancho/alto en CSS)
+  // sobre esa misma área — no hace falta restar el letterboxing del video: mapear el click
+  // directo sobre el tamaño del canvas ya queda alineado con lo que se ve en pantalla. Restar
+  // el rectángulo "real" del video acá (como hacía antes) hacía que el dibujo se estirara y
+  // se corriera hacia los bordes en videos verticales/no 16:9.
   const getCanvasPos = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const content = getVideoContentRect();
-    const x = e.clientX - rect.left - content.x;
-    const y = e.clientY - rect.top - content.y;
-    return { x: (x / content.w) * canvas.width, y: (y / content.h) * canvas.height };
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((e.clientY - rect.top) / rect.height) * canvas.height
+    };
   };
 
   const redrawCanvas = useCallback(() => {
