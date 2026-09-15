@@ -75,12 +75,20 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   useEffect(() => {
     if (!socket) return;
     const onVideoUpdated = (data) => { if (data.projectId === projectId) reloadVideos(); };
+    // Otro usuario (admin o el editor que lo subió) puede borrar un video mientras esta
+    // pantalla está abierta — lo sacamos de la grilla y cerramos su vista si era el seleccionado.
+    const onVideoDeleted = (data) => {
+      if (data.projectId !== projectId) return;
+      setVideos(prev => prev.filter(v => v.id !== data.id));
+      setSelectedVideo(prev => (prev && prev.id === data.id) ? null : prev);
+    };
     socket.on('video:updated', onVideoUpdated);
+    socket.on('video:deleted', onVideoDeleted);
     // Tras una reconexión (WiFi cortado, laptop cerrada) pueden haber quedado videos o
     // comentarios sin enterarse — reloadVideos() dispara también el refetch de comentarios
     // del video seleccionado, porque ese efecto depende de [selectedVideo, videos].
     socket.on('connect', reloadVideos);
-    return () => { socket.off('video:updated', onVideoUpdated); socket.off('connect', reloadVideos); };
+    return () => { socket.off('video:updated', onVideoUpdated); socket.off('video:deleted', onVideoDeleted); socket.off('connect', reloadVideos); };
   }, [socket, projectId, reloadVideos]);
 
   // Deep link desde una notificación (?tab=videos&video=X): seleccionar ese video apenas cargue.
@@ -444,6 +452,22 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     } catch (e) { console.error(e); alert('Error al agrupar los videos: ' + e.message); }
   };
 
+  const deleteVideo = (v) => {
+    setVideos(prev => prev.filter(x => x.id !== v.id));
+    setSelectedVideo(prev => (prev && prev.id === v.id) ? null : prev);
+    scheduleDelete('Video eliminado', {
+      onCommit: async () => {
+        try {
+          await api(`/api/videos/${v.id}`, { method: 'DELETE' });
+        } catch (e) {
+          if (e.status === 404) return;
+          throw e;
+        }
+      },
+      onUndo: () => setVideos(prev => [v, ...prev])
+    });
+  };
+
   const handleUnstack = async (videoId) => {
     try {
       await api(`/api/videos/${videoId}/unstack`, { method: 'PATCH' });
@@ -476,12 +500,22 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
 
   const renderVideoCard = (v, { isDragOver, isExpanded } = {}) => (
     <div
+      className="video-card"
       {...cardDragProps(v.id)}
       {...dropTargetProps(v.id)}
       onClick={() => setSelectedVideo(v)}
-      style={{ background: 'var(--bg2)', border: `2px solid ${isDragOver ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 12, padding: 16, cursor: dragVideoId ? 'grabbing' : 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s', opacity: dragVideoId === v.id ? 0.4 : 1 }}
+      style={{ position: 'relative', background: 'var(--bg2)', border: `2px solid ${isDragOver ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 12, padding: 16, cursor: dragVideoId ? 'grabbing' : 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s', opacity: dragVideoId === v.id ? 0.4 : 1 }}
       onMouseEnter={e => { if (!isDragOver && !dragVideoId) e.currentTarget.style.borderColor = 'var(--accent)'; }}
       onMouseLeave={e => { if (!isDragOver) e.currentTarget.style.borderColor = 'var(--border)'; }}>
+      {(user.role === 'admin' || v.uploaded_by === user.id) && (
+        <button
+          className="video-delete-btn"
+          onClick={e => { e.stopPropagation(); deleteVideo(v); }}
+          title="Eliminar video"
+          style={{ position: 'absolute', top: 10, right: 10, zIndex: 1, width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          🗑
+        </button>
+      )}
       <div style={{ width: '100%', paddingBottom: '56%', background: 'var(--bg4)', borderRadius: 8, marginBottom: 10, position: 'relative' }}>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>▶️</div>
       </div>
@@ -651,6 +685,12 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         </div>
         <span style={{ fontSize: 13, fontWeight: 600, color: DARK.text, flex: 1 }}>{selectedVideo.title}</span>
         <span style={{ fontSize: 11, color: DARK.text3 }}>{comments.length} comentarios</span>
+        {(user.role === 'admin' || selectedVideo.uploaded_by === user.id) && (
+          <button onClick={() => deleteVideo(selectedVideo)} title="Eliminar video"
+            style={{ background: 'transparent', border: `1px solid ${DARK.border}`, borderRadius: 6, padding: '4px 10px', color: DARK.text2, fontSize: 12, cursor: 'pointer' }}>
+            🗑 Eliminar
+          </button>
+        )}
         <button className="btn btn-primary btn-sm" onClick={() => setShowUpload(true)}>⬆ Nueva versión</button>
       </div>
 

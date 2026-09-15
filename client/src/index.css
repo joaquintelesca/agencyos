@@ -69,6 +69,10 @@ body {
 .reveal-btn.edit:hover { color: var(--accent2); }
 .reveal-btn.delete:hover { color: var(--red); }
 
+/* Botón de borrar video: solo visible al pasar el mouse por la tarjeta */
+.video-card .video-delete-btn { opacity: 0; transition: opacity 0.15s, background 0.15s; }
+.video-card:hover .video-delete-btn { opacity: 1; }
+
 /* Inputs */
 .input {
   width: 100%; background: var(--bg3); border: 1px solid var(--border);

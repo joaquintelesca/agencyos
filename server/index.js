@@ -1631,31 +1631,30 @@ app.delete('/api/videos/upload/:uploadId', auth, async (req, res) => {
 
 app.delete('/api/videos/:id', auth, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     const video = await db('videos').where({ id: req.params.id }).first();
-    let commentAttachments = [], replyAttachments = [];
-    if (video) {
-      const commentIds = await db('video_comments').where({ video_id: req.params.id }).pluck('id');
-      const replyIds = commentIds.length ? await db('comment_replies').whereIn('comment_id', commentIds).pluck('id') : [];
-      commentAttachments = commentIds.length ? await db('comment_attachments').whereIn('comment_id', commentIds) : [];
-      replyAttachments = replyIds.length ? await db('reply_attachments').whereIn('reply_id', replyIds) : [];
-
-      await db.transaction(async trx => {
-        if (replyIds.length) await trx('reply_attachments').whereIn('reply_id', replyIds).delete();
-        if (commentIds.length) await trx('comment_attachments').whereIn('comment_id', commentIds).delete();
-        if (replyIds.length) await trx('comment_replies').whereIn('id', replyIds).delete();
-        if (commentIds.length) await trx('video_comments').whereIn('id', commentIds).delete();
-        await trx('videos').where({ id: req.params.id }).delete();
-      });
-    } else {
-      await db('videos').where({ id: req.params.id }).delete();
+    if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+    // Lo puede borrar el admin o el editor que lo subió — no cualquier miembro del proyecto.
+    if (req.user.role !== 'admin' && video.uploaded_by !== req.user.id) {
+      return res.status(403).json({ error: 'Solo el admin o quien subió el video puede eliminarlo' });
     }
+    const commentIds = await db('video_comments').where({ video_id: req.params.id }).pluck('id');
+    const replyIds = commentIds.length ? await db('comment_replies').whereIn('comment_id', commentIds).pluck('id') : [];
+    const commentAttachments = commentIds.length ? await db('comment_attachments').whereIn('comment_id', commentIds) : [];
+    const replyAttachments = replyIds.length ? await db('reply_attachments').whereIn('reply_id', replyIds) : [];
 
-    safeUnlink(video?.filename);
+    await db.transaction(async trx => {
+      if (replyIds.length) await trx('reply_attachments').whereIn('reply_id', replyIds).delete();
+      if (commentIds.length) await trx('comment_attachments').whereIn('comment_id', commentIds).delete();
+      if (replyIds.length) await trx('comment_replies').whereIn('id', replyIds).delete();
+      if (commentIds.length) await trx('video_comments').whereIn('id', commentIds).delete();
+      await trx('videos').where({ id: req.params.id }).delete();
+    });
+
+    safeUnlink(video.filename);
     commentAttachments.forEach(a => safeUnlink(a.filename));
     replyAttachments.forEach(a => safeUnlink(a.filename));
 
-    if (video) await emitToProject(video.project_id, 'video:deleted', { id: req.params.id });
+    await emitToProject(video.project_id, 'video:deleted', { id: req.params.id, projectId: video.project_id });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
