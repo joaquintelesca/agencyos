@@ -1182,15 +1182,20 @@ app.get('/api/dashboard/pending-videos', auth, async (req, res) => {
     if (projectFilter) reviewQuery = reviewQuery.whereIn('v.project_id', projectFilter);
     const reviewVideos = await reviewQuery;
 
-    // Videos con comentarios sin resolver (excluyendo los que ya están en revisión)
+    // Videos con comentarios sin resolver (excluyendo los que ya están en revisión, y los que
+    // ya están en "Aplicar feedback" — ese estado ya le avisa al editor que tiene que resolverlos,
+    // así que mostrárselo también acá como "pendiente" al admin era un segundo aviso de lo mismo,
+    // encima confuso porque ahí la pelota ya no está del lado del admin).
     const reviewVideoIds = reviewVideos.map(v => v.id);
     let commentsQuery = db('videos as v')
       .join('video_comments as vc', function() {
         this.on('vc.video_id', 'v.id').andOn('vc.resolved', db.raw('?', [false]));
       })
+      .leftJoin('tasks as tk', 'v.task_id', 'tk.id')
       .join('projects as p', 'v.project_id', 'p.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .leftJoin('users as u', 'v.uploaded_by', 'u.id')
+      .where(function() { this.whereNull('tk.status').orWhereNot('tk.status', 'feedback'); })
       .select(
         'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at',
         'p.name as project_name', 'p.color as project_color',
