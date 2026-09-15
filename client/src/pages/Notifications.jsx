@@ -7,6 +7,7 @@ export default function Notifications() {
   const [notifs, setNotifs] = useState([]);
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  const [view, setView] = useState('general'); // general | client
   const navigate = useNavigate();
   const { setUnreadNotifs } = useOutletContext();
 
@@ -22,6 +23,18 @@ export default function Notifications() {
     await api('/api/notifications/read-all', { method: 'PATCH' });
     setNotifs(prev => prev.map(n => ({ ...n, read: true })));
     setUnreadNotifs(0);
+  };
+
+  // Marca una notificación como leída sin navegar a ningún lado — independiente de hacer
+  // click en la notificación entera (que sí navega). El estado es el mismo de un solo lado
+  // (la fila `notifications.read`), así que queda leída en las dos vistas por igual, no son
+  // dos copias separadas.
+  const markOne = async (e, n) => {
+    e.stopPropagation();
+    if (n.read) return;
+    await api(`/api/notifications/${n.id}/read`, { method: 'PATCH' });
+    setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
+    setUnreadNotifs(prev => Math.max(0, prev - 1));
   };
 
   const handleClick = async (n) => {
@@ -66,14 +79,61 @@ export default function Notifications() {
 
   const unread = notifs.filter(n => !n.read).length;
 
+  const renderNotif = (n) => (
+    <div key={n.id} onClick={() => handleClick(n)}
+      style={{ display: 'flex', gap: 12, padding: '12px 16px', borderRadius: 10, background: n.read ? 'var(--bg2)' : 'var(--accent-glow)', border: `1px solid ${n.read ? 'var(--border)' : 'var(--accent)'}`, cursor: 'pointer', transition: 'all 0.15s', borderLeft: n.read ? '1px solid var(--border)' : '3px solid var(--accent)' }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = n.read ? 'var(--border)' : 'var(--accent)'}>
+      <div style={{ width: 36, height: 36, borderRadius: '50%', background: n.actor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+        {n.actor_name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.4, marginBottom: 4 }}>{label(n)}</div>
+        {n.preview && <div style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--bg3)', borderRadius: 6, padding: '3px 8px', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{n.preview}"</div>}
+        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{icon(n.type)} {timeAgo(n.created_at)}</div>
+      </div>
+      {!n.read && (
+        <button onClick={e => markOne(e, n)} title="Marcar como leído"
+          style={{ alignSelf: 'flex-start', flexShrink: 0, background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', color: 'var(--accent2)', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          Marcar como leído
+        </button>
+      )}
+    </div>
+  );
+
+  const clientGroups = (() => {
+    const groups = {};
+    for (const n of notifs) {
+      const key = n.client_id || '__none__';
+      if (!groups[key]) groups[key] = { id: key, name: n.client_name || 'Sin cliente', color: n.client_color, notifs: [] };
+      groups[key].notifs.push(n);
+    }
+    return Object.values(groups).sort((a, b) => {
+      if (a.id === '__none__') return 1;
+      if (b.id === '__none__') return -1;
+      return a.name.localeCompare(b.name);
+    });
+  })();
+
   return (
     <div style={{ flex: 1, padding: 28, overflowY: 'auto', maxWidth: 640 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h2 style={{ fontWeight: 700, fontSize: 20 }}>Notificaciones</h2>
           {unread > 0 && <span style={{ background: 'var(--red)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>{unread}</span>}
         </div>
         {unread > 0 && <button onClick={markAll} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 12px', color: 'var(--accent2)', fontSize: 12, cursor: 'pointer' }}>Marcar todo como leído</button>}
+      </div>
+
+      <div style={{ display: 'flex', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: 3, gap: 2, width: 'fit-content', marginBottom: 20 }}>
+        {[['general', 'General'], ['client', 'Por cliente']].map(([key, lbl]) => (
+          <button key={key} onClick={() => setView(key)}
+            style={{
+              padding: '6px 14px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              fontFamily: 'var(--font)', background: view === key ? 'var(--accent)' : 'transparent',
+              color: view === key ? '#fff' : 'var(--text2)'
+            }}>{lbl}</button>
+        ))}
       </div>
 
       {error && (
@@ -87,24 +147,26 @@ export default function Notifications() {
         <div className="empty"><div className="empty-icon">🔔</div><p>Sin notificaciones</p></div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {notifs.map(n => (
-          <div key={n.id} onClick={() => handleClick(n)}
-            style={{ display: 'flex', gap: 12, padding: '12px 16px', borderRadius: 10, background: n.read ? 'var(--bg2)' : 'var(--accent-glow)', border: `1px solid ${n.read ? 'var(--border)' : 'var(--accent)'}`, cursor: 'pointer', transition: 'all 0.15s', borderLeft: n.read ? '1px solid var(--border)' : '3px solid var(--accent)' }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = n.read ? 'var(--border)' : 'var(--accent)'}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: n.actor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-              {n.actor_name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+      {view === 'general' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {notifs.map(renderNotif)}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {clientGroups.map(g => (
+            <div key={g.id}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ width: 9, height: 9, borderRadius: '50%', background: g.color || 'var(--text3)', flexShrink: 0 }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{g.name}</span>
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>{g.notifs.filter(n => !n.read).length} sin leer</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {g.notifs.map(renderNotif)}
+              </div>
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.4, marginBottom: 4 }}>{label(n)}</div>
-              {n.preview && <div style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--bg3)', borderRadius: 6, padding: '3px 8px', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{n.preview}"</div>}
-              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{icon(n.type)} {timeAgo(n.created_at)}</div>
-            </div>
-            {!n.read && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, marginTop: 6 }} />}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

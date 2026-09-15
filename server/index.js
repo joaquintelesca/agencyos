@@ -567,7 +567,9 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:', 'blob:', ...(r2Origin ? [r2Origin] : [])],
-      mediaSrc: ["'self'", ...(r2Origin ? [r2Origin] : [])],
+      // 'blob:' hace falta para el preview de notas de voz (audio.src = URL.createObjectURL(blob),
+      // local al navegador, antes de subir nada) — mismo tipo de gap que ya se corrigió en img-src.
+      mediaSrc: ["'self'", 'blob:', ...(r2Origin ? [r2Origin] : [])],
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
@@ -1988,8 +1990,10 @@ app.get('/api/notifications', auth, async (req, res) => {
     const notifs = await db('notifications as n')
       .join('users as a', 'n.actor_id', 'a.id')
       .leftJoin('projects as p', 'n.project_id', 'p.id')
+      .leftJoin('clients as c', 'p.client_id', 'c.id')
       .where('n.user_id', req.user.id)
-      .select('n.*', 'a.name as actor_name', 'a.avatar_color as actor_color', 'p.name as project_name')
+      .select('n.*', 'a.name as actor_name', 'a.avatar_color as actor_color', 'p.name as project_name',
+        'c.id as client_id', 'c.name as client_name', 'c.color as client_color')
       .orderBy('n.created_at', 'desc')
       .limit(50);
     res.json(notifs);
