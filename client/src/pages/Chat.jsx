@@ -10,7 +10,10 @@ import { uploadWithProgress } from '../utils/upload';
 // duración real; después se vuelve a 0 para que arranque desde el principio como se espera.
 function fixAudioDuration(e) {
   const audio = e.target;
-  if (audio.duration === Infinity || isNaN(audio.duration)) {
+  // No solo Infinity/NaN: para un blob ya cerrado (no un stream en vivo) Chrome a veces
+  // directamente reporta 0 en vez de Infinity cuando no pudo leer la duración real del
+  // contenedor — un audio real de varios segundos nunca debería durar 0.
+  if (!isFinite(audio.duration) || audio.duration === 0) {
     audio.currentTime = 1e101;
     audio.ontimeupdate = () => {
       audio.ontimeupdate = null;
@@ -35,6 +38,7 @@ export default function Chat() {
   const analyserRef = useRef(null);
   const waveRafRef = useRef(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const recordingSecondsRef = useRef(0); // mismo valor que el state, pero legible sin closures viejas (ver mr.onstop)
   const recordingTimerRef = useRef(null);
   const [recordedAudio, setRecordedAudio] = useState(null); // { blob, url, ext } — pendiente de enviar o descartar
   const [sendingRecordedAudio, setSendingRecordedAudio] = useState(false);
@@ -400,13 +404,17 @@ export default function Chat() {
 
       mr.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
+        // Se lee antes de stopWaveform (que resetea el state, aunque no esta ref) para tener
+        // la duración real ya calculada — los .webm de MediaRecorder no siempre reportan su
+        // propia duración de forma confiable, así que no dependemos del navegador para mostrarla.
+        const durationSec = recordingSecondsRef.current;
         stopWaveform();
         if (chunks.length === 0) return;
         const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
         const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
         // No se sube todavía — se muestra un preview escuchable (como Slack) y recién se sube
         // si el usuario confirma con "Enviar". Descartar simplemente tira el blob, sin request.
-        setRecordedAudio({ blob, url: URL.createObjectURL(blob), ext });
+        setRecordedAudio({ blob, url: URL.createObjectURL(blob), ext, durationSec });
       };
 
       mr.onerror = () => {
@@ -420,7 +428,11 @@ export default function Chat() {
       setMediaRecorder(mr);
       setRecording(true);
       setRecordingSeconds(0);
-      recordingTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000);
+      recordingSecondsRef.current = 0;
+      recordingTimerRef.current = setInterval(() => {
+        recordingSecondsRef.current += 1;
+        setRecordingSeconds(recordingSecondsRef.current);
+      }, 1000);
     } catch (err) {
       if (err.name === 'NotAllowedError') {
         alert('Permiso de micrófono denegado. Habilitalo en ajustes del navegador.');
@@ -742,6 +754,9 @@ export default function Chat() {
                 >
                   🗑
                 </button>
+                <span style={{ fontSize: 11, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                  {formatRecordingTime(recordedAudio.durationSec)}
+                </span>
                 <audio src={recordedAudio.url} controls onLoadedMetadata={fixAudioDuration} style={{ flex: 1, height: 32 }} />
                 <button
                   onClick={sendRecordedAudio}
