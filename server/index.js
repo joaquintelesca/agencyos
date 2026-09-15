@@ -80,10 +80,18 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 // mismo patrón que ya usa `db` para elegir entre Postgres y SQLite según DATABASE_URL.
 const R2_BUCKET = process.env.R2_BUCKET;
 const useR2 = !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && R2_BUCKET);
+// requestChecksumCalculation/responseChecksumValidation en 'WHEN_REQUIRED': el default nuevo del
+// SDK ('WHEN_SUPPORTED') agrega x-amz-checksum-mode a los GetObject y pide checksums en los
+// PutObject/UploadPart. R2 no resuelve bien ese modo para objetos armados con multipart upload
+// (los videos grandes, subidos en partes de 5MB) — la descarga se queda colgada sin traer nada,
+// aunque el archivo esté íntegro en el bucket. Los archivos chicos del chat (un solo PUT) no
+// pisaban este caso, por eso nunca se notó hasta un video de este tamaño.
 const s3 = useR2 ? new S3Client({
   region: 'auto',
   endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY }
+  credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY },
+  requestChecksumCalculation: 'WHEN_REQUIRED',
+  responseChecksumValidation: 'WHEN_REQUIRED'
 }) : null;
 console.log(useR2 ? `📦 Storage: Cloudflare R2 (bucket "${R2_BUCKET}")` : `📦 Storage: disco local (${uploadsDir})`);
 
