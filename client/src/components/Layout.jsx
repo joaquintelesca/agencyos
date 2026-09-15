@@ -283,7 +283,7 @@ export default function Layout() {
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                   <span style={{ fontSize: 10, color: 'var(--text3)', transition: 'transform 0.15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
                   {user?.role === 'admin' && clientProjects.some(p => p.unread_review_count > 0) && (
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
                   )}
@@ -297,7 +297,7 @@ export default function Layout() {
                 {isExpanded && clientProjects.map(p => (
                   <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s' }}>
                     <Link to={`/project/${p.id}`} style={{ textDecoration: 'none', flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 26px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text3)', fontSize: 11.5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 26px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 11.5 }}>
                         <div style={{ width: 5, height: 5, borderRadius: '50%', background: p.color, flexShrink: 0, opacity: 0.8 }} />
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
                         {user?.role === 'admin' && p.unread_review_count > 0 && (
