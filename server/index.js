@@ -2209,14 +2209,15 @@ app.post('/api/chat/messages', auth, async (req, res) => {
     const id = uuidv4();
     await db('chat_messages').insert({ id, sender_id: senderId, receiver_id: receiver_id || null, channel_id: channel_id || null, type, content: content || '', file_url: file_url || null, file_type: file_type || null, file_name: file_name || null, client_id: (type === 'dm' && client_id) ? client_id : null });
     const msg = await db('chat_messages as m').join('users as u', 'm.sender_id', 'u.id').where('m.id', id).select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color').first();
+    // Los mensajes de chat ya tienen su propio contador de no leídos (chat_messages.read_by,
+    // vía /api/chat/unread) que alimenta la burbuja del ítem "Chat" del sidebar — no se crea
+    // una notificación general acá para no duplicar el aviso en la campanita/Notificaciones.
     if (type === 'dm' && receiver_id) {
       io.to(`user:${senderId}`).to(`user:${receiver_id}`).emit('chat:message', msg);
-      await createNotification({ userId: receiver_id, type: 'chat', actorId: senderId, chatMessageId: id, preview: content?.slice(0, 80) });
     } else if (type === 'channel' && channel_id) {
       const members = await db('chat_channel_members').where({ channel_id }).pluck('user_id');
       for (const uid of members) {
         io.to(`user:${uid}`).emit('chat:message', msg);
-        await createNotification({ userId: uid, type: 'chat', actorId: senderId, chatMessageId: id, preview: content?.slice(0, 80) });
       }
     }
     res.json(msg);

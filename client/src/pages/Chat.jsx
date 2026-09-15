@@ -18,6 +18,8 @@ export default function Chat() {
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
   const waveRafRef = useRef(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const recordingTimerRef = useRef(null);
   const [showNewChannel, setShowNewChannel] = useState(false);
   const [channelForm, setChannelForm] = useState({ name: '', members: [] });
   const [allUsers, setAllUsers] = useState([]);
@@ -49,7 +51,11 @@ export default function Chat() {
   // Si se navega fuera del chat a mitad de una grabación, cierra el AudioContext de la forma
   // de onda igual — si no, queda vivo en segundo plano (el stream del micrófono ya se corta
   // solo al desmontar por el cleanup de mediaRecorder, pero el AudioContext es independiente).
-  useEffect(() => () => { if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current); audioCtxRef.current?.close().catch(() => {}); }, []);
+  useEffect(() => () => {
+    if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current);
+    audioCtxRef.current?.close().catch(() => {});
+    clearInterval(recordingTimerRef.current);
+  }, []);
 
   useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
@@ -347,7 +353,12 @@ export default function Chat() {
     audioCtxRef.current = null;
     analyserRef.current = null;
     setWaveLevels(Array(WAVE_BARS).fill(0));
+    clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    setRecordingSeconds(0);
   };
+
+  const formatRecordingTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   const startRecording = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -396,6 +407,8 @@ export default function Chat() {
       mr.start(250);
       setMediaRecorder(mr);
       setRecording(true);
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000);
     } catch (err) {
       if (err.name === 'NotAllowedError') {
         alert('Permiso de micrófono denegado. Habilitalo en ajustes del navegador.');
@@ -730,6 +743,7 @@ export default function Chat() {
                       }} />
                     ))}
                   </div>
+                  <span style={{ fontSize: 11, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums' }}>{formatRecordingTime(recordingSeconds)}</span>
                 </div>
               )}
               <input
