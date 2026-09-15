@@ -83,9 +83,11 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Tareas en revisión */}
+          {/* Tareas en revisión sin video cargado — las que ya tienen video se ven abajo, en
+              "Videos pendientes de revisión"; mostrarlas acá también duplicaba el mismo pendiente. */}
           {(() => {
-            const reviewTasks = allTasks.filter(t => t.status === 'review');
+            const reviewedVideoTaskIds = new Set(pendingVideos.filter(v => v.type === 'review' && v.task_id).map(v => v.task_id));
+            const reviewTasks = allTasks.filter(t => t.status === 'review' && !reviewedVideoTaskIds.has(t.id));
             if (reviewTasks.length === 0) return null;
             return (
               <div style={{ marginBottom: 20 }}>

@@ -1168,7 +1168,7 @@ app.get('/api/dashboard/pending-videos', auth, async (req, res) => {
         'p.name as project_name', 'p.color as project_color',
         'c.name as client_name',
         'u.name as uploader_name',
-        'tk.title as task_title',
+        'tk.id as task_id', 'tk.title as task_title',
         db.raw('? as type', ['review'])
       );
     if (projectFilter) reviewQuery = reviewQuery.whereIn('v.project_id', projectFilter);
