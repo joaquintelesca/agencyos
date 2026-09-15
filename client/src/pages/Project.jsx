@@ -8,8 +8,8 @@ import { initials } from '../utils/format';
 const STATUSES = [
   { key: 'todo', label: 'Por hacer', color: 'var(--text2)', description: 'Todavía no se empezó.' },
   { key: 'in_progress', label: 'En progreso', color: 'var(--blue)', description: 'El editor la está trabajando.' },
-  { key: 'review', label: 'En revisión', color: 'var(--yellow)', description: 'Subió una versión, esperando que la mires.' },
-  { key: 'feedback', label: 'Aplicar feedback', color: 'var(--red)', description: 'Dejaste comentarios: el editor tiene que aplicarlos.' },
+  { key: 'review', label: 'En revisión', color: 'var(--yellow)', description: 'El editor subió una nueva versión. Está esperando tu feedback.' },
+  { key: 'feedback', label: 'Aplicar feedback', color: 'var(--red)', description: 'Hay comentarios sin aplicar en el video.', note: '↻ Al terminar, movela de nuevo a "En revisión".' },
   { key: 'done', label: 'Listo', color: 'var(--green)', description: 'Aprobado, sin cambios pendientes.' },
 ];
 const PRIORITIES = ['low', 'medium', 'high'];
@@ -246,7 +246,10 @@ export default function Project() {
               onDragOver={e => e.preventDefault()} onDrop={() => onDrop(col.key)}>
               <div style={{ marginBottom: 10, padding: '0 4px' }}>
                 {col.description && (
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4, lineHeight: 1.3 }}>{col.description}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: col.note ? 1 : 4, lineHeight: 1.3 }}>{col.description}</div>
+                )}
+                {col.note && (
+                  <div style={{ fontSize: 10.5, color: 'var(--text3)', opacity: 0.8, fontStyle: 'italic', marginBottom: 4, lineHeight: 1.3 }}>{col.note}</div>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
