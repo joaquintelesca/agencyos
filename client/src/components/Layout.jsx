@@ -297,8 +297,8 @@ export default function Layout() {
                 {isExpanded && clientProjects.map(p => (
                   <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s' }}>
                     <Link to={`/project/${p.id}`} style={{ textDecoration: 'none', flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px 5px 26px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 12 }}>
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 26px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text3)', fontSize: 11.5 }}>
+                        <div style={{ width: 5, height: 5, borderRadius: '50%', background: p.color, flexShrink: 0, opacity: 0.8 }} />
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
                         {user?.role === 'admin' && p.unread_review_count > 0 && (
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
