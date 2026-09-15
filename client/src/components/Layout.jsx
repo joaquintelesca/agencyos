@@ -442,24 +442,24 @@ export default function Layout() {
                     {paymentForm.payment_type === 'fixed' ? (
                       <div className="form-row">
                         <div className="form-group">
-                          <label>Pago al editor ($) <span style={{ color: 'var(--red)' }}>*</span></label>
-                          <input className="input" type="number" min="0" value={paymentForm.payment_amount} onChange={e => setPaymentForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" style={!paymentForm.payment_amount ? { borderColor: 'var(--red)' } : {}} />
-                        </div>
-                        <div className="form-group">
                           <label>Cobro al cliente ($)</label>
                           <input className="input" type="number" min="0" value={paymentForm.client_amount} onChange={e => setPaymentForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
+                        </div>
+                        <div className="form-group">
+                          <label>Pago al editor ($) <span style={{ color: 'var(--red)' }}>*</span></label>
+                          <input className="input" type="number" min="0" value={paymentForm.payment_amount} onChange={e => setPaymentForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" style={!paymentForm.payment_amount ? { borderColor: 'var(--red)' } : {}} />
                         </div>
                       </div>
                     ) : (
                       <>
                         <div className="form-row">
                           <div className="form-group">
-                            <label>Tarifa editor ($/h) <span style={{ color: 'var(--red)' }}>*</span></label>
-                            <input className="input" type="number" min="0" value={paymentForm.payment_rate} onChange={e => setPaymentForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25" style={!paymentForm.payment_rate ? { borderColor: 'var(--red)' } : {}} />
-                          </div>
-                          <div className="form-group">
                             <label>Tarifa cliente ($/h)</label>
                             <input className="input" type="number" min="0" value={paymentForm.client_rate} onChange={e => setPaymentForm(p => ({ ...p, client_rate: e.target.value }))} placeholder="Ej: 40" />
+                          </div>
+                          <div className="form-group">
+                            <label>Tarifa editor ($/h) <span style={{ color: 'var(--red)' }}>*</span></label>
+                            <input className="input" type="number" min="0" value={paymentForm.payment_rate} onChange={e => setPaymentForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25" style={!paymentForm.payment_rate ? { borderColor: 'var(--red)' } : {}} />
                           </div>
                         </div>
                         <div className="form-group">
@@ -587,13 +587,13 @@ export default function Layout() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: editProjectForm.payment_type === 'hourly' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 10 }}>
                   <div className="form-group">
+                    <label>{editProjectForm.payment_type === 'hourly' ? 'Tarifa cliente ($/h)' : 'Cobro al cliente ($)'}</label>
+                    <input className="input" type="number" min="0" value={editProjectForm.client_amount} onChange={e => setEditProjectForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
+                  </div>
+                  <div className="form-group">
                     <label>{editProjectForm.payment_type === 'hourly' ? 'Tarifa editor ($/h)' : 'Pago al editor ($)'} <span style={{ color: 'var(--red)' }}>*</span></label>
                     <input className="input" type="number" min="0" value={editProjectForm.payment_amount} onChange={e => setEditProjectForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500"
                       style={!editProjectForm.payment_amount ? { borderColor: 'var(--red)' } : {}} />
-                  </div>
-                  <div className="form-group">
-                    <label>{editProjectForm.payment_type === 'hourly' ? 'Tarifa cliente ($/h)' : 'Cobro al cliente ($)'}</label>
-                    <input className="input" type="number" min="0" value={editProjectForm.client_amount} onChange={e => setEditProjectForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
                   </div>
                   {editProjectForm.payment_type === 'hourly' && (
                     <div className="form-group">
