@@ -8,6 +8,8 @@ export default function Notifications() {
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
   const [view, setView] = useState('general'); // general | client
+  const [selectedClient, setSelectedClient] = useState('all'); // 'all' o el id de un cliente ('__none__' = sin cliente)
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const navigate = useNavigate();
   const { setUnreadNotifs } = useOutletContext();
 
@@ -152,19 +154,73 @@ export default function Notifications() {
           {notifs.map(renderNotif)}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-          {clientGroups.map(g => (
-            <div key={g.id}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <div style={{ width: 9, height: 9, borderRadius: '50%', background: g.color || 'var(--text3)', flexShrink: 0 }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{g.name}</span>
-                <span style={{ fontSize: 12, color: 'var(--text3)' }}>{g.notifs.filter(n => !n.read).length} sin leer</span>
+        <div>
+          <div style={{ position: 'relative', marginBottom: 20, width: 'fit-content' }}>
+            <button onClick={() => setClientDropdownOpen(o => !o)} style={{
+              display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg2)', border: '1px solid var(--border)',
+              borderRadius: 9, padding: '7px 12px', cursor: 'pointer', fontFamily: 'var(--font)', minWidth: 180
+            }}>
+              {selectedClient !== 'all' && (
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: clientGroups.find(g => g.id === selectedClient)?.color || 'var(--text3)', flexShrink: 0 }} />
+              )}
+              <span style={{ fontSize: 13, color: 'var(--text)', flex: 1, textAlign: 'left' }}>
+                {selectedClient === 'all' ? 'Todos los clientes' : clientGroups.find(g => g.id === selectedClient)?.name}
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--text3)' }}>▾</span>
+            </button>
+
+            {clientDropdownOpen && (
+              <>
+                <div onClick={() => setClientDropdownOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 4px)', left: 0, minWidth: 220, zIndex: 11,
+                  background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.35)', padding: 4, maxHeight: 320, overflowY: 'auto'
+                }}>
+                  <button onClick={() => { setSelectedClient('all'); setClientDropdownOpen(false); }} style={{
+                    display: 'flex', alignItems: 'center', width: '100%', gap: 8, padding: '8px 10px', borderRadius: 7,
+                    border: 'none', background: selectedClient === 'all' ? 'var(--accent-glow)' : 'transparent',
+                    cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left'
+                  }}>
+                    <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>Todos los clientes</span>
+                  </button>
+                  {clientGroups.map(g => {
+                    const unreadCount = g.notifs.filter(n => !n.read).length;
+                    return (
+                      <button key={g.id} onClick={() => { setSelectedClient(g.id); setClientDropdownOpen(false); }} style={{
+                        display: 'flex', alignItems: 'center', width: '100%', gap: 8, padding: '8px 10px', borderRadius: 7,
+                        border: 'none', background: selectedClient === g.id ? 'var(--accent-glow)' : 'transparent',
+                        cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left'
+                      }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: g.color || 'var(--text3)', flexShrink: 0 }} />
+                        <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{g.name}</span>
+                        {unreadCount > 0 && (
+                          <span style={{ background: 'var(--red)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, flexShrink: 0 }}>{unreadCount}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+            {clientGroups.filter(g => selectedClient === 'all' || g.id === selectedClient).map(g => (
+              <div key={g.id}>
+                {selectedClient === 'all' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <div style={{ width: 9, height: 9, borderRadius: '50%', background: g.color || 'var(--text3)', flexShrink: 0 }} />
+                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{g.name}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>{g.notifs.filter(n => !n.read).length} sin leer</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {g.notifs.map(renderNotif)}
+                </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {g.notifs.map(renderNotif)}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>
