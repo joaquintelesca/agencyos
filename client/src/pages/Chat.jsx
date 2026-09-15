@@ -3,6 +3,22 @@ import { useAuth } from '../context/AuthContext';
 import { initials as initialsBase } from '../utils/format';
 import { uploadWithProgress } from '../utils/upload';
 
+// Los .webm que graba MediaRecorder no siempre escriben la duración real en el contenedor
+// (queda como Infinity/NaN) — los controles nativos del navegador entonces muestran "0:00" y
+// la barra de progreso no funciona, aunque el audio se reproduzca bien. Workaround estándar:
+// forzar un seek más allá del final hace que el navegador escanee el archivo y calcule la
+// duración real; después se vuelve a 0 para que arranque desde el principio como se espera.
+function fixAudioDuration(e) {
+  const audio = e.target;
+  if (audio.duration === Infinity || isNaN(audio.duration)) {
+    audio.currentTime = 1e101;
+    audio.ontimeupdate = () => {
+      audio.ontimeupdate = null;
+      audio.currentTime = 0;
+    };
+  }
+}
+
 export default function Chat() {
   const { user, api, socket, onlineUsers, mediaUrl, token } = useAuth();
   const [conversations, setConversations] = useState([]);
@@ -726,7 +742,7 @@ export default function Chat() {
                 >
                   🗑
                 </button>
-                <audio src={recordedAudio.url} controls style={{ flex: 1, height: 32 }} />
+                <audio src={recordedAudio.url} controls onLoadedMetadata={fixAudioDuration} style={{ flex: 1, height: 32 }} />
                 <button
                   onClick={sendRecordedAudio}
                   disabled={sendingRecordedAudio}
@@ -976,7 +992,7 @@ function Message({ msg, isMe, compact, initials, mediaUrl }) {
         {msg.file_type === 'audio' && (
           <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 16, padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
             <span style={{ fontSize: 16 }}>🎙</span>
-            <audio src={mediaUrl(msg.file_url)} controls style={{ height: 28, maxWidth: 220 }} />
+            <audio src={mediaUrl(msg.file_url)} controls onLoadedMetadata={fixAudioDuration} style={{ height: 28, maxWidth: 220 }} />
           </div>
         )}
         {msg.file_type === 'file' && (
