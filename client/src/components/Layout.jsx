@@ -197,7 +197,10 @@ export default function Layout() {
         body.client_amount = paymentForm.payment_type === 'fixed' ? paymentForm.client_amount : paymentForm.client_rate;
       }
       const p = await api('/api/projects', { method: 'POST', body });
-      setProjects(prev => [p, ...prev]);
+      // El socket 'project:created' (emitido a todos los admins, incluido quien lo creó) puede
+      // llegar antes que esta respuesta HTTP se resuelva — sin este chequeo, el mismo proyecto
+      // termina agregado dos veces a la lista local aunque en la base exista una sola fila.
+      setProjects(prev => prev.some(x => x.id === p.id) ? prev : [p, ...prev]);
       setShowNewProject(false);
       navigate(`/project/${p.id}`);
     } catch (e) {
