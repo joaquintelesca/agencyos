@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useUndo } from '../context/UndoContext';
 import { initials } from '../utils/format';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#3b82f6','#8b5cf6','#ef4444','#14b8a6'];
 
 export default function Layout() {
   const { user, logout, api, socket } = useAuth();
+  const { scheduleDelete } = useUndo();
   const navigate = useNavigate();
   const location = useLocation();
   const [projects, setProjects] = useState([]);
@@ -154,13 +156,15 @@ export default function Layout() {
     }
   };
 
-  const deleteProject = async (id) => {
-    if (!confirm('¿Eliminar este proyecto? Se borrarán todas sus tareas, videos y mensajes.')) return;
-    try {
-      await api(`/api/projects/${id}`, { method: 'DELETE' });
-      setProjects(prev => prev.filter(p => p.id !== id));
-      if (location.pathname === `/project/${id}`) navigate('/');
-    } catch (e) { console.error(e); alert('Error al eliminar el proyecto: ' + e.message); }
+  const deleteProject = (id) => {
+    const project = projects.find(p => p.id === id);
+    if (!project) return;
+    setProjects(prev => prev.filter(p => p.id !== id));
+    if (location.pathname === `/project/${id}`) navigate('/');
+    scheduleDelete(`Proyecto "${project.name}" eliminado`, {
+      onCommit: () => api(`/api/projects/${id}`, { method: 'DELETE' }),
+      onUndo: () => setProjects(prev => [project, ...prev])
+    });
   };
 
   const openEditProject = (p) => {
@@ -168,12 +172,12 @@ export default function Layout() {
     setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '', payment_editor_id: p.payment_editor_id || '', payment_type: p.payment_type || 'fixed', payment_amount: p.payment_amount || '', client_amount: p.client_amount || '', payment_hours: p.payment_hours || '' });
   };
 
-  const deleteClient = async (c) => {
-    if (!confirm(`¿Eliminar cliente "${c.name}"?`)) return;
-    try {
-      await api(`/api/clients/${c.id}`, { method: 'DELETE' });
-      setClients(prev => prev.filter(x => x.id !== c.id));
-    } catch (e) { console.error(e); alert('Error al eliminar el cliente: ' + e.message); }
+  const deleteClient = (c) => {
+    setClients(prev => prev.filter(x => x.id !== c.id));
+    scheduleDelete(`Cliente "${c.name}" eliminado`, {
+      onCommit: () => api(`/api/clients/${c.id}`, { method: 'DELETE' }),
+      onUndo: () => setClients(prev => [...prev, c])
+    });
   };
 
   const goToStep2 = () => { if (!projectForm.name.trim()) return; setStep(2); };

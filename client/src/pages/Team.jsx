@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useUndo } from '../context/UndoContext';
 import { initials } from '../utils/format';
 
 const AVATAR_COLORS = ['#6366f1','#ec4899','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ef4444','#14b8a6','#f97316','#06b6d4'];
 
 export default function Team() {
   const { api, user, updateUser } = useAuth();
+  const { scheduleDelete } = useUndo();
   const [users, setUsers] = useState([]);
   const [showNewUser, setShowNewUser] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -69,12 +71,14 @@ export default function Team() {
     } catch (e) { console.error(e); }
   };
 
-  const deleteUser = async (id) => {
-    if (!confirm('¿Eliminar este usuario? Se borrarán todos sus datos.')) return;
-    try {
-      await api(`/api/users/${id}`, { method: 'DELETE' });
-      setUsers(prev => prev.filter(u => u.id !== id));
-    } catch (e) { alert('Error: ' + e.message); }
+  const deleteUser = (id) => {
+    const u = users.find(x => x.id === id);
+    if (!u) return;
+    setUsers(prev => prev.filter(x => x.id !== id));
+    scheduleDelete(`Usuario "${u.name}" eliminado`, {
+      onCommit: () => api(`/api/users/${id}`, { method: 'DELETE' }),
+      onUndo: () => setUsers(prev => [...prev, u])
+    });
   };
 
   return (

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useUndo } from '../context/UndoContext';
 import { initials } from '../utils/format';
 import { uploadVideoChunked } from '../utils/upload';
 
@@ -13,6 +14,7 @@ const DARK = {
 
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
   const { api, user, socket, mediaUrl, token } = useAuth();
+  const { scheduleDelete } = useUndo();
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const appliedInitialVideoRef = useRef(null);
@@ -353,17 +355,23 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     }
   };
 
-  const deleteComment = async (cid) => {
-    if (!confirm('¿Eliminar este comentario? Esta acción no se puede deshacer.')) return;
-    try {
-      await api(`/api/comments/${cid}`, { method: 'DELETE' });
-      setComments(prev => prev.filter(c => c.id !== cid));
-    } catch (e) {
-      // 404: alguien más ya lo borró mientras tanto — no es un error real, solo hay que
-      // sacarlo de la lista local (el 'comment:deleted' por socket ya venía en camino).
-      if (e.status === 404) { setComments(prev => prev.filter(c => c.id !== cid)); return; }
-      console.error(e); alert('Error al eliminar el comentario: ' + e.message);
-    }
+  const deleteComment = (cid) => {
+    const comment = comments.find(c => c.id === cid);
+    if (!comment) return;
+    setComments(prev => prev.filter(c => c.id !== cid));
+    scheduleDelete('Comentario eliminado', {
+      onCommit: async () => {
+        try {
+          await api(`/api/comments/${cid}`, { method: 'DELETE' });
+        } catch (e) {
+          // 404: alguien más ya lo borró mientras tanto — no es un error real, ya está afuera
+          // de la lista local como se buscaba.
+          if (e.status === 404) return;
+          throw e;
+        }
+      },
+      onUndo: () => setComments(prev => [...prev, comment])
+    });
   };
   const resolveComment = async (cid) => {
     try {

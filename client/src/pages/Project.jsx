@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useUndo } from '../context/UndoContext';
 import VideoReview from '../components/VideoReview';
 import { initials } from '../utils/format';
 
@@ -16,6 +17,7 @@ export default function Project() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const { api, user, socket } = useAuth();
+  const { scheduleDelete } = useUndo();
   const [project, setProject] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [tasks, setTasks] = useState([]);
@@ -134,9 +136,14 @@ export default function Project() {
     setShowTaskModal(false);
   };
 
-  const deleteTask = async (taskId) => {
-    if (!confirm('¿Eliminar esta tarea?')) return;
-    await api(`/api/tasks/${taskId}`, { method: 'DELETE' });
+  const deleteTask = (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    scheduleDelete(`Tarea "${task.title}" eliminada`, {
+      onCommit: () => api(`/api/tasks/${taskId}`, { method: 'DELETE' }),
+      onUndo: () => setTasks(prev => [...prev, task])
+    });
   };
 
   const sendMessage = (e) => {
