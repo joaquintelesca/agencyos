@@ -11,7 +11,12 @@ export default function Notifications() {
   const [selectedClient, setSelectedClient] = useState('all'); // 'all' o el id de un cliente ('__none__' = sin cliente)
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const navigate = useNavigate();
-  const { setUnreadNotifs } = useOutletContext();
+  const { setUnreadNotifs, setProjects } = useOutletContext();
+
+  // El puntito de "revisión pendiente" del sidebar sale de notificaciones sin leer (ver
+  // Layout.jsx / unread_review_count) — sin este refresh, marcar una como leída acá no lo
+  // apagaría hasta la próxima carga completa de la página.
+  const refreshProjectDots = () => api('/api/projects').then(setProjects).catch(() => {});
 
   useEffect(() => {
     setError('');
@@ -25,6 +30,7 @@ export default function Notifications() {
     await api('/api/notifications/read-all', { method: 'PATCH' });
     setNotifs(prev => prev.map(n => ({ ...n, read: true })));
     setUnreadNotifs(0);
+    refreshProjectDots();
   };
 
   // Marca una notificación como leída sin navegar a ningún lado — independiente de hacer
@@ -37,6 +43,7 @@ export default function Notifications() {
     await api(`/api/notifications/${n.id}/read`, { method: 'PATCH' });
     setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
     setUnreadNotifs(prev => Math.max(0, prev - 1));
+    if (n.type === 'task_review') refreshProjectDots();
   };
 
   const handleClick = async (n) => {
@@ -44,6 +51,7 @@ export default function Notifications() {
       await api(`/api/notifications/${n.id}/read`, { method: 'PATCH' });
       setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
       setUnreadNotifs(prev => Math.max(0, prev - 1));
+      if (n.type === 'task_review') refreshProjectDots();
     }
     if (n.video_id && n.project_id) navigate(`/project/${n.project_id}?tab=videos&video=${n.video_id}`);
     else if (n.type === 'chat') navigate('/chat');

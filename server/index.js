@@ -869,7 +869,23 @@ app.get('/api/projects', auth, async (req, res) => {
     for (const row of taskCounts) {
       countsMap[row.project_id] = { task_count: Number(row.task_count), done_count: Number(row.done_count), review_count: Number(row.review_count) };
     }
-    const withCounts = projects.map(p => ({ ...p, ...(countsMap[p.id] || { task_count: 0, done_count: 0, review_count: 0 }) }));
+    // El puntito de "revisión pendiente" del sidebar se basa en esto (notificaciones sin leer),
+    // no en review_count de arriba — antes usaba el estado real de la tarea, así que marcar la
+    // notificación como leída no lo apagaba aunque la tarea siguiera sin moverse de columna.
+    // Es por usuario a propósito: cada admin tiene su propia notificación y su propio "visto".
+    const unreadReviewRows = await db('notifications')
+      .where({ user_id: req.user.id, type: 'task_review', read: false })
+      .whereNotNull('project_id')
+      .select('project_id')
+      .count('* as count')
+      .groupBy('project_id');
+    const unreadReviewMap = {};
+    for (const row of unreadReviewRows) unreadReviewMap[row.project_id] = Number(row.count);
+    const withCounts = projects.map(p => ({
+      ...p,
+      ...(countsMap[p.id] || { task_count: 0, done_count: 0, review_count: 0 }),
+      unread_review_count: unreadReviewMap[p.id] || 0
+    }));
     res.json(withCounts);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
