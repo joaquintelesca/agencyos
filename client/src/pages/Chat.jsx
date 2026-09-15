@@ -581,14 +581,14 @@ export default function Chat() {
                     <SidebarItem
                       key={c.id}
                       label={c.name}
-                      subtitle={c.last_message}
+                      subtitle={c.is_self ? (c.last_message || 'Tu bloc de notas personal') : c.last_message}
                       active={activeConv?.type === 'dm' && activeConv?.id === c.id}
                       unread={unreadCounts[key] || 0}
-                      online={isOnline(c.id)}
+                      online={!c.is_self && isOnline(c.id)}
                       color={c.color}
                       isUser
-                      initials={initials(c.name)}
-                      onClick={() => openConv({ type: 'dm', id: c.id, name: c.name, color: c.color })}
+                      initials={c.is_self ? '📝' : initials(c.name)}
+                      onClick={() => openConv({ type: 'dm', id: c.id, name: c.name, color: c.color, isSelf: c.is_self })}
                     />
                   );
                 })}
@@ -690,16 +690,16 @@ export default function Chat() {
               <>
                 <div style={{ position: 'relative' }}>
                   <div className="avatar" style={{ background: activeConv.color || 'var(--accent)', width: 36, height: 36, fontSize: 13 }}>
-                    {initials(activeConv.name)}
+                    {activeConv.isSelf ? '📝' : initials(activeConv.name)}
                   </div>
-                  {isOnline(activeConv.id) && (
+                  {!activeConv.isSelf && isOnline(activeConv.id) && (
                     <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: 'var(--green)', border: '2px solid var(--bg)' }} />
                   )}
                 </div>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{activeConv.name}</div>
-                  <div style={{ fontSize: 11, color: isOnline(activeConv.id) ? 'var(--green)' : 'var(--text3)' }}>
-                    {isOnline(activeConv.id) ? '● En línea' : '○ Desconectado'}
+                  <div style={{ fontSize: 11, color: activeConv.isSelf ? 'var(--text3)' : isOnline(activeConv.id) ? 'var(--green)' : 'var(--text3)' }}>
+                    {activeConv.isSelf ? 'Solo vos podés ver estos mensajes' : isOnline(activeConv.id) ? '● En línea' : '○ Desconectado'}
                   </div>
                 </div>
               </>
@@ -762,8 +762,8 @@ export default function Chat() {
             )}
             {!loadingMessages && messages.length === 0 && (
               <div style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 13, marginTop: 60 }}>
-                <div style={{ fontSize: 36, marginBottom: 8 }}>👋</div>
-                <p>{activeConv.type === 'channel' ? `Inicio de #${activeConv.name}` : activeTab ? `Sin mensajes sobre ${dmTabs.find(t => t.id === activeTab)?.name || 'este cliente'}` : `Inicio de la conversación con ${activeConv.name}`}</p>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>{activeConv.isSelf ? '📝' : '👋'}</div>
+                <p>{activeConv.type === 'channel' ? `Inicio de #${activeConv.name}` : activeConv.isSelf ? 'Anotá lo que quieras, solo vos lo vas a ver' : activeTab ? `Sin mensajes sobre ${dmTabs.find(t => t.id === activeTab)?.name || 'este cliente'}` : `Inicio de la conversación con ${activeConv.name}`}</p>
               </div>
             )}
             {messages.map((msg, i) => {
@@ -874,7 +874,7 @@ export default function Chat() {
                       sendMessage(input);
                     }
                   }}
-                  placeholder={activeConv.type === 'channel' ? `Mensaje en #${activeConv.name}...` : activeTab ? `Mensaje a ${activeConv.name} sobre ${dmTabs.find(t => t.id === activeTab)?.name || 'cliente'}...` : `Mensaje a ${activeConv.name}...`}
+                  placeholder={activeConv.type === 'channel' ? `Mensaje en #${activeConv.name}...` : activeConv.isSelf ? 'Escribí una nota...' : activeTab ? `Mensaje a ${activeConv.name} sobre ${dmTabs.find(t => t.id === activeTab)?.name || 'cliente'}...` : `Mensaje a ${activeConv.name}...`}
                   style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font)' }}
                 />
                 <button

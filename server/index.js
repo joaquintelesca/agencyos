@@ -2187,6 +2187,11 @@ app.get('/api/chat/conversations', auth, async (req, res) => {
       ? await db('users').where('id', '!=', userId).select('id', 'name', 'avatar_color')
       : await db('users').where({ role: 'admin' }).select('id', 'name', 'avatar_color');
 
+    // "Notas": DM del usuario consigo mismo, usado como bloc de notas personal.
+    // Se pisa antes de armar `dms` para que quede siempre primero en la lista.
+    const me = await db('users').where({ id: userId }).select('id', 'name', 'avatar_color').first();
+    const dmUsers = me ? [{ ...me, is_self: true }, ...otherUsers] : otherUsers;
+
     // Un LIMIT global sobre todos los DMs mezclados perdía el último mensaje de contactos
     // poco activos (quedaban fuera de la ventana si otras conversaciones eran más recientes).
     // ROW_NUMBER() por contraparte trae el último mensaje real de cada uno en una sola query.
@@ -2207,9 +2212,16 @@ app.get('/api/chat/conversations', auth, async (req, res) => {
       const otherId = m.sender_id === userId ? m.receiver_id : m.sender_id;
       lastByOther[otherId] = m;
     }
-    const dms = otherUsers.map(u => {
+    const dms = dmUsers.map(u => {
       const last = lastByOther[u.id];
-      return { id: u.id, name: u.name, color: u.avatar_color, last_message: last?.content || (last?.file_type ? '📎 Archivo' : null), unread: 0 };
+      return {
+        id: u.id,
+        name: u.is_self ? 'Notas' : u.name,
+        color: u.avatar_color,
+        last_message: last?.content || (last?.file_type ? '📎 Archivo' : null),
+        unread: 0,
+        is_self: !!u.is_self
+      };
     });
 
     let channels = [];
@@ -2282,7 +2294,7 @@ app.post('/api/chat/messages', auth, async (req, res) => {
     const { type, receiver_id, channel_id, content, file_url, file_type, file_name, client_id, file_duration } = req.body;
     const senderId = req.user.id;
 
-    if (req.user.role !== 'admin' && type === 'dm') {
+    if (req.user.role !== 'admin' && type === 'dm' && receiver_id !== senderId) {
       const targetUser = await db('users').where({ id: receiver_id }).first();
       if (!targetUser || targetUser.role !== 'admin') {
         return res.status(403).json({ error: 'Los editores solo pueden chatear con admins' });
