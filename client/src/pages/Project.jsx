@@ -290,13 +290,14 @@ export default function Project() {
             <button onClick={toggleProjectStatus}
               title={project.status === 'completed' ? 'Volver a activo' : 'Marcalo cuando no vayas a agregar más tareas — recién ahí pasa a Pagos'}
               style={{
-                display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8,
-                border: `1px solid ${project.status === 'completed' ? 'transparent' : 'var(--border)'}`,
-                background: project.status === 'completed' ? 'rgba(34,201,122,0.12)' : 'var(--bg3)',
-                color: project.status === 'completed' ? 'var(--green)' : 'var(--text2)',
-                fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)'
+                display: 'flex', alignItems: 'center', gap: 6, padding: project.status === 'completed' ? '4px 10px' : '7px 16px', borderRadius: 8,
+                border: 'none',
+                background: project.status === 'completed' ? 'var(--bg3)' : 'var(--green)',
+                color: project.status === 'completed' ? 'var(--text2)' : '#fff',
+                fontSize: project.status === 'completed' ? 12 : 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font)',
+                boxShadow: project.status === 'completed' ? 'none' : '0 1px 6px rgba(34,201,122,0.4)'
               }}>
-              {project.status === 'completed' ? '✅ Terminado' : '◻ Marcar como terminado'}
+              {project.status === 'completed' ? '↺ Reabrir proyecto' : '✓ Marcar como terminado'}
             </button>
           )}
         </div>

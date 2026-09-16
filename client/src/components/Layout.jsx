@@ -370,7 +370,7 @@ export default function Layout() {
                   )}
                 </div>
                 {isExpanded && clientProjects.map(p => (
-                  <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s', opacity: draggedProjectId === p.id ? 0.4 : 1 }}
+                  <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s', opacity: draggedProjectId === p.id ? 0.4 : (p.status === 'completed' ? 0.55 : 1) }}
                     draggable={user?.role === 'admin'}
                     onDragStart={e => { e.stopPropagation(); setDraggedProjectId(p.id); }}
                     onDragOver={e => { if (user?.role === 'admin' && draggedProjectId) e.preventDefault(); }}
@@ -380,6 +380,7 @@ export default function Layout() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 26px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 11.5 }}>
                         <div style={{ width: 5, height: 5, borderRadius: '50%', background: p.color, flexShrink: 0, opacity: 0.8 }} />
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                        {p.status === 'completed' && <span title="Terminado" style={{ fontSize: 10, flexShrink: 0 }}>✅</span>}
                         {user?.role === 'admin' && p.unread_review_count > 0 && (
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
                         )}
@@ -401,7 +402,7 @@ export default function Layout() {
 
           {/* Projects without client */}
           {projects.filter(p => !p.client_id).map(p => (
-            <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s', opacity: draggedProjectId === p.id ? 0.4 : 1 }}
+            <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s', opacity: draggedProjectId === p.id ? 0.4 : (p.status === 'completed' ? 0.55 : 1) }}
               draggable={user?.role === 'admin'}
               onDragStart={() => setDraggedProjectId(p.id)}
               onDragOver={e => { if (user?.role === 'admin' && draggedProjectId) e.preventDefault(); }}
@@ -411,6 +412,7 @@ export default function Layout() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 13 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                  {p.status === 'completed' && <span title="Terminado" style={{ fontSize: 10, flexShrink: 0 }}>✅</span>}
                   {user?.role === 'admin' && p.unread_review_count > 0 && (
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
                   )}

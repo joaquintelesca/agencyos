@@ -25,7 +25,11 @@ export default function Dashboard() {
 
   const allTasks = Object.values(tasks).flat();
   const pendingTasks = allTasks.filter(t => t.status !== 'done');
-  const deadlineSoon = projects.filter(p => p.deadline).sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+  // Un proyecto ya marcado "Terminado" no necesita más recordatorios de deadline ni de
+  // aprobación — si algo quedó suelto ahí (una tarea en revisión, un deadline próximo) ya no es
+  // información accionable para el Dashboard.
+  const completedProjectIds = new Set(projects.filter(p => p.status === 'completed').map(p => p.id));
+  const deadlineSoon = projects.filter(p => p.deadline && p.status !== 'completed').sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
@@ -87,7 +91,7 @@ export default function Dashboard() {
               "Videos pendientes de revisión"; mostrarlas acá también duplicaba el mismo pendiente. */}
           {(() => {
             const reviewedVideoTaskIds = new Set(pendingVideos.filter(v => v.type === 'review' && v.task_id).map(v => v.task_id));
-            const reviewTasks = allTasks.filter(t => t.status === 'review' && !reviewedVideoTaskIds.has(t.id));
+            const reviewTasks = allTasks.filter(t => t.status === 'review' && !reviewedVideoTaskIds.has(t.id) && !completedProjectIds.has(t.project_id));
             if (reviewTasks.length === 0) return null;
             return (
               <div style={{ marginBottom: 20 }}>
