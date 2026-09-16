@@ -43,7 +43,7 @@ export default function Dashboard() {
       {/* Stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>
             {[
-              { label: 'Proyectos activos', val: projects.length, color: 'var(--text)' },
+              { label: 'Proyectos activos', val: projects.filter(p => p.status !== 'completed').length, color: 'var(--text)' },
               { label: 'Tareas pendientes', val: pendingTasks.length, color: pendingTasks.length > 0 ? 'var(--yellow)' : 'var(--green)' },
               { label: 'Deadlines esta semana', val: projects.filter(p => { if (!p.deadline) return false; const diff = Math.ceil((new Date(p.deadline) - new Date()) / 86400000); return diff >= 0 && diff <= 7; }).length, color: 'var(--red)' },
               { label: 'Clientes activos', val: clients.length, color: 'var(--accent2)' },

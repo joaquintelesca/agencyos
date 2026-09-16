@@ -994,6 +994,23 @@ app.put('/api/projects/:id', auth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
+// Marca el proyecto como terminado/reabierto a mano — es la única señal real de que ya no van a
+// sumarse más tareas. Antes Pagos inferís esto de que todas las tareas estuvieran en "done", pero
+// eso se rompe apenas se agrega una tarea nueva a un proyecto que ya se había dado por terminado.
+app.patch('/api/projects/:id/status', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const { status } = req.body;
+    if (!['active', 'completed'].includes(status)) return res.status(400).json({ error: 'Estado inválido' });
+    const existing = await db('projects').where({ id: req.params.id }).first();
+    if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    await db('projects').where({ id: req.params.id }).update({ status });
+    const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first();
+    await emitToProject(req.params.id, 'project:updated', project);
+    res.json(project);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
 // Reordena los proyectos DENTRO de un mismo cliente (o sin cliente) — `order` ya viene acotado
 // a ese grupo desde el front, no hace falta el client_id acá para nada más que loguear/validar.
 app.patch('/api/projects/reorder', auth, async (req, res) => {
@@ -1271,22 +1288,15 @@ app.get('/api/users/:id/detail', auth, async (req, res) => {
 app.get('/api/payments', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    // Un proyecto pasa a Pagos cuando TODAS sus tareas están en "Listo", no con que una sola lo
-    // esté — antes, un proyecto con varias tareas aparecía acá apenas se completaba la primera,
-    // aunque el resto siguiera pendiente.
-    const taskCounts = await db('tasks')
-      .select('project_id')
-      .count('* as total')
-      .select(db.raw('SUM(CASE WHEN status != ? THEN 1 ELSE 0 END) as pending', ['done']))
-      .groupBy('project_id');
-    const fullyDoneProjectIds = taskCounts
-      .filter(r => Number(r.total) > 0 && Number(r.pending) === 0)
-      .map(r => r.project_id);
+    // Un proyecto pasa a Pagos cuando el admin lo marca "terminado" a mano (ver PATCH
+    // /api/projects/:id/status), no por inferirlo de las tareas — con proyectos donde se van
+    // sumando tareas con el tiempo, "todas las tareas en done" es una señal que se puede romper
+    // apenas se agrega una tarea nueva a un proyecto que ya se había dado por terminado.
     const projects = await db('projects as p')
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .whereNotNull('p.payment_editor_id')
-      .whereIn('p.id', fullyDoneProjectIds)
+      .where('p.status', 'completed')
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .orderBy('p.created_at', 'desc');
     res.json(projects);

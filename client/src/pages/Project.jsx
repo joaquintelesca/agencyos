@@ -180,6 +180,18 @@ export default function Project() {
     setSearchParams({ tab: 'videos', video: videoId });
   };
 
+  // "Terminado" es la única señal que decide si el proyecto pasa a Pagos — no se infiere de las
+  // tareas porque un proyecto puede seguir sumando tareas nuevas después de parecer completo.
+  const toggleProjectStatus = async () => {
+    const newStatus = project.status === 'completed' ? 'active' : 'completed';
+    try {
+      const updated = await api(`/api/projects/${id}/status`, { method: 'PATCH', body: { status: newStatus } });
+      setProject(updated);
+    } catch (e) {
+      alert('Error al actualizar el estado del proyecto: ' + e.message);
+    }
+  };
+
   const onDragStart = (task) => setDragTask(task);
   const onDrop = async (status) => {
     const task = dragTask;
@@ -228,6 +240,19 @@ export default function Project() {
               <div style={{ width: 20, height: 20, borderRadius: '50%', background: project.payment_editor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>{initials(project.payment_editor_name)}</div>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>{project.payment_editor_name}</span>
             </div>
+          )}
+          {user.role === 'admin' && (
+            <button onClick={toggleProjectStatus}
+              title={project.status === 'completed' ? 'Volver a activo' : 'Marcalo cuando no vayas a agregar más tareas — recién ahí pasa a Pagos'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8,
+                border: `1px solid ${project.status === 'completed' ? 'transparent' : 'var(--border)'}`,
+                background: project.status === 'completed' ? 'rgba(34,201,122,0.12)' : 'var(--bg3)',
+                color: project.status === 'completed' ? 'var(--green)' : 'var(--text2)',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)'
+              }}>
+              {project.status === 'completed' ? '✅ Terminado' : '◻ Marcar como terminado'}
+            </button>
           )}
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
