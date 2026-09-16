@@ -510,7 +510,13 @@ export default function Layout() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div className="form-group">
                     <label>Cliente (opcional)</label>
-                    <select className="input" value={projectForm.client_id} onChange={e => setProjectForm(p => ({ ...p, client_id: e.target.value }))}>
+                    <select className="input" value={projectForm.client_id} onChange={e => {
+                      const clientId = e.target.value;
+                      const client = clients.find(c => c.id === clientId);
+                      // El color del proyecto arranca igual al del cliente elegido — se puede
+                      // cambiar después con los círculos de abajo, esto es solo el default.
+                      setProjectForm(p => ({ ...p, client_id: clientId, color: client?.color || p.color }));
+                    }}>
                       <option value="">Sin cliente</option>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
