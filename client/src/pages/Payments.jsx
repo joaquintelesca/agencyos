@@ -5,13 +5,14 @@ import { initials } from '../utils/format';
 const UPWORK_OPTIONS = ['Pendiente de carga', 'Cargado', 'No'];
 
 export default function Payments() {
-  const { api, socket } = useAuth();
+  const { api, socket, user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('active'); // active | completed
+  const [tab, setTab] = useState('active'); // active | completed | monthly
   const [filterClient, setFilterClient] = useState('');
   const [filterEditor, setFilterEditor] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
 
   useEffect(() => {
     Promise.all([api('/api/payments'), api('/api/clients')])
@@ -72,6 +73,15 @@ export default function Payments() {
   const totalEditorPending = activeProjects.filter(p => p.editor_paid !== 'paid').reduce((s, p) => s + getTotal(p), 0);
   const totalClientPending = activeProjects.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + getClientTotal(p), 0);
   const readyToCollect = activeProjects.filter(p => p.editor_paid !== 'paid' || p.client_paid !== 'cobrado').length;
+
+  // Balance mensual: se basa en la fecha real en que se marcó pagado/cobrado cada lado (no en
+  // el estado actual), así que un proyecto puede aportar al mes del cliente y al mes del editor
+  // por separado si no se saldaron al mismo tiempo. Cuando el editor asignado sos vos mismo
+  // (admin), ese "pago" no es un gasto real — no cuenta en "Pagado a editores".
+  const receivedThisMonth = projects.filter(p => p.client_paid_at && p.client_paid_at.slice(0, 7) === selectedMonth);
+  const paidToEditorsThisMonth = projects.filter(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id !== user.id);
+  const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + getClientTotal(p), 0);
+  const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + getTotal(p), 0);
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><div className="spinner" /></div>;
 
@@ -146,7 +156,7 @@ export default function Payments() {
             )}
           </div>
           <div style={{ display: 'flex', gap: 2, background: 'var(--bg3)', padding: 3, borderRadius: 9 }}>
-            {[['active','Activos'],['completed','Completados']].map(([val, label]) => (
+            {[['active','Activos'],['completed','Completados'],['monthly','Balance mensual']].map(([val, label]) => (
               <button key={val} onClick={() => setTab(val)} style={{ padding: '5px 14px', borderRadius: 7, border: 'none', fontFamily: 'var(--font)', fontSize: 12, cursor: 'pointer', background: tab === val ? 'var(--bg2)' : 'transparent', color: tab === val ? 'var(--text)' : 'var(--text2)', fontWeight: tab === val ? 600 : 400 }}>{label}</button>
             ))}
           </div>
@@ -215,6 +225,61 @@ export default function Payments() {
                 {renderTable(client.projects, true)}
               </div>
             ))}
+          </>
+        )}
+
+        {tab === 'monthly' && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <label style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 600 }}>Mes:</label>
+              <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
+                className="input" style={{ width: 170 }} />
+              <span style={{ fontSize: 13, color: 'var(--text3)', textTransform: 'capitalize' }}>
+                {new Date(`${selectedMonth}-02`).toLocaleDateString('es', { month: 'long', year: 'numeric' })}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 24 }}>
+              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Recibido de clientes</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: '#a5b4fc' }}>${totalReceivedMonth.toFixed(0)}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{receivedThisMonth.length} proyecto{receivedThisMonth.length !== 1 ? 's' : ''}</div>
+              </div>
+              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Pagado a editores</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: '#f472b6' }}>${totalPaidEditorsMonth.toFixed(0)}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{paidToEditorsThisMonth.length} proyecto{paidToEditorsThisMonth.length !== 1 ? 's' : ''}{projects.some(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id === user.id) ? ' · no incluye tus proyectos propios' : ''}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Detalle — cobrado a clientes</div>
+                {receivedThisMonth.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>Nada cobrado este mes</div>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {receivedThisMonth.map(p => (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.client_name ? `${p.client_name} · ` : ''}{p.name}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#a5b4fc', whiteSpace: 'nowrap' }}>${getClientTotal(p).toFixed(0)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Detalle — pagado a editores</div>
+                {paidToEditorsThisMonth.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>Nada pagado este mes</div>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {paidToEditorsThisMonth.map(p => (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.editor_name ? `${p.editor_name} · ` : ''}{p.name}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#f472b6', whiteSpace: 'nowrap' }}>${getTotal(p).toFixed(0)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </>
         )}
       </div>

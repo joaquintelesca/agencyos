@@ -488,6 +488,17 @@ async function initDB() {
     await db.schema.table('projects', t => { t.timestamp('completed_at').nullable(); });
   }
 
+  // Fecha exacta en que se marcó pagado/cobrado cada lado — completed_at (arriba) solo se
+  // completa cuando AMBOS lados quedan saldados, no sirve para saber en qué mes se cobró el
+  // cliente si el editor se pagó en un mes distinto. Necesario para el balance mensual de Pagos.
+  const hasEditorPaidAt = await db.schema.hasColumn('projects', 'editor_paid_at');
+  if (!hasEditorPaidAt) {
+    await db.schema.table('projects', t => {
+      t.timestamp('editor_paid_at').nullable();
+      t.timestamp('client_paid_at').nullable();
+    });
+  }
+
   // Clients table
   const hasClients = await db.schema.hasTable('clients');
   if (!hasClients) {
@@ -1316,8 +1327,14 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
     if (payment_status !== undefined) update.payment_status = payment_status;
     if (upwork_status !== undefined) update.upwork_status = upwork_status;
     if (payment_amount !== undefined) update.payment_amount = Math.max(0, parseFloat(payment_amount) || 0);
-    if (req.body.editor_paid !== undefined) update.editor_paid = req.body.editor_paid;
-    if (req.body.client_paid !== undefined) update.client_paid = req.body.client_paid;
+    if (req.body.editor_paid !== undefined) {
+      update.editor_paid = req.body.editor_paid;
+      update.editor_paid_at = req.body.editor_paid === 'paid' ? new Date().toISOString() : null;
+    }
+    if (req.body.client_paid !== undefined) {
+      update.client_paid = req.body.client_paid;
+      update.client_paid_at = req.body.client_paid === 'cobrado' ? new Date().toISOString() : null;
+    }
     await db('projects').where({ id: req.params.projectId }).update(update);
     const current = await db('projects').where({ id: req.params.projectId }).first();
     const isCompleted = current.editor_paid === 'paid' && current.client_paid === 'cobrado';
