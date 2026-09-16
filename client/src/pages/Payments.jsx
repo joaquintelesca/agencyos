@@ -60,6 +60,15 @@ export default function Payments() {
     return gross * (1 - (parseFloat(p.upwork_fee_pct) || 0) / 100);
   };
 
+  // Una vez marcado pagado/cobrado, el monto queda congelado (ver PATCH /api/payments/:id en el
+  // servidor) — se usa ese valor guardado en vez de recalcular en vivo, así un proyecto por horas
+  // no cambia de monto en un mes ya cerrado solo porque después se corrigieron las horas cargadas.
+  // Los ya marcados como pagados/cobrados ANTES de este cambio no tienen el valor congelado
+  // (queda null) y caen al cálculo en vivo como antes.
+  const displayEditorAmount = (p) => p.editor_paid === 'paid' && p.editor_paid_amount != null ? p.editor_paid_amount : getTotal(p);
+  const displayClientGross = (p) => p.client_paid === 'cobrado' && p.client_paid_amount_gross != null ? p.client_paid_amount_gross : getClientTotal(p);
+  const displayClientNet = (p) => p.client_paid === 'cobrado' && p.client_paid_amount_net != null ? p.client_paid_amount_net : getClientNet(p);
+
   // Cuando el editor asignado sos vos mismo no hay pago real que marcar — se trata como
   // "resuelto" en ese lado en vez de quedar eternamente pendiente por un toggle que nunca aplica.
   const editorSettled = (p) => p.payment_editor_id === user.id || p.editor_paid === 'paid';
@@ -100,8 +109,8 @@ export default function Payments() {
   // (admin), ese "pago" no es un gasto real — no cuenta en "Pagado a editores".
   const receivedThisMonth = projects.filter(p => p.client_paid_at && p.client_paid_at.slice(0, 7) === selectedMonth);
   const paidToEditorsThisMonth = projects.filter(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id !== user.id);
-  const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + getClientNet(p), 0);
-  const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + getTotal(p), 0);
+  const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + displayClientNet(p), 0);
+  const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + displayEditorAmount(p), 0);
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><div className="spinner" /></div>;
 
@@ -138,9 +147,9 @@ export default function Payments() {
             {isHistory && sorted.length > 0 && (
               <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
                 <td colSpan={baseCols} style={{ padding: '8px 12px', fontSize: 11, color: 'var(--text2)' }}>Total ({sorted.length} proyecto{sorted.length > 1 ? 's' : ''})</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>${sorted.reduce((s, p) => s + getTotal(p), 0).toFixed(0)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>${sorted.reduce((s, p) => s + displayEditorAmount(p), 0).toFixed(0)}</td>
                 <td style={{ background: 'rgba(236,72,153,0.05)' }} />
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#a5b4fc', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>${sorted.reduce((s, p) => s + getClientTotal(p), 0).toFixed(0)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#a5b4fc', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>${sorted.reduce((s, p) => s + displayClientGross(p), 0).toFixed(0)}</td>
                 <td style={{ background: 'rgba(99,102,241,0.05)' }} />
               </tr>
             )}
@@ -296,9 +305,9 @@ export default function Payments() {
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.client_name ? `${p.client_name} · ` : ''}{p.name}</span>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#a5b4fc', whiteSpace: 'nowrap' }}>${getClientNet(p).toFixed(0)}</div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#a5b4fc', whiteSpace: 'nowrap' }}>${displayClientNet(p).toFixed(0)}</div>
                         {isUpworkBilled(p) && (
-                          <div style={{ fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap' }}>bruto ${getClientTotal(p).toFixed(0)} · Upwork {p.upwork_fee_pct || 0}%</div>
+                          <div style={{ fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap' }}>bruto ${displayClientGross(p).toFixed(0)} · Upwork {p.upwork_fee_pct || 0}%</div>
                         )}
                       </div>
                     </div>
@@ -313,7 +322,7 @@ export default function Payments() {
                     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.editor_name ? `${p.editor_name} · ` : ''}{p.name}</span>
-                      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#f472b6', whiteSpace: 'nowrap' }}>${getTotal(p).toFixed(0)}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#f472b6', whiteSpace: 'nowrap' }}>${displayEditorAmount(p).toFixed(0)}</span>
                     </div>
                   ))}
                 </div>
@@ -332,14 +341,27 @@ function ProjectRow({ project: p, onUpdate, isHistory, currentUserId, onEdit }) 
   // Si otra sesión/socket actualiza payment_hours mientras esta fila está montada (misma key={p.id}),
   // hay que reflejarlo — si no, un blur posterior pisa ese cambio con el valor local desactualizado.
   useEffect(() => { setHours(p.payment_hours || 0); }, [p.payment_hours]);
-  const total = p.payment_type === 'hourly'
+  const liveTotal = p.payment_type === 'hourly'
     ? (parseFloat(p.payment_amount) || 0) * (parseFloat(hours) || 0)
     : (parseFloat(p.payment_amount) || 0);
-  const clientTotal = p.payment_type === 'hourly'
+  const liveClientTotal = p.payment_type === 'hourly'
     ? (parseFloat(p.client_amount) || 0) * (parseFloat(hours) || 0)
     : (parseFloat(p.client_amount) || 0);
   const isUpworkBilled = p.upwork_status === 'Pendiente de carga' || p.upwork_status === 'Cargado';
-  const clientNet = isUpworkBilled ? clientTotal * (1 - (parseFloat(p.upwork_fee_pct) || 0) / 100) : clientTotal;
+  const liveClientNet = isUpworkBilled ? liveClientTotal * (1 - (parseFloat(p.upwork_fee_pct) || 0) / 100) : liveClientTotal;
+  // Una vez marcado pagado/cobrado el monto queda congelado (ver PATCH /api/payments/:id en el
+  // servidor) — se muestra ese valor guardado en vez de recalcular con las horas actuales.
+  const total = p.editor_paid === 'paid' && p.editor_paid_amount != null ? p.editor_paid_amount : liveTotal;
+  const clientTotal = p.client_paid === 'cobrado' && p.client_paid_amount_gross != null ? p.client_paid_amount_gross : liveClientTotal;
+  const clientNet = p.client_paid === 'cobrado' && p.client_paid_amount_net != null ? p.client_paid_amount_net : liveClientNet;
+  // Pasar a "Completados" no debería ser automático — se pide confirmación solo cuando el cambio
+  // hace que AMBOS lados queden saldados a la vez (revertir uno no cuenta como completar).
+  const confirmIfCompleting = (nextEditorPaid, nextClientPaid) => {
+    const editorOk = isSelfEditor || nextEditorPaid === 'paid';
+    const clientOk = nextClientPaid === 'cobrado';
+    if (!editorOk || !clientOk) return true;
+    return window.confirm('Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Completados". ¿Confirmás?');
+  };
 
   return (
     <tr style={{ borderBottom: '1px solid var(--border)' }}
@@ -411,7 +433,7 @@ function ProjectRow({ project: p, onUpdate, isHistory, currentUserId, onEdit }) 
           <span style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }} title="Sos vos el editor — no hay pago que registrar">No aplica</span>
         ) : (
           <select value={p.editor_paid || 'unpaid'}
-            onChange={e => onUpdate(p.id, { editor_paid: e.target.value })}
+            onChange={e => { const val = e.target.value; if (confirmIfCompleting(val, p.client_paid)) onUpdate(p.id, { editor_paid: val }); }}
             style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.editor_paid === 'paid' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.editor_paid === 'paid' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.editor_paid === 'paid' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
             <option value="unpaid">Sin pagar</option>
             <option value="paid">Pagado ✓</option>
@@ -434,7 +456,7 @@ function ProjectRow({ project: p, onUpdate, isHistory, currentUserId, onEdit }) 
       {/* Cobrado al cliente */}
       <td style={{ padding: '9px 12px', background: 'rgba(99,102,241,0.03)' }}>
         <select value={p.client_paid || 'unpaid'}
-          onChange={e => onUpdate(p.id, { client_paid: e.target.value })}
+          onChange={e => { const val = e.target.value; if (confirmIfCompleting(p.editor_paid, val)) onUpdate(p.id, { client_paid: val }); }}
           style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.client_paid === 'cobrado' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.client_paid === 'cobrado' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.client_paid === 'cobrado' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
           <option value="unpaid">Sin cobrar</option>
           <option value="cobrado">Cobrado ✓</option>

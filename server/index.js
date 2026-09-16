@@ -491,6 +491,19 @@ async function initDB() {
     await db.schema.table('projects', t => { t.float('upwork_fee_pct').nullable(); });
   }
 
+  // Montos "congelados" al momento exacto de marcar pagado/cobrado — en un proyecto por horas,
+  // las horas se siguen editando en Pagos incluso después de marcarlo pagado (corrección de un
+  // error, etc.); sin esto, el monto de un mes ya cerrado en el Balance mensual cambiaba solo
+  // porque alguien tocó las horas de ese proyecto meses después.
+  const hasPaidAmounts = await db.schema.hasColumn('projects', 'editor_paid_amount');
+  if (!hasPaidAmounts) {
+    await db.schema.table('projects', t => {
+      t.float('editor_paid_amount').nullable();
+      t.float('client_paid_amount_gross').nullable();
+      t.float('client_paid_amount_net').nullable();
+    });
+  }
+
   const hasCompletedAt = await db.schema.hasColumn('projects', 'completed_at');
   if (!hasCompletedAt) {
     await db.schema.table('projects', t => { t.timestamp('completed_at').nullable(); });
@@ -708,6 +721,24 @@ app.get('/uploads/:filename', auth, async (req, res) => {
 
   return res.status(404).json({ error: 'Archivo no encontrado' });
 });
+
+// ─── CÁLCULO DE MONTOS DE PAGO ─────────────────────────────────────────────────
+// Misma lógica que replican Payments.jsx/Dashboard.jsx del lado del cliente — acá hace falta
+// para poder "congelar" el monto real en el momento exacto en que se marca pagado/cobrado.
+function computeEditorAmount(p) {
+  if (p.payment_type === 'hourly') return (parseFloat(p.payment_amount) || 0) * (parseFloat(p.payment_hours) || 0);
+  return parseFloat(p.payment_amount) || 0;
+}
+function computeClientGrossAmount(p) {
+  if (p.payment_type === 'hourly') return (parseFloat(p.client_amount) || 0) * (parseFloat(p.payment_hours) || 0);
+  return parseFloat(p.client_amount) || 0;
+}
+function computeClientNetAmount(p) {
+  const gross = computeClientGrossAmount(p);
+  const isUpworkBilled = p.upwork_status === 'Pendiente de carga' || p.upwork_status === 'Cargado';
+  if (!isUpworkBilled) return gross;
+  return gross * (1 - (parseFloat(p.upwork_fee_pct) || 0) / 100);
+}
 
 // ─── PROJECT MEMBERSHIP ───────────────────────────────────────────────────────
 
@@ -1351,11 +1382,26 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
     }
     await db('projects').where({ id: req.params.projectId }).update(update);
     const current = await db('projects').where({ id: req.params.projectId }).first();
+
+    // Congelar el monto real en el momento exacto en que se marca pagado/cobrado — así un
+    // proyecto por horas no cambia de monto en un mes ya cerrado solo porque después se
+    // corrigieron las horas cargadas.
+    const followUp = {};
+    if (req.body.editor_paid !== undefined) {
+      followUp.editor_paid_amount = current.editor_paid === 'paid' ? computeEditorAmount(current) : null;
+    }
+    if (req.body.client_paid !== undefined) {
+      followUp.client_paid_amount_gross = current.client_paid === 'cobrado' ? computeClientGrossAmount(current) : null;
+      followUp.client_paid_amount_net = current.client_paid === 'cobrado' ? computeClientNetAmount(current) : null;
+    }
     const isCompleted = current.editor_paid === 'paid' && current.client_paid === 'cobrado';
     if (isCompleted && !current.completed_at) {
-      await db('projects').where({ id: req.params.projectId }).update({ completed_at: new Date().toISOString() });
+      followUp.completed_at = new Date().toISOString();
     } else if (!isCompleted && current.completed_at) {
-      await db('projects').where({ id: req.params.projectId }).update({ completed_at: null });
+      followUp.completed_at = null;
+    }
+    if (Object.keys(followUp).length) {
+      await db('projects').where({ id: req.params.projectId }).update(followUp);
     }
     const project = await db('projects as p')
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
