@@ -560,12 +560,12 @@ export default function Project() {
             {(estimatedEditorTotal() > 0 || estimatedClientTotal() > 0) && (
               <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: '#be185d' }}>Pago editor:</span>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: '#be185d' }}>${estimatedEditorTotal().toFixed(0)}</span>
+                  <span style={{ fontSize: 12, color: '#f472b6' }}>Pago editor:</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#f472b6' }}>${estimatedEditorTotal().toFixed(0)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: '#4338ca' }}>Cobro cliente:</span>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: '#4338ca' }}>${estimatedClientTotal().toFixed(0)}</span>
+                  <span style={{ fontSize: 12, color: '#a5b4fc' }}>Cobro cliente:</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#a5b4fc' }}>${estimatedClientTotal().toFixed(0)}</span>
                 </div>
                 {estimatedClientTotal() > estimatedEditorTotal() && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 6 }}>

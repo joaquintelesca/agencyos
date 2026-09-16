@@ -86,19 +86,19 @@ export default function Payments() {
           <thead>
             <tr>
               <td colSpan={baseCols} style={{ padding: 0, border: 'none' }} />
-              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(236,72,153,0.08)', color: '#be185d', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Editor —</td>
+              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(236,72,153,0.08)', color: '#f472b6', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Editor —</td>
               <td style={{ borderLeft: '1px solid var(--border)' }} />
-              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(99,102,241,0.08)', color: '#4338ca', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Cliente —</td>
+              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(99,102,241,0.08)', color: '#a5b4fc', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Cliente —</td>
             </tr>
             <tr style={{ background: 'var(--bg3)' }}>
               {['Proyecto','Editor','Tipo','Upwork'].map(h => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
               {isHistory && <th style={thStyle}>Completado</th>}
-              <th style={{ ...thStyle, textAlign: 'right', color: '#be185d', background: 'rgba(236,72,153,0.05)' }}>Monto</th>
-              <th style={{ ...thStyle, color: '#be185d', background: 'rgba(236,72,153,0.05)' }}>Pagado al editor</th>
-              <th style={{ ...thStyle, textAlign: 'right', color: '#4338ca', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>Monto</th>
-              <th style={{ ...thStyle, color: '#4338ca', background: 'rgba(99,102,241,0.05)' }}>Cobrado al cliente</th>
+              <th style={{ ...thStyle, textAlign: 'right', color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>Monto</th>
+              <th style={{ ...thStyle, color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>Pagado al editor</th>
+              <th style={{ ...thStyle, textAlign: 'right', color: '#a5b4fc', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>Monto</th>
+              <th style={{ ...thStyle, color: '#a5b4fc', background: 'rgba(99,102,241,0.05)' }}>Cobrado al cliente</th>
             </tr>
           </thead>
           <tbody>
@@ -108,9 +108,9 @@ export default function Payments() {
             {isHistory && sorted.length > 0 && (
               <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
                 <td colSpan={baseCols} style={{ padding: '8px 12px', fontSize: 11, color: 'var(--text2)' }}>Total ({sorted.length} proyecto{sorted.length > 1 ? 's' : ''})</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#be185d', background: 'rgba(236,72,153,0.05)' }}>${sorted.reduce((s, p) => s + getTotal(p), 0).toFixed(0)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>${sorted.reduce((s, p) => s + getTotal(p), 0).toFixed(0)}</td>
                 <td style={{ background: 'rgba(236,72,153,0.05)' }} />
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#4338ca', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>${sorted.reduce((s, p) => s + getClientTotal(p), 0).toFixed(0)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#a5b4fc', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>${sorted.reduce((s, p) => s + getClientTotal(p), 0).toFixed(0)}</td>
                 <td style={{ background: 'rgba(99,102,241,0.05)' }} />
               </tr>
             )}
@@ -160,8 +160,8 @@ export default function Payments() {
             {/* Summary */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 24 }}>
               {[
-                { label: 'Por pagar a editores', val: `$${totalEditorPending.toFixed(0)}`, color: '#be185d' },
-                { label: 'Por cobrar a clientes', val: `$${totalClientPending.toFixed(0)}`, color: '#4338ca' },
+                { label: 'Por pagar a editores', val: `$${totalEditorPending.toFixed(0)}`, color: '#f472b6' },
+                { label: 'Por cobrar a clientes', val: `$${totalClientPending.toFixed(0)}`, color: '#a5b4fc' },
                 { label: 'Proyectos pendientes', val: readyToCollect, color: 'var(--yellow)' },
                 { label: 'Proyectos vinculados', val: activeProjects.length, color: 'var(--accent2)' },
               ].map(m => (
