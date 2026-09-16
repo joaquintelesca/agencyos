@@ -155,10 +155,17 @@ export default function Payments() {
                 style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', color: 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>✕ Limpiar</button>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 2, background: 'var(--bg3)', padding: 3, borderRadius: 9 }}>
-            {[['active','Activos'],['completed','Completados'],['monthly','Balance mensual']].map(([val, label]) => (
-              <button key={val} onClick={() => setTab(val)} style={{ padding: '5px 14px', borderRadius: 7, border: 'none', fontFamily: 'var(--font)', fontSize: 12, cursor: 'pointer', background: tab === val ? 'var(--bg2)' : 'transparent', color: tab === val ? 'var(--text)' : 'var(--text2)', fontWeight: tab === val ? 600 : 400 }}>{label}</button>
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 2, background: 'var(--bg3)', padding: 3, borderRadius: 9 }}>
+              {[['active','Activos'],['completed','Completados']].map(([val, label]) => (
+                <button key={val} onClick={() => setTab(val)} style={{ padding: '5px 14px', borderRadius: 7, border: 'none', fontFamily: 'var(--font)', fontSize: 12, cursor: 'pointer', background: tab === val ? 'var(--bg2)' : 'transparent', color: tab === val ? 'var(--text)' : 'var(--text2)', fontWeight: tab === val ? 600 : 400 }}>{label}</button>
+              ))}
+            </div>
+            <button onClick={() => setTab('monthly')} style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 9, border: 'none', fontFamily: 'var(--font)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              background: tab === 'monthly' ? 'var(--accent)' : 'var(--accent-glow)',
+              color: tab === 'monthly' ? '#fff' : 'var(--accent2)'
+            }}>📊 Balance mensual</button>
           </div>
         </div>
       </div>
@@ -233,13 +240,13 @@ export default function Payments() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
               <label style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 600 }}>Mes:</label>
               <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
-                className="input" style={{ width: 170 }} />
+                className="input" style={{ width: 210, flexShrink: 0 }} />
               <span style={{ fontSize: 13, color: 'var(--text3)', textTransform: 'capitalize' }}>
                 {new Date(`${selectedMonth}-02`).toLocaleDateString('es', { month: 'long', year: 'numeric' })}
               </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 24 }}>
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Recibido de clientes</div>
                 <div style={{ fontSize: 26, fontWeight: 700, color: '#a5b4fc' }}>${totalReceivedMonth.toFixed(0)}</div>
@@ -249,6 +256,13 @@ export default function Payments() {
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Pagado a editores</div>
                 <div style={{ fontSize: 26, fontWeight: 700, color: '#f472b6' }}>${totalPaidEditorsMonth.toFixed(0)}</div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{paidToEditorsThisMonth.length} proyecto{paidToEditorsThisMonth.length !== 1 ? 's' : ''}{projects.some(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id === user.id) ? ' · no incluye tus proyectos propios' : ''}</div>
+              </div>
+              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Ganancia del mes</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: (totalReceivedMonth - totalPaidEditorsMonth) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                  ${(totalReceivedMonth - totalPaidEditorsMonth).toFixed(0)}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Recibido − pagado a editores</div>
               </div>
             </div>
 
