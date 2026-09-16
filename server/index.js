@@ -2298,6 +2298,15 @@ app.get('/api/chat/dm-tabs', auth, async (req, res) => {
   try {
     const { userId } = req.query;
     if (!userId) return res.status(400).json({ error: 'userId requerido' });
+    // "Notas" del admin (DM con uno mismo) es su bloc de notas de TODO lo que gestiona, no solo
+    // los clientes de proyectos donde figura como project_member — a diferencia de un DM con un
+    // editor, donde sí tiene sentido filtrar a los clientes en los que ese editor participa.
+    // Se arma en vivo desde la tabla de clientes: agregar/borrar un cliente ya queda reflejado
+    // la próxima vez que se abre esta conversación, sin necesidad de nada adicional.
+    if (userId === req.user.id && req.user.role === 'admin') {
+      const clients = await db('clients').select('id', 'name', 'color').orderBy('name', 'asc');
+      return res.json(clients);
+    }
     const otherUser = await db('users').where({ id: userId }).first();
     if (!otherUser) return res.status(404).json({ error: 'Usuario no encontrado' });
     const editorId = req.user.role === 'admin' ? userId : req.user.id;
