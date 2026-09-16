@@ -21,13 +21,13 @@ export default function Layout() {
   const [clientForm, setClientForm] = useState({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
   const [step, setStep] = useState(1);
   const [projectForm, setProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' });
-  const [paymentForm, setPaymentForm] = useState({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', upwork_status: 'No', upwork_fee_pct: '' });
+  const [paymentForm, setPaymentForm] = useState({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' });
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [chatUnread, setChatUnread] = useState({});
   const [editingClient, setEditingClient] = useState(null);
   const [editClientForm, setEditClientForm] = useState({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
   const [editingProject, setEditingProject] = useState(null);
-  const [editProjectForm, setEditProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '', payment_editor_id: '', payment_type: 'fixed', payment_amount: '', client_amount: '', payment_hours: '', upwork_status: 'No', upwork_fee_pct: '' });
+  const [editProjectForm, setEditProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '', payment_editor_id: '', payment_type: 'fixed', payment_amount: '', client_amount: '', payment_hours: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' });
   const [storageWarning, setStorageWarning] = useState(null); // { gb, bytes } | null
   const [sidebarError, setSidebarError] = useState('');
   const [sidebarRetryCount, setSidebarRetryCount] = useState(0);
@@ -119,7 +119,7 @@ export default function Layout() {
     };
   }, [socket]);
 
-  const openNewProject = () => { setStep(1); setProjectForm({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' }); setPaymentForm({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', upwork_status: 'No', upwork_fee_pct: '' }); setShowNewProject(true); };
+  const openNewProject = () => { setStep(1); setProjectForm({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' }); setPaymentForm({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' }); setShowNewProject(true); };
 
   const createClient = async () => {
     if (!clientForm.name.trim() || isCreatingClient) return;
@@ -140,10 +140,23 @@ export default function Layout() {
 
   const saveProject = async () => {
     if (!editProjectForm.name.trim()) return;
+    const clientPaidChanged = editProjectForm.client_paid !== (editingProject.client_paid === 'cobrado' ? 'cobrado' : 'unpaid');
+    if (clientPaidChanged && editProjectForm.client_paid === 'cobrado') {
+      const isSelf = editProjectForm.payment_editor_id === user?.id;
+      const editorSettled = isSelf || editingProject.editor_paid === 'paid';
+      if (editingProject.status === 'completed' && editorSettled) {
+        if (!window.confirm('Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Completados" en Pagos. ¿Confirmás?')) return;
+      }
+    }
     try {
       const isSelf = editProjectForm.payment_editor_id === user?.id;
       const body = { ...editingProject, ...editProjectForm, payment_amount: isSelf ? 0 : editProjectForm.payment_amount };
-      const updated = await api(`/api/projects/${editingProject.id}`, { method: 'PUT', body });
+      let updated = await api(`/api/projects/${editingProject.id}`, { method: 'PUT', body });
+      // client_paid necesita pasar por el endpoint de Pagos para "congelar" el monto real en
+      // ese momento (ver PATCH /api/payments/:id) — el PUT genérico de arriba lo ignora a propósito.
+      if (clientPaidChanged) {
+        updated = await api(`/api/payments/${editingProject.id}`, { method: 'PATCH', body: { client_paid: editProjectForm.client_paid } });
+      }
       setProjects(prev => prev.map(p => p.id === editingProject.id ? { ...p, ...updated } : p));
       setEditingProject(null);
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
@@ -206,7 +219,7 @@ export default function Layout() {
 
   const openEditProject = (p) => {
     setEditingProject(p);
-    setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '', payment_editor_id: p.payment_editor_id || '', payment_type: p.payment_type || 'fixed', payment_amount: p.payment_amount || '', client_amount: p.client_amount || '', payment_hours: p.payment_hours || '', upwork_status: (p.upwork_status === 'Pendiente de carga' || p.upwork_status === 'Cargado') ? p.upwork_status : 'No', upwork_fee_pct: p.upwork_fee_pct ?? '' });
+    setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '', payment_editor_id: p.payment_editor_id || '', payment_type: p.payment_type || 'fixed', payment_amount: p.payment_amount || '', client_amount: p.client_amount || '', payment_hours: p.payment_hours || '', upwork_status: (p.upwork_status === 'Pendiente de carga' || p.upwork_status === 'Cargado') ? p.upwork_status : 'No', upwork_fee_pct: p.upwork_fee_pct ?? '', client_paid: p.client_paid === 'cobrado' ? 'cobrado' : 'unpaid' });
   };
 
   const deleteClient = (c) => {
@@ -269,7 +282,12 @@ export default function Layout() {
         body.upwork_status = paymentForm.upwork_status;
         body.upwork_fee_pct = paymentForm.upwork_fee_pct;
       }
-      const p = await api('/api/projects', { method: 'POST', body });
+      let p = await api('/api/projects', { method: 'POST', body });
+      // client_paid necesita pasar por el endpoint de Pagos para "congelar" el monto real en
+      // ese momento (ver PATCH /api/payments/:id) — el POST de arriba lo ignora a propósito.
+      if (paymentForm.client_paid === 'cobrado') {
+        p = await api(`/api/payments/${p.id}`, { method: 'PATCH', body: { client_paid: 'cobrado' } });
+      }
       // El socket 'project:created' (emitido a todos los admins, incluido quien lo creó) puede
       // llegar antes que esta respuesta HTTP se resuelva — sin este chequeo, el mismo proyecto
       // termina agregado dos veces a la lista local aunque en la base exista una sola fila.
@@ -604,6 +622,13 @@ export default function Layout() {
                         </div>
                       )}
                     </div>
+                    <div className="form-group">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={paymentForm.client_paid === 'cobrado'}
+                          onChange={e => setPaymentForm(p => ({ ...p, client_paid: e.target.checked ? 'cobrado' : 'unpaid' }))} />
+                        El cliente ya pagó este proyecto
+                      </label>
+                    </div>
                     {isSelfEditorNew && (
                       <div style={{ background: 'var(--bg3)', border: '1px dashed var(--border2)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: 'var(--text2)' }}>
                         Como el editor sos vos, no hay "pago a editor" — solo se registra lo que le cobrás al cliente.
@@ -785,6 +810,13 @@ export default function Layout() {
                         onChange={e => setEditProjectForm(p => ({ ...p, upwork_fee_pct: e.target.value }))} placeholder="Ej: 15" />
                     </div>
                   )}
+                </div>
+                <div className="form-group">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={editProjectForm.client_paid === 'cobrado'}
+                      onChange={e => setEditProjectForm(p => ({ ...p, client_paid: e.target.checked ? 'cobrado' : 'unpaid' }))} />
+                    El cliente ya pagó este proyecto
+                  </label>
                 </div>
                 {isSelfEditorEdit && (
                   <div style={{ background: 'var(--bg3)', border: '1px dashed var(--border2)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: 'var(--text2)' }}>
