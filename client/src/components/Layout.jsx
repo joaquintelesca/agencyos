@@ -477,7 +477,7 @@ export default function Layout() {
             <button onClick={() => setStorageWarning(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
           </div>
         )}
-        <Outlet context={{ projects, setProjects, unreadNotifs, setUnreadNotifs }} />
+        <Outlet context={{ projects, setProjects, unreadNotifs, setUnreadNotifs, openEditProject }} />
       </main>
 
       {/* New Project Modal */}

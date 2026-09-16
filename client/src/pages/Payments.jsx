@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { initials } from '../utils/format';
 
@@ -6,6 +7,7 @@ const UPWORK_OPTIONS = ['Pendiente de carga', 'Cargado', 'No'];
 
 export default function Payments() {
   const { api, socket, user } = useAuth();
+  const { openEditProject } = useOutletContext();
   const [projects, setProjects] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,8 +25,13 @@ export default function Payments() {
   useEffect(() => {
     if (!socket) return;
     const onUpdate = (p) => setProjects(prev => prev.map(x => x.id === p.id ? p : x));
+    // El editor del sidebar (mismo modal que ahora abre el lápiz de acá) guarda vía PUT
+    // /api/projects/:id, que trae otros nombres de campo (payment_editor_name, no editor_name) —
+    // más simple recargar la lista entera que mergear formas distintas de la misma fila.
+    const onProjectUpdate = () => { api('/api/payments').then(setProjects).catch(console.error); };
     socket.on('payment:updated', onUpdate);
-    return () => socket.off('payment:updated', onUpdate);
+    socket.on('project:updated', onProjectUpdate);
+    return () => { socket.off('payment:updated', onUpdate); socket.off('project:updated', onProjectUpdate); };
   }, [socket]);
 
   const updatePayment = async (projectId, changes) => {
@@ -117,7 +124,7 @@ export default function Payments() {
           </thead>
           <tbody>
             {sorted.map(p => (
-              <ProjectRow key={p.id} project={p} onUpdate={updatePayment} isHistory={isHistory} currentUserId={user.id} />
+              <ProjectRow key={p.id} project={p} onUpdate={updatePayment} isHistory={isHistory} currentUserId={user.id} onEdit={openEditProject} />
             ))}
             {isHistory && sorted.length > 0 && (
               <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
@@ -305,7 +312,7 @@ export default function Payments() {
   );
 }
 
-function ProjectRow({ project: p, onUpdate, isHistory, currentUserId }) {
+function ProjectRow({ project: p, onUpdate, isHistory, currentUserId, onEdit }) {
   const isSelfEditor = p.payment_editor_id === currentUserId;
   const [hours, setHours] = useState(p.payment_hours || 0);
   // Si otra sesión/socket actualiza payment_hours mientras esta fila está montada (misma key={p.id}),
@@ -325,7 +332,11 @@ function ProjectRow({ project: p, onUpdate, isHistory, currentUserId }) {
 
       {/* Proyecto */}
       <td style={{ padding: '9px 12px' }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{p.name}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{p.name}</span>
+          <button onClick={() => onEdit(p)} title="Editar proyecto"
+            style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 12, padding: 2, lineHeight: 1 }}>✏️</button>
+        </div>
         {p.payment_type === 'hourly' && (
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
             ${p.payment_amount}/h ·{' '}
