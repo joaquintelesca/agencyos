@@ -91,7 +91,9 @@ export default function Dashboard() {
             if (reviewTasks.length === 0) return null;
             return (
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Esperando tu aprobación</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                  {user?.role === 'admin' ? 'Esperando tu aprobación' : 'Esperando aprobación del admin'}
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {reviewTasks.map(t => {
                     const proj = projects.find(p => p.id === t.project_id);
