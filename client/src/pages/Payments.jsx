@@ -51,6 +51,15 @@ export default function Payments() {
     return parseFloat(p.client_amount) || 0;
   };
 
+  // Proyectos facturados vía Upwork: lo que carga el admin en "Cobro cliente" es el bruto que
+  // ve el cliente — Upwork se queda con upwork_fee_pct% antes de que llegue a la cuenta.
+  const isUpworkBilled = (p) => p.upwork_status === 'Pendiente de carga' || p.upwork_status === 'Cargado';
+  const getClientNet = (p) => {
+    const gross = getClientTotal(p);
+    if (!isUpworkBilled(p)) return gross;
+    return gross * (1 - (parseFloat(p.upwork_fee_pct) || 0) / 100);
+  };
+
   // Cuando el editor asignado sos vos mismo no hay pago real que marcar — se trata como
   // "resuelto" en ese lado en vez de quedar eternamente pendiente por un toggle que nunca aplica.
   const editorSettled = (p) => p.payment_editor_id === user.id || p.editor_paid === 'paid';
@@ -82,7 +91,7 @@ export default function Payments() {
   };
 
   const totalEditorPending = activeProjects.filter(p => !editorSettled(p)).reduce((s, p) => s + getTotal(p), 0);
-  const totalClientPending = activeProjects.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + getClientTotal(p), 0);
+  const totalClientPending = activeProjects.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + getClientNet(p), 0);
   const readyToCollect = activeProjects.filter(p => !editorSettled(p) || p.client_paid !== 'cobrado').length;
 
   // Balance mensual: se basa en la fecha real en que se marcó pagado/cobrado cada lado (no en
@@ -91,7 +100,7 @@ export default function Payments() {
   // (admin), ese "pago" no es un gasto real — no cuenta en "Pagado a editores".
   const receivedThisMonth = projects.filter(p => p.client_paid_at && p.client_paid_at.slice(0, 7) === selectedMonth);
   const paidToEditorsThisMonth = projects.filter(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id !== user.id);
-  const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + getClientTotal(p), 0);
+  const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + getClientNet(p), 0);
   const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + getTotal(p), 0);
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><div className="spinner" /></div>;
@@ -286,7 +295,12 @@ export default function Payments() {
                     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.client_name ? `${p.client_name} · ` : ''}{p.name}</span>
-                      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#a5b4fc', whiteSpace: 'nowrap' }}>${getClientTotal(p).toFixed(0)}</span>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#a5b4fc', whiteSpace: 'nowrap' }}>${getClientNet(p).toFixed(0)}</div>
+                        {isUpworkBilled(p) && (
+                          <div style={{ fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap' }}>bruto ${getClientTotal(p).toFixed(0)} · Upwork {p.upwork_fee_pct || 0}%</div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -324,6 +338,8 @@ function ProjectRow({ project: p, onUpdate, isHistory, currentUserId, onEdit }) 
   const clientTotal = p.payment_type === 'hourly'
     ? (parseFloat(p.client_amount) || 0) * (parseFloat(hours) || 0)
     : (parseFloat(p.client_amount) || 0);
+  const isUpworkBilled = p.upwork_status === 'Pendiente de carga' || p.upwork_status === 'Cargado';
+  const clientNet = isUpworkBilled ? clientTotal * (1 - (parseFloat(p.upwork_fee_pct) || 0) / 100) : clientTotal;
 
   return (
     <tr style={{ borderBottom: '1px solid var(--border)' }}
@@ -405,7 +421,14 @@ function ProjectRow({ project: p, onUpdate, isHistory, currentUserId, onEdit }) 
 
       {/* Monto cliente */}
       <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--text)', background: 'rgba(99,102,241,0.03)', borderLeft: '1px solid var(--border)' }}>
-        ${clientTotal.toFixed(0)}
+        {isUpworkBilled ? (
+          <>
+            <div>${clientTotal.toFixed(0)}</div>
+            <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text3)' }} title={`Neto tras ${p.upwork_fee_pct || 0}% de comisión Upwork`}>neto ${clientNet.toFixed(0)}</div>
+          </>
+        ) : (
+          `$${clientTotal.toFixed(0)}`
+        )}
       </td>
 
       {/* Cobrado al cliente */}

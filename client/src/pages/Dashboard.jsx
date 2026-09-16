@@ -45,12 +45,20 @@ export default function Dashboard() {
   // y/o cobrarle al cliente — mismo cálculo que usa la página de Pagos.
   const getEditorTotal = p => p.payment_type === 'hourly' ? (parseFloat(p.payment_amount) || 0) * (parseFloat(p.payment_hours) || 0) : (parseFloat(p.payment_amount) || 0);
   const getClientTotal = p => p.payment_type === 'hourly' ? (parseFloat(p.client_amount) || 0) * (parseFloat(p.payment_hours) || 0) : (parseFloat(p.client_amount) || 0);
+  // Proyectos facturados vía Upwork: lo que se carga en "Cobro cliente" es el bruto — Upwork se
+  // queda con upwork_fee_pct% antes de que llegue a la cuenta.
+  const isUpworkBilled = p => p.upwork_status === 'Pendiente de carga' || p.upwork_status === 'Cargado';
+  const getClientNet = p => {
+    const gross = getClientTotal(p);
+    if (!isUpworkBilled(p)) return gross;
+    return gross * (1 - (parseFloat(p.upwork_fee_pct) || 0) / 100);
+  };
   // Cuando el editor asignado sos vos mismo no hay pago real que marcar — se trata como
   // "resuelto" en ese lado en vez de quedar eternamente pendiente por un toggle que nunca aplica.
   const editorSettled = p => p.payment_editor_id === user?.id || p.editor_paid === 'paid';
   const unpaidPayments = payments.filter(p => !editorSettled(p) || p.client_paid !== 'cobrado');
   const totalEditorPending = unpaidPayments.filter(p => !editorSettled(p)).reduce((s, p) => s + getEditorTotal(p), 0);
-  const totalClientPending = unpaidPayments.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + getClientTotal(p), 0);
+  const totalClientPending = unpaidPayments.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + getClientNet(p), 0);
 
   const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, cursor: 'pointer', transition: 'all 0.1s' };
   const onRowEnter = e => e.currentTarget.style.borderColor = 'var(--border2)';

@@ -483,6 +483,14 @@ async function initDB() {
     await db.schema.table('projects', t => { t.float('client_amount').defaultTo(0); });
   }
 
+  // % que Upwork descuenta del cobro al cliente en los proyectos facturados por esa plataforma
+  // (upwork_status ya existía para trackear si las horas del período se cargaron o no; esto es
+  // lo que hace falta además para calcular cuánto llega realmente neto).
+  const hasUpworkFeePct = await db.schema.hasColumn('projects', 'upwork_fee_pct');
+  if (!hasUpworkFeePct) {
+    await db.schema.table('projects', t => { t.float('upwork_fee_pct').nullable(); });
+  }
+
   const hasCompletedAt = await db.schema.hasColumn('projects', 'completed_at');
   if (!hasCompletedAt) {
     await db.schema.table('projects', t => { t.timestamp('completed_at').nullable(); });
@@ -953,7 +961,7 @@ app.get('/api/projects/:id', auth, requireProjectAccess('id'), async (req, res) 
 app.post('/api/projects', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo el admin puede crear proyectos' });
-    const { name, description, color, payment_editor_id, payment_type, payment_amount, payment_hours, client_id, deadline, client_amount } = req.body;
+    const { name, description, color, payment_editor_id, payment_type, payment_amount, payment_hours, client_id, deadline, client_amount, upwork_status, upwork_fee_pct } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'El nombre del proyecto es obligatorio' });
     const id = uuidv4();
     await db('projects').insert({
@@ -966,7 +974,8 @@ app.post('/api/projects', auth, async (req, res) => {
       payment_hours: parseFloat(payment_hours) || 0,
       client_amount: parseFloat(client_amount) || 0,
       payment_status: 'unpaid',
-      upwork_status: 'pending'
+      upwork_status: upwork_status || 'pending',
+      upwork_fee_pct: upwork_status && upwork_status !== 'No' ? (parseFloat(upwork_fee_pct) || 15) : null
     });
     await addProjectMember(id, req.user.id, 'owner');
     if (payment_editor_id) await addProjectMember(id, payment_editor_id);
@@ -982,13 +991,14 @@ app.put('/api/projects/:id', auth, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     const existing = await db('projects').where({ id: req.params.id }).first();
     if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
-    const { name, description, color, status, payment_editor_id, payment_type, payment_amount, payment_hours, payment_status, upwork_status, client_id, deadline, client_amount } = req.body;
+    const { name, description, color, status, payment_editor_id, payment_type, payment_amount, payment_hours, payment_status, upwork_status, upwork_fee_pct, client_id, deadline, client_amount } = req.body;
     const update = {
       name, description, color, status,
       client_id: client_id || null,
       deadline: deadline || null,
       payment_editor_id: payment_editor_id || null,
-      payment_type, payment_status, upwork_status
+      payment_type, payment_status, upwork_status,
+      upwork_fee_pct: upwork_status && upwork_status !== 'No' ? (parseFloat(upwork_fee_pct) || 15) : null
     };
     if (payment_amount !== undefined) update.payment_amount = Math.max(0, parseFloat(payment_amount) || 0);
     if (payment_hours !== undefined) update.payment_hours = Math.max(0, parseFloat(payment_hours) || 0);
