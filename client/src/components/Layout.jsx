@@ -27,6 +27,7 @@ export default function Layout() {
   const [editingClient, setEditingClient] = useState(null);
   const [editClientForm, setEditClientForm] = useState({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
   const [editingProject, setEditingProject] = useState(null);
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [editProjectForm, setEditProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '', payment_editor_id: '', payment_type: 'fixed', payment_amount: '', client_amount: '', payment_hours: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' });
   const [storageWarning, setStorageWarning] = useState(null); // { gb, bytes } | null
   const [sidebarError, setSidebarError] = useState('');
@@ -138,16 +139,8 @@ export default function Layout() {
     }
   };
 
-  const saveProject = async () => {
-    if (!editProjectForm.name.trim()) return;
+  const doSaveProject = async () => {
     const clientPaidChanged = editProjectForm.client_paid !== (editingProject.client_paid === 'cobrado' ? 'cobrado' : 'unpaid');
-    if (clientPaidChanged && editProjectForm.client_paid === 'cobrado') {
-      const isSelf = editProjectForm.payment_editor_id === user?.id;
-      const editorSettled = isSelf || editingProject.editor_paid === 'paid';
-      if (editingProject.status === 'completed' && editorSettled) {
-        if (!window.confirm('Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Completados" en Pagos. ¿Confirmás?')) return;
-      }
-    }
     try {
       const isSelf = editProjectForm.payment_editor_id === user?.id;
       const body = { ...editingProject, ...editProjectForm, payment_amount: isSelf ? 0 : editProjectForm.payment_amount };
@@ -160,6 +153,22 @@ export default function Layout() {
       setProjects(prev => prev.map(p => p.id === editingProject.id ? { ...p, ...updated } : p));
       setEditingProject(null);
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
+  };
+
+  // Pasar a "Completados" no debería ser automático — se pide confirmación (con el modal propio
+  // de la app) solo cuando guardar haría que AMBOS lados (editor y cliente) queden saldados.
+  const saveProject = () => {
+    if (!editProjectForm.name.trim()) return;
+    const clientPaidChanged = editProjectForm.client_paid !== (editingProject.client_paid === 'cobrado' ? 'cobrado' : 'unpaid');
+    if (clientPaidChanged && editProjectForm.client_paid === 'cobrado') {
+      const isSelf = editProjectForm.payment_editor_id === user?.id;
+      const editorSettled = isSelf || editingProject.editor_paid === 'paid';
+      if (editingProject.status === 'completed' && editorSettled) {
+        setShowCompleteConfirm(true);
+        return;
+      }
+    }
+    doSaveProject();
   };
 
   const saveClient = async () => {
@@ -854,6 +863,21 @@ export default function Layout() {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setEditingProject(null)}>Cancelar</button>
               <button className="btn btn-primary" onClick={saveProject} disabled={!editProjectForm.name.trim()}>Guardar cambios</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCompleteConfirm && (
+        <div className="modal-overlay" onClick={() => setShowCompleteConfirm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Confirmar</h2>
+            <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
+              Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Completados" en Pagos.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setShowCompleteConfirm(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={() => { setShowCompleteConfirm(false); doSaveProject(); }}>Confirmar</button>
             </div>
           </div>
         </div>

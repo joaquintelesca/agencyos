@@ -15,6 +15,7 @@ export default function Payments() {
   const [filterClient, setFilterClient] = useState('');
   const [filterEditor, setFilterEditor] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [pendingComplete, setPendingComplete] = useState(null); // { projectId, changes } | null
 
   useEffect(() => {
     Promise.all([api('/api/payments'), api('/api/clients')])
@@ -39,6 +40,17 @@ export default function Payments() {
       const updated = await api(`/api/payments/${projectId}`, { method: 'PATCH', body: changes });
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
     } catch (e) { console.error(e); alert('Error al actualizar el pago: ' + e.message); }
+  };
+
+  // Pasar a "Completados" no debería ser automático — se pide confirmación (con el modal propio
+  // de la app, no window.confirm) solo cuando el cambio hace que AMBOS lados queden saldados.
+  const requestUpdate = (projectId, changes, wouldComplete) => {
+    if (wouldComplete) setPendingComplete({ projectId, changes });
+    else updatePayment(projectId, changes);
+  };
+  const confirmPendingComplete = () => {
+    if (pendingComplete) updatePayment(pendingComplete.projectId, pendingComplete.changes);
+    setPendingComplete(null);
   };
 
   const getTotal = (p) => {
@@ -142,7 +154,7 @@ export default function Payments() {
           </thead>
           <tbody>
             {sorted.map(p => (
-              <ProjectRow key={p.id} project={p} onUpdate={updatePayment} isHistory={isHistory} currentUserId={user.id} onEdit={openEditProject} />
+              <ProjectRow key={p.id} project={p} onUpdate={updatePayment} onRequestUpdate={requestUpdate} isHistory={isHistory} currentUserId={user.id} onEdit={openEditProject} />
             ))}
             {isHistory && sorted.length > 0 && (
               <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
@@ -331,11 +343,26 @@ export default function Payments() {
           </>
         )}
       </div>
+
+      {pendingComplete && (
+        <div className="modal-overlay" onClick={() => setPendingComplete(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Confirmar</h2>
+            <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
+              Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Completados".
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setPendingComplete(null)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={confirmPendingComplete}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ProjectRow({ project: p, onUpdate, isHistory, currentUserId, onEdit }) {
+function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, currentUserId, onEdit }) {
   const isSelfEditor = p.payment_editor_id === currentUserId;
   const [hours, setHours] = useState(p.payment_hours || 0);
   // Si otra sesión/socket actualiza payment_hours mientras esta fila está montada (misma key={p.id}),
@@ -354,13 +381,13 @@ function ProjectRow({ project: p, onUpdate, isHistory, currentUserId, onEdit }) 
   const total = p.editor_paid === 'paid' && p.editor_paid_amount != null ? p.editor_paid_amount : liveTotal;
   const clientTotal = p.client_paid === 'cobrado' && p.client_paid_amount_gross != null ? p.client_paid_amount_gross : liveClientTotal;
   const clientNet = p.client_paid === 'cobrado' && p.client_paid_amount_net != null ? p.client_paid_amount_net : liveClientNet;
-  // Pasar a "Completados" no debería ser automático — se pide confirmación solo cuando el cambio
-  // hace que AMBOS lados queden saldados a la vez (revertir uno no cuenta como completar).
-  const confirmIfCompleting = (nextEditorPaid, nextClientPaid) => {
+  // Pasar a "Completados" no debería ser automático — se pide confirmación (con el modal propio
+  // de la app) solo cuando el cambio hace que AMBOS lados queden saldados a la vez (revertir uno
+  // no cuenta como completar).
+  const wouldComplete = (nextEditorPaid, nextClientPaid) => {
     const editorOk = isSelfEditor || nextEditorPaid === 'paid';
     const clientOk = nextClientPaid === 'cobrado';
-    if (!editorOk || !clientOk) return true;
-    return window.confirm('Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Completados". ¿Confirmás?');
+    return editorOk && clientOk;
   };
 
   return (
@@ -433,7 +460,7 @@ function ProjectRow({ project: p, onUpdate, isHistory, currentUserId, onEdit }) 
           <span style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }} title="Sos vos el editor — no hay pago que registrar">No aplica</span>
         ) : (
           <select value={p.editor_paid || 'unpaid'}
-            onChange={e => { const val = e.target.value; if (confirmIfCompleting(val, p.client_paid)) onUpdate(p.id, { editor_paid: val }); }}
+            onChange={e => { const val = e.target.value; onRequestUpdate(p.id, { editor_paid: val }, wouldComplete(val, p.client_paid)); }}
             style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.editor_paid === 'paid' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.editor_paid === 'paid' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.editor_paid === 'paid' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
             <option value="unpaid">Sin pagar</option>
             <option value="paid">Pagado ✓</option>
@@ -456,7 +483,7 @@ function ProjectRow({ project: p, onUpdate, isHistory, currentUserId, onEdit }) 
       {/* Cobrado al cliente */}
       <td style={{ padding: '9px 12px', background: 'rgba(99,102,241,0.03)' }}>
         <select value={p.client_paid || 'unpaid'}
-          onChange={e => { const val = e.target.value; if (confirmIfCompleting(p.editor_paid, val)) onUpdate(p.id, { client_paid: val }); }}
+          onChange={e => { const val = e.target.value; onRequestUpdate(p.id, { client_paid: val }, wouldComplete(p.editor_paid, val)); }}
           style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.client_paid === 'cobrado' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.client_paid === 'cobrado' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.client_paid === 'cobrado' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
           <option value="unpaid">Sin cobrar</option>
           <option value="cobrado">Cobrado ✓</option>
