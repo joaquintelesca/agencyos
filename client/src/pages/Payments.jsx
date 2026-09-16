@@ -133,13 +133,23 @@ export default function Payments() {
     const baseCols = isHistory ? 5 : 4;
     return (
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <table style={{ width: '100%', minWidth: 1000, tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 12 }}>
+          <colgroup>
+            <col style={{ width: 230 }} />
+            <col style={{ width: 150 }} />
+            <col style={{ width: 70 }} />
+            <col style={{ width: 110 }} />
+            {isHistory && <col style={{ width: 110 }} />}
+            <col style={{ width: 90 }} />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 90 }} />
+            <col style={{ width: 130 }} />
+          </colgroup>
           <thead>
             <tr>
               <td colSpan={baseCols} style={{ padding: 0, border: 'none' }} />
               <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(236,72,153,0.08)', color: '#f472b6', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Editor —</td>
-              <td style={{ borderLeft: '1px solid var(--border)' }} />
-              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(99,102,241,0.08)', color: '#a5b4fc', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Cliente —</td>
+              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(99,102,241,0.08)', color: '#a5b4fc', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase', borderLeft: '1px solid var(--border)' }}>— Cliente —</td>
             </tr>
             <tr style={{ background: 'var(--bg3)' }}>
               {['Proyecto','Editor','Tipo','Upwork'].map(h => (
