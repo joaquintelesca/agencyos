@@ -574,8 +574,8 @@ export default function Layout() {
                           <input className="input" type="number" min="0" value={paymentForm.client_amount} onChange={e => setPaymentForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
                         </div>
                         <div className="form-group">
-                          <label>Pago al editor ($) <span style={{ color: 'var(--red)' }}>*</span></label>
-                          <input className="input" type="number" min="0" value={paymentForm.payment_amount} onChange={e => setPaymentForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" style={!paymentForm.payment_amount ? { borderColor: 'var(--red)' } : {}} />
+                          <label>Pago al editor ($)</label>
+                          <input className="input" type="number" min="0" value={paymentForm.payment_amount} onChange={e => setPaymentForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500 (opcional, lo podés agregar después)" />
                         </div>
                       </div>
                     ) : (
@@ -586,8 +586,8 @@ export default function Layout() {
                             <input className="input" type="number" min="0" value={paymentForm.client_rate} onChange={e => setPaymentForm(p => ({ ...p, client_rate: e.target.value }))} placeholder="Ej: 40" />
                           </div>
                           <div className="form-group">
-                            <label>Tarifa editor ($/h) <span style={{ color: 'var(--red)' }}>*</span></label>
-                            <input className="input" type="number" min="0" value={paymentForm.payment_rate} onChange={e => setPaymentForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25" style={!paymentForm.payment_rate ? { borderColor: 'var(--red)' } : {}} />
+                            <label>Tarifa editor ($/h)</label>
+                            <input className="input" type="number" min="0" value={paymentForm.payment_rate} onChange={e => setPaymentForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25 (opcional, lo podés agregar después)" />
                           </div>
                         </div>
                         <div className="form-group">
@@ -618,7 +618,7 @@ export default function Layout() {
                 )}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button className="btn btn-ghost" onClick={() => setStep(1)}>← Volver</button>
-                  <button className="btn btn-primary" onClick={createProject} disabled={isCreatingProject || !paymentForm.payment_editor_id || (paymentForm.payment_type === 'fixed' ? !paymentForm.payment_amount : !paymentForm.payment_rate)}>{isCreatingProject ? 'Creando...' : 'Crear proyecto'}</button>
+                  <button className="btn btn-primary" onClick={createProject} disabled={isCreatingProject || !paymentForm.payment_editor_id}>{isCreatingProject ? 'Creando...' : 'Crear proyecto'}</button>
                 </div>
               </>
             )}
@@ -719,9 +719,8 @@ export default function Layout() {
                     <input className="input" type="number" min="0" value={editProjectForm.client_amount} onChange={e => setEditProjectForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
                   </div>
                   <div className="form-group">
-                    <label>{editProjectForm.payment_type === 'hourly' ? 'Tarifa editor ($/h)' : 'Pago al editor ($)'} <span style={{ color: 'var(--red)' }}>*</span></label>
-                    <input className="input" type="number" min="0" value={editProjectForm.payment_amount} onChange={e => setEditProjectForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500"
-                      style={!editProjectForm.payment_amount ? { borderColor: 'var(--red)' } : {}} />
+                    <label>{editProjectForm.payment_type === 'hourly' ? 'Tarifa editor ($/h)' : 'Pago al editor ($)'}</label>
+                    <input className="input" type="number" min="0" value={editProjectForm.payment_amount} onChange={e => setEditProjectForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" />
                   </div>
                   {editProjectForm.payment_type === 'hourly' && (
                     <div className="form-group">
