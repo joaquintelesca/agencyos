@@ -545,11 +545,10 @@ export default function Layout() {
                 </div>
                 <div className="form-group">
                   <label>Editor responsable del pago</label>
-                  <select className="input" value={paymentForm.payment_editor_id} onChange={e => setPaymentForm(p => ({ ...p, payment_editor_id: e.target.value }))}
-                    style={!paymentForm.payment_editor_id ? { borderColor: 'var(--red)' } : {}}>
-                    <option value="">Seleccioná un editor</option>
-                    {users.filter(u => u.id !== user.id).map(u => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
+                  <select className="input" value={paymentForm.payment_editor_id} onChange={e => setPaymentForm(p => ({ ...p, payment_editor_id: e.target.value }))}>
+                    <option value="">Sin asignar (opcional, lo podés agregar después)</option>
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>{u.name}{u.id === user.id ? ' (vos)' : ''}</option>
                     ))}
                   </select>
                 </div>
@@ -618,7 +617,7 @@ export default function Layout() {
                 )}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button className="btn btn-ghost" onClick={() => setStep(1)}>← Volver</button>
-                  <button className="btn btn-primary" onClick={createProject} disabled={isCreatingProject || !paymentForm.payment_editor_id}>{isCreatingProject ? 'Creando...' : 'Crear proyecto'}</button>
+                  <button className="btn btn-primary" onClick={createProject} disabled={isCreatingProject}>{isCreatingProject ? 'Creando...' : 'Crear proyecto'}</button>
                 </div>
               </>
             )}
@@ -691,11 +690,10 @@ export default function Layout() {
             {user?.role === 'admin' && (
               <div className="form-group">
                 <label>Editor asignado</label>
-                <select className="input" value={editProjectForm.payment_editor_id} onChange={e => setEditProjectForm(p => ({ ...p, payment_editor_id: e.target.value }))}
-                  style={!editProjectForm.payment_editor_id ? { borderColor: 'var(--red)' } : {}}>
-                  <option value="">Seleccioná un editor</option>
-                  {users.filter(u => u.id !== user.id).map(u => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
+                <select className="input" value={editProjectForm.payment_editor_id} onChange={e => setEditProjectForm(p => ({ ...p, payment_editor_id: e.target.value }))}>
+                  <option value="">Sin asignar</option>
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>{u.name}{u.id === user.id ? ' (vos)' : ''}</option>
                   ))}
                 </select>
               </div>

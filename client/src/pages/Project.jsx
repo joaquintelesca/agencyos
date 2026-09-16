@@ -32,7 +32,7 @@ export default function Project() {
   const [dragTask, setDragTask] = useState(null);
   const [reviewReminderTask, setReviewReminderTask] = useState(null);
   const [showPriceModal, setShowPriceModal] = useState(false);
-  const [priceForm, setPriceForm] = useState({ payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '' });
+  const [priceForm, setPriceForm] = useState({ payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', payment_editor_id: '' });
   const [uploadForTaskId, setUploadForTaskId] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -184,11 +184,13 @@ export default function Project() {
 
   // "Terminado" es la única señal que decide si el proyecto pasa a Pagos — no se infiere de las
   // tareas porque un proyecto puede seguir sumando tareas nuevas después de parecer completo.
-  // Si todavía no tiene precio cargado, no tiene sentido dejarlo pasar a Pagos sin monto: se pide
-  // acá mismo antes de completar, en vez de mandar al admin a buscarlo en "Editar proyecto".
+  // Si todavía le falta precio o editor, no tiene sentido dejarlo pasar a Pagos así: se piden
+  // acá mismo antes de completar, en vez de mandar al admin a buscarlos en "Editar proyecto".
   const toggleProjectStatus = async () => {
-    if (project.status !== 'completed' && !(Number(project.payment_amount) > 0)) {
-      setPriceForm({ payment_type: project.payment_type || 'fixed', payment_amount: '', payment_rate: '', payment_hours: project.payment_hours || '', client_amount: '', client_rate: '' });
+    const missingPrice = !(Number(project.payment_amount) > 0);
+    const missingEditor = !project.payment_editor_id;
+    if (project.status !== 'completed' && (missingPrice || missingEditor)) {
+      setPriceForm({ payment_type: project.payment_type || 'fixed', payment_amount: '', payment_rate: '', payment_hours: project.payment_hours || '', client_amount: '', client_rate: '', payment_editor_id: project.payment_editor_id || '' });
       setShowPriceModal(true);
       return;
     }
@@ -212,14 +214,14 @@ export default function Project() {
   };
 
   const savePriceAndComplete = async () => {
-    if (!priceFormAmount()) return;
+    if (!priceFormAmount() || !priceForm.payment_editor_id) return;
     try {
       const updated = await api(`/api/projects/${id}`, {
         method: 'PUT',
         body: {
           name: project.name, description: project.description, color: project.color,
           client_id: project.client_id, deadline: project.deadline,
-          payment_editor_id: project.payment_editor_id,
+          payment_editor_id: priceForm.payment_editor_id,
           payment_type: priceForm.payment_type,
           payment_amount: priceFormAmount(),
           payment_hours: priceForm.payment_hours,
@@ -496,10 +498,19 @@ export default function Project() {
       {showPriceModal && (
         <div className="modal-overlay" onClick={() => setShowPriceModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <h2>Falta el precio del proyecto</h2>
+            <h2>Faltan datos para terminar el proyecto</h2>
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
-              Este proyecto todavía no tiene un precio cargado. Ingresalo para poder marcarlo como terminado y que pase a Pagos.
+              Para marcarlo como terminado y que pase a Pagos, el proyecto necesita un editor asignado y un precio cargado.
             </p>
+            <div className="form-group">
+              <label>Editor asignado</label>
+              <select className="input" value={priceForm.payment_editor_id} onChange={e => setPriceForm(p => ({ ...p, payment_editor_id: e.target.value }))}>
+                <option value="">Seleccioná un editor</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>{u.name}{u.id === user.id ? ' (vos)' : ''}</option>
+                ))}
+              </select>
+            </div>
             <div className="form-group">
               <label>Tipo de pago</label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -565,7 +576,7 @@ export default function Project() {
             )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setShowPriceModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={savePriceAndComplete} disabled={!priceFormAmount()}>Guardar y marcar como terminado</button>
+              <button className="btn btn-primary" onClick={savePriceAndComplete} disabled={!priceFormAmount() || !priceForm.payment_editor_id}>Guardar y marcar como terminado</button>
             </div>
           </div>
         </div>

@@ -944,7 +944,6 @@ app.post('/api/projects', auth, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo el admin puede crear proyectos' });
     const { name, description, color, payment_editor_id, payment_type, payment_amount, payment_hours, client_id, deadline, client_amount } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'El nombre del proyecto es obligatorio' });
-    if (!payment_editor_id) return res.status(400).json({ error: 'Tenés que asignar un editor al proyecto' });
     const id = uuidv4();
     await db('projects').insert({
       id, name, description, color: color || '#6366f1', created_by: req.user.id,
@@ -962,7 +961,7 @@ app.post('/api/projects', auth, async (req, res) => {
     if (payment_editor_id) await addProjectMember(id, payment_editor_id);
     const project = await db('projects').where({ id }).first();
     await emitToProject(id, 'project:created', project);
-    await createNotification({ userId: payment_editor_id, type: 'project_assigned', actorId: req.user.id, projectId: id, preview: name });
+    if (payment_editor_id) await createNotification({ userId: payment_editor_id, type: 'project_assigned', actorId: req.user.id, projectId: id, preview: name });
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1004,6 +1003,9 @@ app.patch('/api/projects/:id/status', auth, async (req, res) => {
     if (!['active', 'completed'].includes(status)) return res.status(400).json({ error: 'Estado inválido' });
     const existing = await db('projects').where({ id: req.params.id }).first();
     if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    if (status === 'completed' && (!existing.payment_editor_id || !(Number(existing.payment_amount) > 0))) {
+      return res.status(400).json({ error: 'Para marcar el proyecto como terminado necesita un editor asignado y un precio cargado' });
+    }
     await db('projects').where({ id: req.params.id }).update({ status });
     const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first();
     await emitToProject(req.params.id, 'project:updated', project);
