@@ -1271,12 +1271,22 @@ app.get('/api/users/:id/detail', auth, async (req, res) => {
 app.get('/api/payments', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    const projectsWithDoneTasks = await db('tasks').where({ status: 'done' }).distinct('project_id').pluck('project_id');
+    // Un proyecto pasa a Pagos cuando TODAS sus tareas están en "Listo", no con que una sola lo
+    // esté — antes, un proyecto con varias tareas aparecía acá apenas se completaba la primera,
+    // aunque el resto siguiera pendiente.
+    const taskCounts = await db('tasks')
+      .select('project_id')
+      .count('* as total')
+      .select(db.raw('SUM(CASE WHEN status != ? THEN 1 ELSE 0 END) as pending', ['done']))
+      .groupBy('project_id');
+    const fullyDoneProjectIds = taskCounts
+      .filter(r => Number(r.total) > 0 && Number(r.pending) === 0)
+      .map(r => r.project_id);
     const projects = await db('projects as p')
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .whereNotNull('p.payment_editor_id')
-      .whereIn('p.id', projectsWithDoneTasks)
+      .whereIn('p.id', fullyDoneProjectIds)
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .orderBy('p.created_at', 'desc');
     res.json(projects);
