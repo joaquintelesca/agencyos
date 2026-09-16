@@ -1014,7 +1014,11 @@ app.patch('/api/projects/:id/status', auth, async (req, res) => {
     if (!['active', 'completed'].includes(status)) return res.status(400).json({ error: 'Estado inválido' });
     const existing = await db('projects').where({ id: req.params.id }).first();
     if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
-    if (status === 'completed' && (!existing.payment_editor_id || !(Number(existing.payment_amount) > 0))) {
+    // Si el editor asignado es el propio admin, no hay "pago a editor" real — lo que importa
+    // ahí es el cobro al cliente, no payment_amount (que se guarda en 0 a propósito).
+    const isSelfEditor = existing.payment_editor_id === req.user.id;
+    const hasPrice = isSelfEditor ? Number(existing.client_amount) > 0 : Number(existing.payment_amount) > 0;
+    if (status === 'completed' && (!existing.payment_editor_id || !hasPrice)) {
       return res.status(400).json({ error: 'Para marcar el proyecto como terminado necesita un editor asignado y un precio cargado' });
     }
     await db('projects').where({ id: req.params.id }).update({ status });

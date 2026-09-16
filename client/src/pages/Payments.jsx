@@ -44,7 +44,11 @@ export default function Payments() {
     return parseFloat(p.client_amount) || 0;
   };
 
-  const isCompleted = (p) => p.editor_paid === 'paid' && p.client_paid === 'cobrado';
+  // Cuando el editor asignado sos vos mismo no hay pago real que marcar — se trata como
+  // "resuelto" en ese lado en vez de quedar eternamente pendiente por un toggle que nunca aplica.
+  const editorSettled = (p) => p.payment_editor_id === user.id || p.editor_paid === 'paid';
+
+  const isCompleted = (p) => editorSettled(p) && p.client_paid === 'cobrado';
 
   const applyFilters = (projs) => {
     let filtered = projs;
@@ -70,9 +74,9 @@ export default function Payments() {
     return Object.values(groups);
   };
 
-  const totalEditorPending = activeProjects.filter(p => p.editor_paid !== 'paid').reduce((s, p) => s + getTotal(p), 0);
+  const totalEditorPending = activeProjects.filter(p => !editorSettled(p)).reduce((s, p) => s + getTotal(p), 0);
   const totalClientPending = activeProjects.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + getClientTotal(p), 0);
-  const readyToCollect = activeProjects.filter(p => p.editor_paid !== 'paid' || p.client_paid !== 'cobrado').length;
+  const readyToCollect = activeProjects.filter(p => !editorSettled(p) || p.client_paid !== 'cobrado').length;
 
   // Balance mensual: se basa en la fecha real en que se marcó pagado/cobrado cada lado (no en
   // el estado actual), así que un proyecto puede aportar al mes del cliente y al mes del editor
@@ -113,7 +117,7 @@ export default function Payments() {
           </thead>
           <tbody>
             {sorted.map(p => (
-              <ProjectRow key={p.id} project={p} onUpdate={updatePayment} isHistory={isHistory} />
+              <ProjectRow key={p.id} project={p} onUpdate={updatePayment} isHistory={isHistory} currentUserId={user.id} />
             ))}
             {isHistory && sorted.length > 0 && (
               <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
@@ -203,9 +207,9 @@ export default function Payments() {
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{client.name}</span>
                     {client.email && <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>{client.email}</span>}
                   </div>
-                  {client.projects.some(p => p.editor_paid !== 'paid' || p.client_paid !== 'cobrado') && (
+                  {client.projects.some(p => !editorSettled(p) || p.client_paid !== 'cobrado') && (
                     <span style={{ fontSize: 10, background: 'rgba(124,106,247,0.15)', color: 'var(--accent2)', padding: '2px 8px', borderRadius: 8, fontWeight: 600 }}>
-                      {client.projects.filter(p => p.editor_paid !== 'paid' || p.client_paid !== 'cobrado').length} pendiente(s)
+                      {client.projects.filter(p => !editorSettled(p) || p.client_paid !== 'cobrado').length} pendiente(s)
                     </span>
                   )}
                 </div>
@@ -301,7 +305,8 @@ export default function Payments() {
   );
 }
 
-function ProjectRow({ project: p, onUpdate, isHistory }) {
+function ProjectRow({ project: p, onUpdate, isHistory, currentUserId }) {
+  const isSelfEditor = p.payment_editor_id === currentUserId;
   const [hours, setHours] = useState(p.payment_hours || 0);
   // Si otra sesión/socket actualiza payment_hours mientras esta fila está montada (misma key={p.id}),
   // hay que reflejarlo — si no, un blur posterior pisa ese cambio con el valor local desactualizado.
@@ -369,18 +374,22 @@ function ProjectRow({ project: p, onUpdate, isHistory }) {
       )}
 
       {/* Monto editor */}
-      <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--text)', background: 'rgba(236,72,153,0.03)' }}>
-        ${total.toFixed(0)}
+      <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: isSelfEditor ? 'var(--text3)' : 'var(--text)', background: 'rgba(236,72,153,0.03)' }}>
+        {isSelfEditor ? '—' : `$${total.toFixed(0)}`}
       </td>
 
       {/* Pagado al editor */}
       <td style={{ padding: '9px 12px', background: 'rgba(236,72,153,0.03)' }}>
-        <select value={p.editor_paid || 'unpaid'}
-          onChange={e => onUpdate(p.id, { editor_paid: e.target.value })}
-          style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.editor_paid === 'paid' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.editor_paid === 'paid' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.editor_paid === 'paid' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
-          <option value="unpaid">Sin pagar</option>
-          <option value="paid">Pagado ✓</option>
-        </select>
+        {isSelfEditor ? (
+          <span style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }} title="Sos vos el editor — no hay pago que registrar">No aplica</span>
+        ) : (
+          <select value={p.editor_paid || 'unpaid'}
+            onChange={e => onUpdate(p.id, { editor_paid: e.target.value })}
+            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.editor_paid === 'paid' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.editor_paid === 'paid' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.editor_paid === 'paid' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
+            <option value="unpaid">Sin pagar</option>
+            <option value="paid">Pagado ✓</option>
+          </select>
+        )}
       </td>
 
       {/* Monto cliente */}

@@ -187,7 +187,10 @@ export default function Project() {
   // Si todavía le falta precio o editor, no tiene sentido dejarlo pasar a Pagos así: se piden
   // acá mismo antes de completar, en vez de mandar al admin a buscarlos en "Editar proyecto".
   const toggleProjectStatus = async () => {
-    const missingPrice = !(Number(project.payment_amount) > 0);
+    // Si el editor asignado sos vos mismo, no hay "pago a editor" real — el precio que importa
+    // ahí es el cobro al cliente, no payment_amount (que se guarda en 0 a propósito).
+    const isSelfEditor = project.payment_editor_id === user.id;
+    const missingPrice = isSelfEditor ? !(Number(project.client_amount) > 0) : !(Number(project.payment_amount) > 0);
     const missingEditor = !project.payment_editor_id;
     if (project.status !== 'completed' && (missingPrice || missingEditor)) {
       setPriceForm({ payment_type: project.payment_type || 'fixed', payment_amount: '', payment_rate: '', payment_hours: project.payment_hours || '', client_amount: '', client_rate: '', payment_editor_id: project.payment_editor_id || '' });
@@ -203,7 +206,10 @@ export default function Project() {
     }
   };
 
+  const isSelfEditorPrice = priceForm.payment_editor_id === user.id;
   const priceFormAmount = () => priceForm.payment_type === 'fixed' ? priceForm.payment_amount : priceForm.payment_rate;
+  const priceFormClientAmount = () => priceForm.payment_type === 'fixed' ? priceForm.client_amount : priceForm.client_rate;
+  const priceFormValid = () => priceForm.payment_editor_id && (isSelfEditorPrice ? priceFormClientAmount() : priceFormAmount());
   const estimatedEditorTotal = () => {
     if (priceForm.payment_type === 'hourly') return (parseFloat(priceForm.payment_rate) || 0) * (parseFloat(priceForm.payment_hours) || 0);
     return parseFloat(priceForm.payment_amount) || 0;
@@ -214,7 +220,7 @@ export default function Project() {
   };
 
   const savePriceAndComplete = async () => {
-    if (!priceFormAmount() || !priceForm.payment_editor_id) return;
+    if (!priceFormValid()) return;
     try {
       const updated = await api(`/api/projects/${id}`, {
         method: 'PUT',
@@ -223,7 +229,7 @@ export default function Project() {
           client_id: project.client_id, deadline: project.deadline,
           payment_editor_id: priceForm.payment_editor_id,
           payment_type: priceForm.payment_type,
-          payment_amount: priceFormAmount(),
+          payment_amount: isSelfEditorPrice ? 0 : priceFormAmount(),
           payment_hours: priceForm.payment_hours,
           payment_status: project.payment_status, upwork_status: project.upwork_status,
           client_amount: priceForm.payment_type === 'fixed' ? priceForm.client_amount : priceForm.client_rate,
@@ -523,32 +529,41 @@ export default function Project() {
                 ))}
               </div>
             </div>
+            {isSelfEditorPrice && (
+              <div style={{ background: 'var(--bg3)', border: '1px dashed var(--border2)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: 'var(--text2)' }}>
+                Como el editor sos vos, no hay "pago a editor" — solo se registra lo que le cobrás al cliente.
+              </div>
+            )}
             {priceForm.payment_type === 'fixed' ? (
-              <div className="form-row">
+              <div className="form-row" style={isSelfEditorPrice ? { gridTemplateColumns: '1fr' } : undefined}>
                 <div className="form-group">
                   <label>Cobro al cliente ($)</label>
-                  <input className="input" type="number" min="0" value={priceForm.client_amount}
+                  <input className="input" type="number" min="0" autoFocus value={priceForm.client_amount}
                     onChange={e => setPriceForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
                 </div>
-                <div className="form-group">
-                  <label>Pago al editor ($)</label>
-                  <input className="input" type="number" min="0" autoFocus value={priceForm.payment_amount}
-                    onChange={e => setPriceForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" />
-                </div>
+                {!isSelfEditorPrice && (
+                  <div className="form-group">
+                    <label>Pago al editor ($)</label>
+                    <input className="input" type="number" min="0" value={priceForm.payment_amount}
+                      onChange={e => setPriceForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" />
+                  </div>
+                )}
               </div>
             ) : (
               <>
-                <div className="form-row">
+                <div className="form-row" style={isSelfEditorPrice ? { gridTemplateColumns: '1fr' } : undefined}>
                   <div className="form-group">
                     <label>Tarifa cliente ($/h)</label>
-                    <input className="input" type="number" min="0" value={priceForm.client_rate}
+                    <input className="input" type="number" min="0" autoFocus value={priceForm.client_rate}
                       onChange={e => setPriceForm(p => ({ ...p, client_rate: e.target.value }))} placeholder="Ej: 40" />
                   </div>
-                  <div className="form-group">
-                    <label>Tarifa editor ($/h)</label>
-                    <input className="input" type="number" min="0" autoFocus value={priceForm.payment_rate}
-                      onChange={e => setPriceForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25" />
-                  </div>
+                  {!isSelfEditorPrice && (
+                    <div className="form-group">
+                      <label>Tarifa editor ($/h)</label>
+                      <input className="input" type="number" min="0" value={priceForm.payment_rate}
+                        onChange={e => setPriceForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25" />
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label>Horas estimadas</label>
@@ -557,17 +572,19 @@ export default function Project() {
                 </div>
               </>
             )}
-            {(estimatedEditorTotal() > 0 || estimatedClientTotal() > 0) && (
+            {(isSelfEditorPrice ? estimatedClientTotal() > 0 : (estimatedEditorTotal() > 0 || estimatedClientTotal() > 0)) && (
               <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: '#f472b6' }}>Pago editor:</span>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: '#f472b6' }}>${estimatedEditorTotal().toFixed(0)}</span>
-                </div>
+                {!isSelfEditorPrice && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: '#f472b6' }}>Pago editor:</span>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: '#f472b6' }}>${estimatedEditorTotal().toFixed(0)}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 12, color: '#a5b4fc' }}>Cobro cliente:</span>
                   <span style={{ fontSize: 16, fontWeight: 700, color: '#a5b4fc' }}>${estimatedClientTotal().toFixed(0)}</span>
                 </div>
-                {estimatedClientTotal() > estimatedEditorTotal() && (
+                {!isSelfEditorPrice && estimatedClientTotal() > estimatedEditorTotal() && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
                     <span style={{ fontSize: 12, color: 'var(--green)' }}>Ganancia:</span>
                     <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>${(estimatedClientTotal() - estimatedEditorTotal()).toFixed(0)}</span>
@@ -577,7 +594,7 @@ export default function Project() {
             )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setShowPriceModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={savePriceAndComplete} disabled={!priceFormAmount() || !priceForm.payment_editor_id}>Guardar y marcar como terminado</button>
+              <button className="btn btn-primary" onClick={savePriceAndComplete} disabled={!priceFormValid()}>Guardar y marcar como terminado</button>
             </div>
           </div>
         </div>
