@@ -31,6 +31,8 @@ export default function Project() {
   const [taskForm, setTaskForm] = useState({ title: '', description: '', status: 'todo', priority: 'medium', assigned_to: '', due_date: '' });
   const [dragTask, setDragTask] = useState(null);
   const [reviewReminderTask, setReviewReminderTask] = useState(null);
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [priceForm, setPriceForm] = useState({ payment_type: 'fixed', payment_amount: '', payment_hours: '' });
   const [uploadForTaskId, setUploadForTaskId] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -182,13 +184,44 @@ export default function Project() {
 
   // "Terminado" es la única señal que decide si el proyecto pasa a Pagos — no se infiere de las
   // tareas porque un proyecto puede seguir sumando tareas nuevas después de parecer completo.
+  // Si todavía no tiene precio cargado, no tiene sentido dejarlo pasar a Pagos sin monto: se pide
+  // acá mismo antes de completar, en vez de mandar al admin a buscarlo en "Editar proyecto".
   const toggleProjectStatus = async () => {
+    if (project.status !== 'completed' && !(Number(project.payment_amount) > 0)) {
+      setPriceForm({ payment_type: project.payment_type || 'fixed', payment_amount: '', payment_hours: project.payment_hours || '' });
+      setShowPriceModal(true);
+      return;
+    }
     const newStatus = project.status === 'completed' ? 'active' : 'completed';
     try {
       const updated = await api(`/api/projects/${id}/status`, { method: 'PATCH', body: { status: newStatus } });
       setProject(updated);
     } catch (e) {
       alert('Error al actualizar el estado del proyecto: ' + e.message);
+    }
+  };
+
+  const savePriceAndComplete = async () => {
+    if (!priceForm.payment_amount) return;
+    try {
+      const updated = await api(`/api/projects/${id}`, {
+        method: 'PUT',
+        body: {
+          name: project.name, description: project.description, color: project.color,
+          client_id: project.client_id, deadline: project.deadline,
+          payment_editor_id: project.payment_editor_id,
+          payment_type: priceForm.payment_type,
+          payment_amount: priceForm.payment_amount,
+          payment_hours: priceForm.payment_hours,
+          payment_status: project.payment_status, upwork_status: project.upwork_status,
+          client_amount: project.client_amount,
+          status: 'completed'
+        }
+      });
+      setProject(updated);
+      setShowPriceModal(false);
+    } catch (e) {
+      alert('Error al guardar el precio: ' + e.message);
     }
   };
 
@@ -445,6 +478,46 @@ export default function Project() {
               }}>
                 Ir a Videos
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPriceModal && (
+        <div className="modal-overlay" onClick={() => setShowPriceModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Falta el precio del proyecto</h2>
+            <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
+              Este proyecto todavía no tiene un precio cargado. Ingresalo para poder marcarlo como terminado y que pase a Pagos.
+            </p>
+            <div className="form-group">
+              <label>Tipo de pago</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {[['fixed', '💵 Precio fijo'], ['hourly', '⏱ Por horas']].map(([val, label]) => (
+                  <button key={val} type="button" onClick={() => setPriceForm(p => ({ ...p, payment_type: val }))}
+                    style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${priceForm.payment_type === val ? 'var(--accent)' : 'var(--border)'}`, background: priceForm.payment_type === val ? 'var(--accent-glow)' : 'var(--bg3)', cursor: 'pointer', fontSize: 12, fontWeight: 500, color: priceForm.payment_type === val ? 'var(--accent2)' : 'var(--text2)', fontFamily: 'var(--font)' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>{priceForm.payment_type === 'hourly' ? 'Tarifa editor ($/h)' : 'Pago al editor ($)'}</label>
+                <input className="input" type="number" min="0" autoFocus value={priceForm.payment_amount}
+                  onChange={e => setPriceForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder={priceForm.payment_type === 'hourly' ? 'Ej: 25' : 'Ej: 500'} />
+              </div>
+              {priceForm.payment_type === 'hourly' && (
+                <div className="form-group">
+                  <label>Horas estimadas</label>
+                  <input className="input" type="number" min="0" value={priceForm.payment_hours}
+                    onChange={e => setPriceForm(p => ({ ...p, payment_hours: e.target.value }))} placeholder="Ej: 20" />
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setShowPriceModal(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={savePriceAndComplete} disabled={!priceForm.payment_amount}>Guardar y marcar como terminado</button>
             </div>
           </div>
         </div>
