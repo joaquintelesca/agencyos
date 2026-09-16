@@ -32,7 +32,7 @@ export default function Project() {
   const [dragTask, setDragTask] = useState(null);
   const [reviewReminderTask, setReviewReminderTask] = useState(null);
   const [showPriceModal, setShowPriceModal] = useState(false);
-  const [priceForm, setPriceForm] = useState({ payment_type: 'fixed', payment_amount: '', payment_hours: '' });
+  const [priceForm, setPriceForm] = useState({ payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '' });
   const [uploadForTaskId, setUploadForTaskId] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -188,7 +188,7 @@ export default function Project() {
   // acá mismo antes de completar, en vez de mandar al admin a buscarlo en "Editar proyecto".
   const toggleProjectStatus = async () => {
     if (project.status !== 'completed' && !(Number(project.payment_amount) > 0)) {
-      setPriceForm({ payment_type: project.payment_type || 'fixed', payment_amount: '', payment_hours: project.payment_hours || '' });
+      setPriceForm({ payment_type: project.payment_type || 'fixed', payment_amount: '', payment_rate: '', payment_hours: project.payment_hours || '', client_amount: '', client_rate: '' });
       setShowPriceModal(true);
       return;
     }
@@ -201,8 +201,18 @@ export default function Project() {
     }
   };
 
+  const priceFormAmount = () => priceForm.payment_type === 'fixed' ? priceForm.payment_amount : priceForm.payment_rate;
+  const estimatedEditorTotal = () => {
+    if (priceForm.payment_type === 'hourly') return (parseFloat(priceForm.payment_rate) || 0) * (parseFloat(priceForm.payment_hours) || 0);
+    return parseFloat(priceForm.payment_amount) || 0;
+  };
+  const estimatedClientTotal = () => {
+    if (priceForm.payment_type === 'hourly') return (parseFloat(priceForm.client_rate) || 0) * (parseFloat(priceForm.payment_hours) || 0);
+    return parseFloat(priceForm.client_amount) || 0;
+  };
+
   const savePriceAndComplete = async () => {
-    if (!priceForm.payment_amount) return;
+    if (!priceFormAmount()) return;
     try {
       const updated = await api(`/api/projects/${id}`, {
         method: 'PUT',
@@ -211,10 +221,10 @@ export default function Project() {
           client_id: project.client_id, deadline: project.deadline,
           payment_editor_id: project.payment_editor_id,
           payment_type: priceForm.payment_type,
-          payment_amount: priceForm.payment_amount,
+          payment_amount: priceFormAmount(),
           payment_hours: priceForm.payment_hours,
           payment_status: project.payment_status, upwork_status: project.upwork_status,
-          client_amount: project.client_amount,
+          client_amount: priceForm.payment_type === 'fixed' ? priceForm.client_amount : priceForm.client_rate,
           status: 'completed'
         }
       });
@@ -501,23 +511,61 @@ export default function Project() {
                 ))}
               </div>
             </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>{priceForm.payment_type === 'hourly' ? 'Tarifa editor ($/h)' : 'Pago al editor ($)'}</label>
-                <input className="input" type="number" min="0" autoFocus value={priceForm.payment_amount}
-                  onChange={e => setPriceForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder={priceForm.payment_type === 'hourly' ? 'Ej: 25' : 'Ej: 500'} />
+            {priceForm.payment_type === 'fixed' ? (
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Cobro al cliente ($)</label>
+                  <input className="input" type="number" min="0" value={priceForm.client_amount}
+                    onChange={e => setPriceForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
+                </div>
+                <div className="form-group">
+                  <label>Pago al editor ($)</label>
+                  <input className="input" type="number" min="0" autoFocus value={priceForm.payment_amount}
+                    onChange={e => setPriceForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" />
+                </div>
               </div>
-              {priceForm.payment_type === 'hourly' && (
+            ) : (
+              <>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Tarifa cliente ($/h)</label>
+                    <input className="input" type="number" min="0" value={priceForm.client_rate}
+                      onChange={e => setPriceForm(p => ({ ...p, client_rate: e.target.value }))} placeholder="Ej: 40" />
+                  </div>
+                  <div className="form-group">
+                    <label>Tarifa editor ($/h)</label>
+                    <input className="input" type="number" min="0" autoFocus value={priceForm.payment_rate}
+                      onChange={e => setPriceForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25" />
+                  </div>
+                </div>
                 <div className="form-group">
                   <label>Horas estimadas</label>
                   <input className="input" type="number" min="0" value={priceForm.payment_hours}
                     onChange={e => setPriceForm(p => ({ ...p, payment_hours: e.target.value }))} placeholder="Ej: 20" />
                 </div>
-              )}
-            </div>
+              </>
+            )}
+            {(estimatedEditorTotal() > 0 || estimatedClientTotal() > 0) && (
+              <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: '#be185d' }}>Pago editor:</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#be185d' }}>${estimatedEditorTotal().toFixed(0)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: '#4338ca' }}>Cobro cliente:</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#4338ca' }}>${estimatedClientTotal().toFixed(0)}</span>
+                </div>
+                {estimatedClientTotal() > estimatedEditorTotal() && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                    <span style={{ fontSize: 12, color: 'var(--green)' }}>Ganancia:</span>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>${(estimatedClientTotal() - estimatedEditorTotal()).toFixed(0)}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setShowPriceModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={savePriceAndComplete} disabled={!priceForm.payment_amount}>Guardar y marcar como terminado</button>
+              <button className="btn btn-primary" onClick={savePriceAndComplete} disabled={!priceFormAmount()}>Guardar y marcar como terminado</button>
             </div>
           </div>
         </div>
