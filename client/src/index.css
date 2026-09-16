@@ -84,6 +84,9 @@ body {
 .input::placeholder { color: var(--text3); }
 textarea.input { resize: vertical; min-height: 80px; }
 select.input { cursor: pointer; }
+/* El ícono nativo de los inputs date/month/time se dibuja negro por default — invisible sobre
+   el fondo oscuro del input. */
+.input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
 
 /* Cards */
 .card {
