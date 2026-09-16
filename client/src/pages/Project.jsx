@@ -206,6 +206,28 @@ export default function Project() {
     }
   };
 
+  // Un cliente puede pagar por adelantado, antes de que el proyecto esté terminado (y antes de
+  // que el editor haya cobrado). Se guarda acá mismo, en el proyecto — no hace falta esperar a
+  // "Marcar como terminado" para que quede asentado, y cuando eventualmente pase a Pagos ya va a
+  // figurar como cobrado.
+  const toggleClientPaid = async () => {
+    const next = project.client_paid === 'cobrado' ? 'unpaid' : 'cobrado';
+    if (next === 'cobrado' && !(Number(project.client_amount) > 0)) {
+      alert('Todavía no cargaste el cobro al cliente — hacelo desde "Editar proyecto" antes de marcarlo como cobrado.');
+      return;
+    }
+    const editorSettled = project.payment_editor_id === user.id || project.editor_paid === 'paid';
+    if (project.status === 'completed' && next === 'cobrado' && editorSettled) {
+      if (!window.confirm('Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Completados" en Pagos. ¿Confirmás?')) return;
+    }
+    try {
+      const updated = await api(`/api/payments/${id}`, { method: 'PATCH', body: { client_paid: next } });
+      setProject(prev => ({ ...prev, ...updated }));
+    } catch (e) {
+      alert('Error al actualizar el cobro al cliente: ' + e.message);
+    }
+  };
+
   const isSelfEditorPrice = priceForm.payment_editor_id === user.id;
   const priceFormAmount = () => priceForm.payment_type === 'fixed' ? priceForm.payment_amount : priceForm.payment_rate;
   const priceFormClientAmount = () => priceForm.payment_type === 'fixed' ? priceForm.client_amount : priceForm.client_rate;
@@ -304,6 +326,18 @@ export default function Project() {
                 boxShadow: project.status === 'completed' ? 'none' : '0 1px 6px rgba(34,201,122,0.4)'
               }}>
               {project.status === 'completed' ? '↺ Reabrir proyecto' : '✓ Marcar como terminado'}
+            </button>
+          )}
+          {user.role === 'admin' && (
+            <button onClick={toggleClientPaid}
+              title={project.client_paid === 'cobrado' ? 'Click para revertir' : 'Marcalo apenas el cliente pague, aunque el proyecto todavía no esté terminado — va a quedar reflejado en Pagos'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8, border: 'none',
+                background: project.client_paid === 'cobrado' ? 'rgba(34,201,122,0.12)' : 'var(--bg3)',
+                color: project.client_paid === 'cobrado' ? 'var(--green)' : 'var(--text2)',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)'
+              }}>
+              {project.client_paid === 'cobrado' ? '✅ Cliente cobrado' : '💰 Cliente sin cobrar'}
             </button>
           )}
         </div>
