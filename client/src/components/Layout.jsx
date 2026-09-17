@@ -281,11 +281,13 @@ export default function Layout() {
     setIsCreatingProject(true);
     try {
       const body = { ...projectForm };
-      if (user?.role === 'admin' && paymentForm.payment_editor_id) {
+      if (user?.role === 'admin') {
         const isSelf = paymentForm.payment_editor_id === user.id;
-        body.payment_editor_id = paymentForm.payment_editor_id;
+        body.payment_editor_id = paymentForm.payment_editor_id || null;
         body.payment_type = paymentForm.payment_type;
-        body.payment_amount = isSelf ? 0 : (paymentForm.payment_type === 'fixed' ? paymentForm.payment_amount : paymentForm.payment_rate);
+        // Sin editor asignado tampoco hay "pago a editor" — se guarda en 0 igual que cuando el
+        // editor sos vos mismo, el cobro al cliente se puede cargar de todas formas.
+        body.payment_amount = (!paymentForm.payment_editor_id || isSelf) ? 0 : (paymentForm.payment_type === 'fixed' ? paymentForm.payment_amount : paymentForm.payment_rate);
         body.payment_hours = paymentForm.payment_hours || 0;
         body.client_amount = paymentForm.payment_type === 'fixed' ? paymentForm.client_amount : paymentForm.client_rate;
         body.upwork_status = paymentForm.upwork_status;
@@ -341,6 +343,9 @@ export default function Layout() {
   // Cuando el editor asignado sos vos mismo, "pago a editor" no es un gasto real (no te pagás a
   // vos mismo) — se oculta ese campo y solo se pide el cobro al cliente.
   const isSelfEditorNew = paymentForm.payment_editor_id === user?.id;
+  // Sin editor asignado tampoco hay "pago a editor" que cargar (nada que pagarle a nadie
+  // todavía) — mismo caso que cuando el editor sos vos mismo, se oculta ese campo por igual.
+  const showEditorPaymentNew = !!paymentForm.payment_editor_id && !isSelfEditorNew;
   const isSelfEditorEdit = editProjectForm.payment_editor_id === user?.id;
 
   return (
@@ -603,8 +608,7 @@ export default function Layout() {
                     ))}
                   </select>
                 </div>
-                {paymentForm.payment_editor_id && (
-                  <>
+                <>
                     <div className="form-group">
                       <label>Tipo de pago</label>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -638,18 +642,20 @@ export default function Layout() {
                         El cliente ya pagó este proyecto
                       </label>
                     </div>
-                    {isSelfEditorNew && (
+                    {!showEditorPaymentNew && (
                       <div style={{ background: 'var(--bg3)', border: '1px dashed var(--border2)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: 'var(--text2)' }}>
-                        Como el editor sos vos, no hay "pago a editor" — solo se registra lo que le cobrás al cliente.
+                        {isSelfEditorNew
+                          ? 'Como el editor sos vos, no hay "pago a editor" — solo se registra lo que le cobrás al cliente.'
+                          : 'Todavía no asignaste un editor, así que no hay "pago a editor" que cargar — podés dejar cargado igual el cobro al cliente.'}
                       </div>
                     )}
                     {paymentForm.payment_type === 'fixed' ? (
-                      <div className="form-row" style={isSelfEditorNew ? { gridTemplateColumns: '1fr' } : undefined}>
+                      <div className="form-row" style={!showEditorPaymentNew ? { gridTemplateColumns: '1fr' } : undefined}>
                         <div className="form-group">
                           <label>Cobro al cliente ($)</label>
                           <input className="input" type="number" min="0" value={paymentForm.client_amount} onChange={e => setPaymentForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
                         </div>
-                        {!isSelfEditorNew && (
+                        {showEditorPaymentNew && (
                           <div className="form-group">
                             <label>Pago al editor ($)</label>
                             <input className="input" type="number" min="0" value={paymentForm.payment_amount} onChange={e => setPaymentForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500 (opcional, lo podés agregar después)" />
@@ -658,12 +664,12 @@ export default function Layout() {
                       </div>
                     ) : (
                       <>
-                        <div className="form-row" style={isSelfEditorNew ? { gridTemplateColumns: '1fr' } : undefined}>
+                        <div className="form-row" style={!showEditorPaymentNew ? { gridTemplateColumns: '1fr' } : undefined}>
                           <div className="form-group">
                             <label>Tarifa cliente ($/h)</label>
                             <input className="input" type="number" min="0" value={paymentForm.client_rate} onChange={e => setPaymentForm(p => ({ ...p, client_rate: e.target.value }))} placeholder="Ej: 40" />
                           </div>
-                          {!isSelfEditorNew && (
+                          {showEditorPaymentNew && (
                             <div className="form-group">
                               <label>Tarifa editor ($/h)</label>
                               <input className="input" type="number" min="0" value={paymentForm.payment_rate} onChange={e => setPaymentForm(p => ({ ...p, payment_rate: e.target.value }))} placeholder="Ej: 25 (opcional, lo podés agregar después)" />
@@ -676,9 +682,9 @@ export default function Layout() {
                         </div>
                       </>
                     )}
-                    {(isSelfEditorNew ? estimatedClientTotal() > 0 : (estimatedTotal() > 0 || estimatedClientTotal() > 0)) && (
+                    {(!showEditorPaymentNew ? estimatedClientTotal() > 0 : (estimatedTotal() > 0 || estimatedClientTotal() > 0)) && (
                       <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {!isSelfEditorNew && (
+                        {showEditorPaymentNew && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ fontSize: 12, color: '#f472b6' }}>Pago editor:</span>
                             <span style={{ fontSize: 16, fontWeight: 700, color: '#f472b6' }}>${estimatedTotal().toFixed(0)}</span>
@@ -700,7 +706,7 @@ export default function Layout() {
                             </div>
                           </>
                         )}
-                        {!isSelfEditorNew && estimatedClientNet() > estimatedTotal() && (
+                        {showEditorPaymentNew && estimatedClientNet() > estimatedTotal() && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
                             <span style={{ fontSize: 12, color: 'var(--green)' }}>Ganancia:</span>
                             <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>${(estimatedClientNet() - estimatedTotal()).toFixed(0)}</span>
@@ -709,7 +715,6 @@ export default function Layout() {
                       </div>
                     )}
                   </>
-                )}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button className="btn btn-ghost" onClick={() => setStep(1)}>← Volver</button>
                   <button className="btn btn-primary" onClick={createProject} disabled={isCreatingProject}>{isCreatingProject ? 'Creando...' : 'Crear proyecto'}</button>
