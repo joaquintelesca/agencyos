@@ -285,9 +285,9 @@ export default function Layout() {
         const isSelf = paymentForm.payment_editor_id === user.id;
         body.payment_editor_id = paymentForm.payment_editor_id || null;
         body.payment_type = paymentForm.payment_type;
-        // Sin editor asignado tampoco hay "pago a editor" — se guarda en 0 igual que cuando el
-        // editor sos vos mismo, el cobro al cliente se puede cargar de todas formas.
-        body.payment_amount = (!paymentForm.payment_editor_id || isSelf) ? 0 : (paymentForm.payment_type === 'fixed' ? paymentForm.payment_amount : paymentForm.payment_rate);
+        // El pago al editor se puede cargar aunque todavía no se haya asignado a nadie — solo se
+        // guarda en 0 cuando el editor sos vos mismo (ahí sí no hay pago real que registrar).
+        body.payment_amount = isSelf ? 0 : (paymentForm.payment_type === 'fixed' ? paymentForm.payment_amount : paymentForm.payment_rate);
         body.payment_hours = paymentForm.payment_hours || 0;
         body.client_amount = paymentForm.payment_type === 'fixed' ? paymentForm.client_amount : paymentForm.client_rate;
         body.upwork_status = paymentForm.upwork_status;
@@ -343,9 +343,10 @@ export default function Layout() {
   // Cuando el editor asignado sos vos mismo, "pago a editor" no es un gasto real (no te pagás a
   // vos mismo) — se oculta ese campo y solo se pide el cobro al cliente.
   const isSelfEditorNew = paymentForm.payment_editor_id === user?.id;
-  // Sin editor asignado tampoco hay "pago a editor" que cargar (nada que pagarle a nadie
-  // todavía) — mismo caso que cuando el editor sos vos mismo, se oculta ese campo por igual.
-  const showEditorPaymentNew = !!paymentForm.payment_editor_id && !isSelfEditorNew;
+  // El pago al editor se puede cargar de antemano aunque todavía no se haya elegido quién es
+  // (se asigna después) — solo se oculta cuando el editor elegido sos vos mismo, ahí sí no hay
+  // pago real que registrar.
+  const showEditorPaymentNew = !isSelfEditorNew;
   const isSelfEditorEdit = editProjectForm.payment_editor_id === user?.id;
 
   return (
@@ -632,6 +633,9 @@ export default function Layout() {
                           <label>% comisión que descuenta Upwork</label>
                           <input className="input" type="number" min="0" max="100" value={paymentForm.upwork_fee_pct}
                             onChange={e => setPaymentForm(p => ({ ...p, upwork_fee_pct: e.target.value }))} placeholder="Ej: 15" />
+                          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                            Este % se descuenta solo de lo que le cobrás al cliente. El pago al editor no se ve afectado — sigue siendo el monto fijo que cargues abajo.
+                          </div>
                         </div>
                       )}
                     </div>
@@ -644,9 +648,7 @@ export default function Layout() {
                     </div>
                     {!showEditorPaymentNew && (
                       <div style={{ background: 'var(--bg3)', border: '1px dashed var(--border2)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: 'var(--text2)' }}>
-                        {isSelfEditorNew
-                          ? 'Como el editor sos vos, no hay "pago a editor" — solo se registra lo que le cobrás al cliente.'
-                          : 'Todavía no asignaste un editor, así que no hay "pago a editor" que cargar — podés dejar cargado igual el cobro al cliente.'}
+                        Como el editor sos vos, no hay "pago a editor" — solo se registra lo que le cobrás al cliente.
                       </div>
                     )}
                     {paymentForm.payment_type === 'fixed' ? (
@@ -822,6 +824,9 @@ export default function Layout() {
                       <label>% comisión que descuenta Upwork</label>
                       <input className="input" type="number" min="0" max="100" value={editProjectForm.upwork_fee_pct}
                         onChange={e => setEditProjectForm(p => ({ ...p, upwork_fee_pct: e.target.value }))} placeholder="Ej: 15" />
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                        Este % se descuenta solo de lo que le cobrás al cliente. El pago al editor no se ve afectado — sigue siendo el monto fijo que cargues abajo.
+                      </div>
                     </div>
                   )}
                 </div>
