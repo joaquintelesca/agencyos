@@ -755,13 +755,33 @@ async function addProjectMember(projectId, userId, role = 'member') {
   if (!existing) await db('project_members').insert({ project_id: projectId, user_id: userId, role });
 }
 
-// Emite un evento solo a los miembros de un proyecto (via sus rooms personales) y a todos los admins.
-async function emitToProject(projectId, event, data) {
+// Campos de plata de un proyecto — nunca deben llegar a un editor, ni por REST ni por socket.
+// Ocultarlos solo en la UI no alcanza (el JSON crudo de /api/projects sigue viajando entero al
+// navegador): tiene que ser el servidor el que no los mande.
+const PROJECT_FINANCIAL_FIELDS = [
+  'payment_amount', 'client_amount', 'payment_type', 'payment_hours', 'payment_status',
+  'editor_paid', 'client_paid', 'editor_paid_at', 'client_paid_at',
+  'editor_paid_amount', 'client_paid_amount_gross', 'client_paid_amount_net',
+  'upwork_status', 'upwork_fee_pct'
+];
+function stripProjectFinancials(project) {
+  if (!project) return project;
+  const clean = { ...project };
+  for (const f of PROJECT_FINANCIAL_FIELDS) delete clean[f];
+  return clean;
+}
+
+// Emite un evento solo a los miembros de un proyecto (via sus rooms personales) y a todos los
+// admins. Si se pasa sanitizeForNonAdmin, los no-admin reciben esa versión filtrada del payload
+// en vez del original — para eventos de proyecto que llevan datos de plata.
+async function emitToProject(projectId, event, data, { sanitizeForNonAdmin } = {}) {
   const memberIds = await db('project_members').where({ project_id: projectId }).pluck('user_id');
-  const adminIds = await db('users').where({ role: 'admin' }).pluck('id');
-  const targetIds = new Set([...memberIds, ...adminIds]);
+  const admins = await db('users').where({ role: 'admin' }).select('id');
+  const adminIdSet = new Set(admins.map(a => a.id));
+  const targetIds = new Set([...memberIds, ...adminIdSet]);
+  const sanitized = sanitizeForNonAdmin ? sanitizeForNonAdmin(data) : data;
   for (const uid of targetIds) {
-    io.to(`user:${uid}`).emit(event, data);
+    io.to(`user:${uid}`).emit(event, adminIdSet.has(uid) ? data : sanitized);
   }
 }
 
@@ -968,7 +988,7 @@ app.get('/api/projects', auth, async (req, res) => {
     const unreadReviewMap = {};
     for (const row of unreadReviewRows) unreadReviewMap[row.project_id] = Number(row.count);
     const withCounts = projects.map(p => ({
-      ...p,
+      ...(req.user.role === 'admin' ? p : stripProjectFinancials(p)),
       ...(countsMap[p.id] || { task_count: 0, done_count: 0, review_count: 0 }),
       unread_review_count: unreadReviewMap[p.id] || 0
     }));
@@ -985,7 +1005,7 @@ app.get('/api/projects/:id', auth, requireProjectAccess('id'), async (req, res) 
       .select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color')
       .first();
     if (!project) return res.status(404).json({ error: 'No encontrado' });
-    res.json(project);
+    res.json(req.user.role === 'admin' ? project : stripProjectFinancials(project));
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
@@ -1011,7 +1031,7 @@ app.post('/api/projects', auth, async (req, res) => {
     await addProjectMember(id, req.user.id, 'owner');
     if (payment_editor_id) await addProjectMember(id, payment_editor_id);
     const project = await db('projects').where({ id }).first();
-    await emitToProject(id, 'project:created', project);
+    await emitToProject(id, 'project:created', project, { sanitizeForNonAdmin: stripProjectFinancials });
     if (payment_editor_id) await createNotification({ userId: payment_editor_id, type: 'project_assigned', actorId: req.user.id, projectId: id, preview: name });
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -1040,7 +1060,7 @@ app.put('/api/projects/:id', auth, async (req, res) => {
       await createNotification({ userId: payment_editor_id, type: 'project_assigned', actorId: req.user.id, projectId: req.params.id, preview: name || existing.name });
     }
     const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first();
-    await emitToProject(req.params.id, 'project:updated', project);
+    await emitToProject(req.params.id, 'project:updated', project, { sanitizeForNonAdmin: stripProjectFinancials });
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1064,7 +1084,7 @@ app.patch('/api/projects/:id/status', auth, async (req, res) => {
     }
     await db('projects').where({ id: req.params.id }).update({ status });
     const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first();
-    await emitToProject(req.params.id, 'project:updated', project);
+    await emitToProject(req.params.id, 'project:updated', project, { sanitizeForNonAdmin: stripProjectFinancials });
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
