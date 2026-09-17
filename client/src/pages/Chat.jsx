@@ -898,8 +898,9 @@ export default function Chat() {
 
       {/* Modal nuevo canal */}
       {showNewChannel && user?.role === 'admin' && (
-        <div className="modal-overlay" onClick={() => setShowNewChannel(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowNewChannel(false)} title="Cerrar">✕</button>
             <h2>Nuevo canal</h2>
             <div className="form-group">
               <label>Nombre del canal</label>

@@ -524,8 +524,9 @@ export default function Layout() {
 
       {/* New Project Modal */}
       {showNewProject && (
-        <div className="modal-overlay" onClick={() => setShowNewProject(false)}>
+        <div className="modal-overlay">
           <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowNewProject(false)} title="Cerrar">✕</button>
 
             {/* Steps indicator — solo admin ve 2 pasos */}
             {user?.role === 'admin' && (
@@ -728,8 +729,9 @@ export default function Layout() {
       )}
 
       {showNewClient && (
-        <div className="modal-overlay" onClick={() => setShowNewClient(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowNewClient(false)} title="Cerrar">✕</button>
             <h2>Nuevo cliente</h2>
             <div className="form-group">
               <label>Nombre</label>
@@ -765,8 +767,9 @@ export default function Layout() {
         </div>
       )}
       {editingProject && (
-        <div className="modal-overlay" onClick={() => setEditingProject(null)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setEditingProject(null)} title="Cerrar">✕</button>
             <h2>Editar proyecto — {editingProject.name}</h2>
             <div className="form-group">
               <label>Nombre</label>
@@ -879,8 +882,9 @@ export default function Layout() {
       )}
 
       {showCompleteConfirm && (
-        <div className="modal-overlay" onClick={() => setShowCompleteConfirm(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowCompleteConfirm(false)} title="Cerrar">✕</button>
             <h2>Confirmar</h2>
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
               Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Completados" en Pagos.
@@ -894,8 +898,9 @@ export default function Layout() {
       )}
 
       {editingClient && (
-        <div className="modal-overlay" onClick={() => setEditingClient(null)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setEditingClient(null)} title="Cerrar">✕</button>
             <h2>Editar cliente — {editingClient.name}</h2>
             <div className="form-group">
               <label>Nombre</label>
@@ -933,8 +938,9 @@ export default function Layout() {
 
       {/* Modal: Cambiar contraseña */}
       {showChangePassword && (
-        <div className="modal-overlay" onClick={() => setShowChangePassword(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowChangePassword(false)} title="Cerrar">✕</button>
             <h2>Cambiar contraseña</h2>
             <div className="form-group">
               <label>Contraseña actual</label>

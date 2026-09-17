@@ -119,8 +119,9 @@ export default function Team() {
 
       {/* Modal: Crear usuario */}
       {showNewUser && (
-        <div className="modal-overlay" onClick={() => setShowNewUser(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowNewUser(false)} title="Cerrar">✕</button>
             <h2>Agregar integrante</h2>
             <form onSubmit={e => { e.preventDefault(); createUser(); }}>
               <div className="form-group"><label>Nombre completo</label>
@@ -152,8 +153,9 @@ export default function Team() {
 
       {/* Modal: Editar usuario */}
       {editingUser && (
-        <div className="modal-overlay" onClick={() => setEditingUser(null)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setEditingUser(null)} title="Cerrar">✕</button>
             <h2>Editar integrante</h2>
             <form onSubmit={e => { e.preventDefault(); saveUser(); }}>
               {/* Color avatar */}
@@ -212,7 +214,7 @@ export default function Team() {
       )}
       {/* Panel: Detalle de editor */}
       {detailUser && (
-        <div className="modal-overlay" onClick={() => setDetailUser(null)}>
+        <div className="modal-overlay">
           <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 420, background: 'var(--bg1)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideIn 0.2s ease' }}>
             {/* Header */}
             <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>

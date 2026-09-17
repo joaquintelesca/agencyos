@@ -361,8 +361,9 @@ export default function Payments() {
       </div>
 
       {pendingComplete && (
-        <div className="modal-overlay" onClick={() => setPendingComplete(null)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setPendingComplete(null)} title="Cerrar">✕</button>
             <h2>Confirmar</h2>
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
               Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Completados".

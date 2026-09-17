@@ -434,8 +434,9 @@ export default function Project() {
 
       {/* Task Modal */}
       {showTaskModal && (
-        <div className="modal-overlay" onClick={() => setShowTaskModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowTaskModal(false)} title="Cerrar">✕</button>
             <h2>{editingTask ? 'Editar tarea' : 'Nueva tarea'}</h2>
             <div className="form-group">
               <label>Título</label>
@@ -482,8 +483,9 @@ export default function Project() {
       )}
 
       {reviewReminderTask && (
-        <div className="modal-overlay" onClick={() => setReviewReminderTask(null)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setReviewReminderTask(null)} title="Cerrar">✕</button>
             <h2>Tarea en revisión</h2>
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
               Moviste <strong>"{reviewReminderTask.title}"</strong> a revisión. ¿Querés subir la última versión del video para esta tarea?
@@ -503,8 +505,9 @@ export default function Project() {
       )}
 
       {showPriceModal && (
-        <div className="modal-overlay" onClick={() => setShowPriceModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowPriceModal(false)} title="Cerrar">✕</button>
             <h2>Faltan datos para terminar el proyecto</h2>
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
               Para marcarlo como terminado y que pase a Pagos, el proyecto necesita un editor asignado y un precio cargado.

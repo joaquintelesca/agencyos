@@ -598,8 +598,9 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           })}
         </div>
         {showUpload && (
-          <div className="modal-overlay" onClick={() => !uploading && setShowUpload(false)}>
+          <div className="modal-overlay">
             <div className="modal" onClick={e => e.stopPropagation()}>
+              {!uploading && <button className="modal-close" onClick={() => setShowUpload(false)} title="Cerrar">✕</button>}
               <h2>Subir video</h2>
               <div className="form-group">
                 <label>Archivo de video</label>
@@ -1019,8 +1020,9 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
 
       {/* Upload modal */}
       {showUpload && (
-        <div className="modal-overlay" onClick={() => !uploading && setShowUpload(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
+            {!uploading && <button className="modal-close" onClick={() => setShowUpload(false)} title="Cerrar">✕</button>}
             <h2>Subir nueva versión</h2>
             <div className="form-group">
               <label>Archivo de video</label>
