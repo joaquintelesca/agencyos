@@ -317,6 +317,10 @@ export default function Payments() {
               </div>
             </div>
 
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 16, marginTop: -10 }}>
+              "Recibido de clientes" ya descuenta la comisión de Upwork en los proyectos facturados así — "Pagado a editores" nunca se ve afectado por ese %, es siempre el monto fijo acordado con cada editor.
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Detalle — cobrado a clientes</div>
