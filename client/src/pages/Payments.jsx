@@ -123,6 +123,7 @@ export default function Payments() {
   const paidToEditorsThisMonth = projects.filter(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id !== user.id);
   const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + displayClientNet(p), 0);
   const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + displayEditorAmount(p), 0);
+  const totalUpworkFeeMonth = receivedThisMonth.reduce((s, p) => s + (displayClientGross(p) - displayClientNet(p)), 0);
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><div className="spinner" /></div>;
 
@@ -318,7 +319,8 @@ export default function Payments() {
             </div>
 
             <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 16, marginTop: -10 }}>
-              "Recibido de clientes" ya descuenta la comisión de Upwork en los proyectos facturados así — "Pagado a editores" nunca se ve afectado por ese %, es siempre el monto fijo acordado con cada editor.
+              "Recibido de clientes" ya descuenta la comisión de Upwork en los proyectos facturados así
+              {totalUpworkFeeMonth > 0 && <> — este mes se fueron <strong style={{ color: 'var(--text2)' }}>${totalUpworkFeeMonth.toFixed(0)}</strong> en comisiones</>} — "Pagado a editores" nunca se ve afectado por ese %, es siempre el monto fijo acordado con cada editor.
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -333,7 +335,7 @@ export default function Payments() {
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: 12.5, fontWeight: 700, color: '#a5b4fc', whiteSpace: 'nowrap' }}>${displayClientNet(p).toFixed(0)}</div>
                         {isUpworkBilled(p) && (
-                          <div style={{ fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap' }}>bruto ${displayClientGross(p).toFixed(0)} · Upwork {p.upwork_fee_pct || 0}%</div>
+                          <div style={{ fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap' }}>bruto ${displayClientGross(p).toFixed(0)} · -${(displayClientGross(p) - displayClientNet(p)).toFixed(0)} Upwork ({p.upwork_fee_pct || 0}%)</div>
                         )}
                       </div>
                     </div>
