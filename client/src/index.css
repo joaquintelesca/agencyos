@@ -110,18 +110,23 @@ select.input { cursor: pointer; }
 }
 .modal-lg { max-width: 720px; }
 .modal h2 { font-family: var(--font-display); font-size: 20px; margin-bottom: 20px; }
-/* Botón de cerrar en la esquina superior derecha de cada modal — clickear fuera del modal ya
+/* Botón de cerrar en la esquina superior izquierda de cada modal — clickear fuera del modal ya
    no lo cierra (evita perder lo cargado por un click accidental), esta es la forma explícita.
-   Fondo claro sólido a propósito: un tono oscuro se perdía contra el fondo ya oscuro de la app. */
+   Fondo claro sólido a propósito: un tono oscuro se perdía contra el fondo ya oscuro de la app.
+   Va DENTRO del padding (no en offset negativo) porque .modal tiene overflow-y:auto para poder
+   scrollear contenido largo — un offset negativo quedaba recortado por ese overflow. Como se
+   superpondría con el título, se le suma padding-top extra al modal para que el texto no arranque
+   debajo del botón. */
 .modal-close {
-  position: absolute; top: -14px; right: -14px;
+  position: absolute; top: 14px; left: 14px;
   width: 28px; height: 28px; border-radius: 50%;
   background: var(--text); border: none;
   color: var(--bg); font-size: 14px; font-weight: 700; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: var(--shadow-lg); z-index: 1;
+  box-shadow: var(--shadow-lg); z-index: 2;
 }
 .modal-close:hover { background: var(--red); color: #fff; }
+.modal:has(> .modal-close) { padding-top: 56px; }
 
 /* Animations */
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
