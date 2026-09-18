@@ -854,7 +854,7 @@ export default function Chat() {
                   style={{ ...btnStyle, color: recording ? 'var(--red)' : undefined }}
                   title={recording ? 'Detener grabación' : 'Nota de voz'}
                 >
-                  {recording ? '⏹' : '🎙'}
+                  {recording ? '⏹' : '🎤'}
                 </button>
                 {recording && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none' }}>
@@ -1058,7 +1058,7 @@ function Message({ msg, isMe, compact, initials, mediaUrl }) {
         )}
         {msg.file_type === 'audio' && (
           <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 16, padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-            <span style={{ fontSize: 16 }}>🎙</span>
+            <span style={{ fontSize: 16 }}>🎤</span>
             <VoiceNotePlayer src={mediaUrl(msg.file_url)} knownDuration={msg.file_duration} />
           </div>
         )}
