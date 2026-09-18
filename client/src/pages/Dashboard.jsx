@@ -248,9 +248,8 @@ export default function Dashboard() {
 
   const paymentsSection = isAdmin && unpaidPayments.length > 0 && (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+      <div style={{ marginBottom: 8 }}>
         <div style={sectionTitleStyle}>💰 Pagos pendientes</div>
-        <span onClick={() => navigate('/payments')} style={sectionLinkStyle}>Ir a Pagos →</span>
       </div>
       <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px 6px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
