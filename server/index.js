@@ -849,6 +849,28 @@ async function addProjectMember(projectId, userId, role = 'member') {
   await db('project_members').insert({ project_id: projectId, user_id: userId, role }).onConflict(['project_id', 'user_id']).ignore();
 }
 
+// Se llama cuando alguien deja de ser el editor de un proyecto o deja de tener una tarea asignada
+// en él — reasignar no sacaba nunca al editor/tarea anterior de project_members, así que seguía
+// viendo el board, las tareas de otros, el chat y los videos del proyecto para siempre. Solo lo
+// saca si de verdad ya no tiene ningún motivo legítimo para seguir ahí (no es quien lo creó, no es
+// el editor actual, no le queda ninguna tarea asignada en ese proyecto) — si todavía le queda una
+// tarea suya sin terminar, por ejemplo, no le conviene perder el acceso solo porque el proyecto
+// como un todo pasó a otro editor.
+async function removeProjectMemberIfOrphaned(projectId, userId) {
+  if (!projectId || !userId) return;
+  const project = await db('projects').where({ id: projectId }).first();
+  if (!project) return;
+  if (project.created_by === userId || project.payment_editor_id === userId) return;
+  const hasTask = await db('tasks').where({ project_id: projectId, assigned_to: userId }).first();
+  if (hasTask) return;
+  const deleted = await db('project_members').where({ project_id: projectId, user_id: userId }).delete();
+  if (deleted) {
+    // Además de la fila en la tabla, saca a cualquier socket ya conectado de ese usuario de la
+    // room del proyecto — si no, sigue recibiendo mensajes de chat en vivo hasta que recargue.
+    io.in(`user:${userId}`).socketsLeave(`project:${projectId}`);
+  }
+}
+
 // Mismas columnas del kanban que TASK_COLUMNS en client/src/pages/Project.jsx — sin este chequeo,
 // un editor podía mandar cualquier string como status de su propia tarea (PUT /api/tasks/:id) y
 // corromper el campo, rompiendo tanto el render del kanban como las notificaciones de review/
@@ -1179,6 +1201,12 @@ app.put('/api/projects/:id', auth, async (req, res) => {
     if (payment_editor_id) await addProjectMember(req.params.id, payment_editor_id);
     if (payment_editor_id && payment_editor_id !== existing.payment_editor_id) {
       await createNotification({ userId: payment_editor_id, type: 'project_assigned', actorId: req.user.id, projectId: req.params.id, preview: name || existing.name });
+    }
+    // Si se cambió el editor, el anterior no debería seguir viendo el board/chat/videos de este
+    // proyecto — se saca solo si de verdad ya no tiene otro motivo para seguir ahí (ver comentario
+    // en removeProjectMemberIfOrphaned).
+    if (existing.payment_editor_id && existing.payment_editor_id !== payment_editor_id) {
+      await removeProjectMemberIfOrphaned(req.params.id, existing.payment_editor_id);
     }
     const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first());
     await emitToProject(req.params.id, 'project:updated', project, { sanitizeForNonAdmin: stripProjectFinancials });
@@ -1666,6 +1694,11 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
         if (assigned_to !== existing.assigned_to) {
           await createNotification({ userId: assigned_to, type: 'task_assigned', actorId: req.user.id, projectId: existing.project_id, preview: `"${title || existing.title}" en ${project?.name || 'proyecto'}` });
         }
+      }
+      // Si la tarea tenía otro asignado antes (o se desasignó del todo), ese usuario no debería
+      // seguir viendo el board/chat/videos del proyecto solo por esa tarea que ya no es suya.
+      if (assigned_to !== undefined && existing.assigned_to && assigned_to !== existing.assigned_to) {
+        await removeProjectMemberIfOrphaned(existing.project_id, existing.assigned_to);
       }
     }
     const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', req.params.id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
