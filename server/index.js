@@ -1706,7 +1706,13 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
     if (status !== undefined && !TASK_STATUSES.includes(status)) return res.status(400).json({ error: 'Estado de tarea inválido' });
     if (req.user.role !== 'admin') {
       if (existing.assigned_to !== req.user.id) return res.status(403).json({ error: 'Solo podés cambiar el estado de tus tareas asignadas' });
-      await db('tasks').where({ id: req.params.id }).update({ status, updated_at: new Date().toISOString() });
+      // Antes solo se podía tocar `status` acá — hacía falta sumar due_date para poder arrastrar
+      // las propias tareas en el Calendario (título, prioridad y a quién está asignada siguen
+      // siendo exclusivos de admin).
+      const update = { updated_at: new Date().toISOString() };
+      if (status !== undefined) update.status = status;
+      if (due_date !== undefined) update.due_date = due_date || null;
+      await db('tasks').where({ id: req.params.id }).update(update);
     } else {
       if (assigned_to && !await db('users').where({ id: assigned_to }).first()) {
         return res.status(400).json({ error: 'El usuario asignado no existe' });
