@@ -135,9 +135,9 @@ export default function ClientDashboard() {
     const settled = isDone && isAdmin ? isPaymentSettled(p) : null;
 
     return (
-      <div key={p.id}
+      <div key={p.id} className="card"
         onDoubleClick={() => navigate(`/project/${p.id}`)}
-        style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px', cursor: 'pointer', transition: 'all 0.15s', opacity: isDone ? 0.85 : 1 }}
+        style={{ cursor: 'pointer', transition: 'border-color 0.15s', opacity: isDone ? 0.85 : 1 }}
         onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
         onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
         {/* Top row */}

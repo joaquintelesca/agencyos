@@ -820,13 +820,13 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                 <div style={{ background: 'var(--bg3)', border: `1px solid var(--yellow)`, borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 11, color: 'var(--yellow)', fontWeight: 600 }}>⬌ Rango: {formatTime(capturedTs.start)} → {formatTime(capturedTs.end)}</span>
                   <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); setRangeMode(false); setRangeStart(null); setRangeEnd(null); clearAnnotations(); }}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 13 }}>✕</button>
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>✕</button>
                 </div>
               ) : (
                 <div style={{ background: 'var(--bg3)', border: `1px solid var(--accent)`, borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>⏸ Pausado en {formatTime(capturedTs.ts)}</span>
                   <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 13 }}>✕</button>
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>✕</button>
                 </div>
               )}
               <textarea value={commentText} onChange={e => setCommentText(e.target.value)}

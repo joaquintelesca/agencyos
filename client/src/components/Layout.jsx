@@ -581,7 +581,7 @@ export default function Layout() {
               <span style={{ fontSize: 13, color: 'var(--yellow)', fontWeight: 600 }}>Almacenamiento: {storageWarning.gb} GB usados</span>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>— Superaste los 20GB. Considerá borrar archivos viejos o migrar a la nube.</span>
             </div>
-            <button onClick={() => setStorageWarning(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
+            <button onClick={() => setStorageWarning(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>✕</button>
           </div>
         )}
         <Outlet context={{ projects, setProjects, unreadNotifs, setUnreadNotifs, openEditProject }} />

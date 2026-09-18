@@ -233,7 +233,7 @@ export default function Team() {
                 ✏️ Editar
               </button>
               <button onClick={() => setDetailUser(null)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 18, cursor: 'pointer', padding: '2px 6px' }}>✕</button>
+                style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 14, cursor: 'pointer', padding: '2px 6px' }}>✕</button>
             </div>
 
             {detailError ? (

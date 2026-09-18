@@ -63,9 +63,6 @@ export default function Dashboard() {
   const totalEditorPending = unpaidPayments.filter(p => !editorSettled(p)).reduce((s, p) => s + p.computed_editor_total, 0);
   const totalClientPending = unpaidPayments.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + p.computed_client_net, 0);
 
-  const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, cursor: 'pointer', transition: 'all 0.1s' };
-  const onRowEnter = e => e.currentTarget.style.borderColor = 'var(--border2)';
-  const onRowLeave = e => e.currentTarget.style.borderColor = 'var(--border)';
   const sectionTitleStyle = { fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' };
   const sectionLinkStyle = { fontSize: 12, color: 'var(--accent2)', fontWeight: 600, cursor: 'pointer' };
 
@@ -99,7 +96,7 @@ export default function Dashboard() {
           {statModal === 'projects' && (activeProjectsList.length === 0
             ? <div className="empty"><div className="empty-icon">📁</div><p>Sin proyectos activos</p></div>
             : activeProjectsList.map(p => (
-              <div key={p.id} onClick={() => goToProject(p.id)} style={rowStyle} onMouseEnter={onRowEnter} onMouseLeave={onRowLeave}>
+              <div key={p.id} onClick={() => goToProject(p.id)} className="list-row">
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                 <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
                 {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
@@ -116,7 +113,7 @@ export default function Dashboard() {
             : pendingTasks.map(t => {
               const proj = projects.find(p => p.id === t.project_id);
               return (
-                <div key={t.id} onClick={() => goToProject(t.project_id)} style={rowStyle} onMouseEnter={onRowEnter} onMouseLeave={onRowLeave}>
+                <div key={t.id} onClick={() => goToProject(t.project_id)} className="list-row">
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: proj?.color || 'var(--text3)', flexShrink: 0 }} />
                   <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{t.title}</span>
                   {proj && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{proj.client_name ? `${proj.client_name} · ` : ''}{proj.name}</span>}
@@ -140,7 +137,7 @@ export default function Dashboard() {
             : deadlinesThisWeek.map(p => {
               const dl = deadlineLabel(p.deadline);
               return (
-                <div key={p.id} onClick={() => goToProject(p.id)} style={rowStyle} onMouseEnter={onRowEnter} onMouseLeave={onRowLeave}>
+                <div key={p.id} onClick={() => goToProject(p.id)} className="list-row">
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
                   {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
@@ -152,7 +149,7 @@ export default function Dashboard() {
           {statModal === 'clients' && (clients.length === 0
             ? <div className="empty"><div className="empty-icon">👥</div><p>Sin clientes todavía</p></div>
             : clients.map(c => (
-              <div key={c.id} onClick={() => { setStatModal(null); navigate(`/client/${c.id}`); }} style={rowStyle} onMouseEnter={onRowEnter} onMouseLeave={onRowLeave}>
+              <div key={c.id} onClick={() => { setStatModal(null); navigate(`/client/${c.id}`); }} className="list-row">
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
                 <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{c.name}</span>
                 {c.email && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{c.email}</span>}
@@ -170,7 +167,7 @@ export default function Dashboard() {
         {deadlineSoon.slice(0, 5).map(p => {
           const dl = deadlineLabel(p.deadline);
           return (
-            <div key={p.id} onClick={() => navigate(`/project/${p.id}`)} style={rowStyle} onMouseEnter={onRowEnter} onMouseLeave={onRowLeave}>
+            <div key={p.id} onClick={() => navigate(`/project/${p.id}`)} className="list-row">
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
               <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
               {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
@@ -194,7 +191,7 @@ export default function Dashboard() {
         {reviewTasks.map(t => {
           const proj = projects.find(p => p.id === t.project_id);
           return (
-            <div key={t.id} onClick={() => navigate(`/project/${t.project_id}`)} style={rowStyle} onMouseEnter={onRowEnter} onMouseLeave={onRowLeave}>
+            <div key={t.id} onClick={() => navigate(`/project/${t.project_id}`)} className="list-row">
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: proj?.color || 'var(--text3)', flexShrink: 0 }} />
               <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{t.title}</span>
               {proj && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{proj.client_name ? `${proj.client_name} · ` : ''}{proj.name}</span>}
@@ -224,7 +221,7 @@ export default function Dashboard() {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {(isAdmin ? pendingVideos.slice(0, VIDEOS_PREVIEW_LIMIT) : pendingVideos).map(v => (
-          <div key={v.id} onClick={() => navigate(`/project/${v.project_id}?tab=videos`)} style={rowStyle} onMouseEnter={onRowEnter} onMouseLeave={onRowLeave}>
+          <div key={v.id} onClick={() => navigate(`/project/${v.project_id}?tab=videos`)} className="list-row">
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: v.project_color || 'var(--text3)', flexShrink: 0 }} />
             <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{v.title} <span style={{ fontSize: 11, color: 'var(--text3)' }}>v{v.version}</span></span>
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.client_name ? `${v.client_name} · ` : ''}{v.project_name}</span>
