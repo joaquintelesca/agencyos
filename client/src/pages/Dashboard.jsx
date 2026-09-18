@@ -5,6 +5,9 @@ import { initials, deadlineLabel } from '../utils/format';
 
 const VIDEOS_PREVIEW_LIMIT = 5;
 const PAYMENTS_PREVIEW_LIMIT = 5;
+const TASK_STATUS_LABELS = { todo: 'Por hacer', in_progress: 'En progreso', review: 'En revisión', feedback: 'Aplicar feedback', done: 'Listo' };
+const TASK_STATUS_COLORS = { todo: 'var(--text3)', in_progress: 'var(--blue)', review: 'var(--yellow)', feedback: 'var(--red)', done: 'var(--green)' };
+const STAT_MODAL_TITLES = { projects: 'Proyectos activos', tasks: 'Tareas pendientes', deadlines: 'Deadlines esta semana', clients: 'Clientes activos' };
 
 export default function Dashboard() {
   const { api, user } = useAuth();
@@ -17,6 +20,7 @@ export default function Dashboard() {
   const [payments, setPayments] = useState([]);
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  const [statModal, setStatModal] = useState(null); // 'projects' | 'tasks' | 'deadlines' | 'clients' | null
 
   const projectIds = projects.map(p => p.id).join(',');
   useEffect(() => {
@@ -33,6 +37,12 @@ export default function Dashboard() {
 
   const allTasks = Object.values(tasks).flat();
   const pendingTasks = allTasks.filter(t => t.status !== 'done');
+  const activeProjectsList = projects.filter(p => p.status !== 'completed');
+  const deadlinesThisWeek = projects.filter(p => {
+    if (!p.deadline) return false;
+    const diff = Math.ceil((new Date(p.deadline) - new Date()) / 86400000);
+    return diff >= 0 && diff <= 7;
+  });
   // Un proyecto ya marcado "Terminado" no necesita más recordatorios de deadline ni de
   // aprobación — si algo quedó suelto ahí (una tarea en revisión, un deadline próximo) ya no es
   // información accionable para el Dashboard.
@@ -62,16 +72,94 @@ export default function Dashboard() {
   const statsSection = (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>
       {[
-        { label: 'Proyectos activos', val: projects.filter(p => p.status !== 'completed').length, color: 'var(--text)' },
-        { label: 'Tareas pendientes', val: pendingTasks.length, color: pendingTasks.length > 0 ? 'var(--yellow)' : 'var(--green)' },
-        { label: 'Deadlines esta semana', val: projects.filter(p => { if (!p.deadline) return false; const diff = Math.ceil((new Date(p.deadline) - new Date()) / 86400000); return diff >= 0 && diff <= 7; }).length, color: 'var(--red)' },
-        { label: 'Clientes activos', val: clients.length, color: 'var(--accent2)' },
+        { type: 'projects', label: 'Proyectos activos', val: activeProjectsList.length, color: 'var(--text)' },
+        { type: 'tasks', label: 'Tareas pendientes', val: pendingTasks.length, color: pendingTasks.length > 0 ? 'var(--yellow)' : 'var(--green)' },
+        { type: 'deadlines', label: 'Deadlines esta semana', val: deadlinesThisWeek.length, color: 'var(--red)' },
+        { type: 'clients', label: 'Clientes activos', val: clients.length, color: 'var(--accent2)' },
       ].map(s => (
-        <div key={s.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px' }}>
+        <div key={s.label} onDoubleClick={() => setStatModal(s.type)} title="Doble click para ver el detalle"
+          style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', cursor: 'pointer', transition: 'border-color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
           <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{s.label}</div>
           <div style={{ fontSize: 24, fontWeight: 700, color: s.color }}>{s.val}</div>
         </div>
       ))}
+    </div>
+  );
+
+  const goToProject = (id) => { setStatModal(null); navigate(`/project/${id}`); };
+
+  const statModalSection = statModal && (
+    <div className="modal-overlay">
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <button className="modal-close" onClick={() => setStatModal(null)} title="Cerrar">✕</button>
+        <h2>{STAT_MODAL_TITLES[statModal]}</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: '55vh', overflowY: 'auto', marginTop: 16 }}>
+          {statModal === 'projects' && (activeProjectsList.length === 0
+            ? <div className="empty"><div className="empty-icon">📁</div><p>Sin proyectos activos</p></div>
+            : activeProjectsList.map(p => (
+              <div key={p.id} onClick={() => goToProject(p.id)} style={rowStyle} onMouseEnter={onRowEnter} onMouseLeave={onRowLeave}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
+                {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
+                {p.payment_editor_name && (
+                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: p.payment_editor_color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>
+                    {initials(p.payment_editor_name)}
+                  </div>
+                )}
+              </div>
+            )))}
+
+          {statModal === 'tasks' && (pendingTasks.length === 0
+            ? <div className="empty"><div className="empty-icon">✅</div><p>Sin tareas pendientes</p></div>
+            : pendingTasks.map(t => {
+              const proj = projects.find(p => p.id === t.project_id);
+              return (
+                <div key={t.id} onClick={() => goToProject(t.project_id)} style={rowStyle} onMouseEnter={onRowEnter} onMouseLeave={onRowLeave}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: proj?.color || 'var(--text3)', flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{t.title}</span>
+                  {proj && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{proj.client_name ? `${proj.client_name} · ` : ''}{proj.name}</span>}
+                  {t.assignee_name && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <div style={{ width: 20, height: 20, borderRadius: '50%', background: t.assignee_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>
+                        {initials(t.assignee_name)}
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--text3)' }}>{t.assignee_name}</span>
+                    </div>
+                  )}
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: `${TASK_STATUS_COLORS[t.status] || 'var(--text3)'}18`, color: TASK_STATUS_COLORS[t.status] || 'var(--text3)' }}>
+                    {TASK_STATUS_LABELS[t.status] || t.status}
+                  </span>
+                </div>
+              );
+            }))}
+
+          {statModal === 'deadlines' && (deadlinesThisWeek.length === 0
+            ? <div className="empty"><div className="empty-icon">📅</div><p>Sin deadlines esta semana</p></div>
+            : deadlinesThisWeek.map(p => {
+              const dl = deadlineLabel(p.deadline);
+              return (
+                <div key={p.id} onClick={() => goToProject(p.id)} style={rowStyle} onMouseEnter={onRowEnter} onMouseLeave={onRowLeave}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
+                  {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
+                  {dl && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
+                </div>
+              );
+            }))}
+
+          {statModal === 'clients' && (clients.length === 0
+            ? <div className="empty"><div className="empty-icon">👥</div><p>Sin clientes todavía</p></div>
+            : clients.map(c => (
+              <div key={c.id} onClick={() => { setStatModal(null); navigate(`/client/${c.id}`); }} style={rowStyle} onMouseEnter={onRowEnter} onMouseLeave={onRowLeave}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{c.name}</span>
+                {c.email && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{c.email}</span>}
+              </div>
+            )))}
+        </div>
+      </div>
     </div>
   );
 
@@ -249,6 +337,8 @@ export default function Dashboard() {
           <p style={{ fontSize: 12 }}>{isAdmin ? 'Sin deadlines, videos ni pagos pendientes' : 'Sin deadlines ni videos pendientes'}</p>
         </div>
       )}
+
+      {statModalSection}
     </div>
   );
 }
