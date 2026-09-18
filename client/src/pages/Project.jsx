@@ -146,7 +146,9 @@ export default function Project() {
 
   const openCreateTask = (status = 'todo') => {
     setEditingTask(null);
-    setTaskForm({ title: '', description: '', status, priority: 'medium', assigned_to: '', due_date: '' });
+    // Si el proyecto ya tiene un editor asignado, lo más común es que la tarea nueva sea para esa
+    // misma persona — se precarga como default, pero se puede cambiar antes de crear.
+    setTaskForm({ title: '', description: '', status, priority: 'medium', assigned_to: project.payment_editor_id || '', due_date: '' });
     setShowTaskModal(true);
   };
 
