@@ -8,7 +8,10 @@ export function initials(name, fallback = '') {
 // la medianoche local de hoy, para que "días restantes" no se corra según el timezone/hora.
 export function deadlineLabel(d) {
   if (!d) return null;
-  const deadline = new Date(d + 'T00:00:00');
+  // d normalmente viene como "YYYY-MM-DD" plano, pero por las dudas soporta también un ISO
+  // completo (ej. "2026-09-01T00:00:00.000Z") sin romperse — se queda solo con la parte de fecha.
+  const datePart = String(d).slice(0, 10);
+  const deadline = new Date(datePart + 'T00:00:00');
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diff = Math.round((deadline - today) / 86400000);

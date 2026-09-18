@@ -9,6 +9,11 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+// Sin esto, pg devuelve las columnas `date` como objetos Date (parseados a medianoche UTC), que al
+// serializar a JSON quedan como "2026-09-01T00:00:00.000Z" en vez de "2026-09-01" — rompe tanto el
+// cálculo de "días restantes" del deadline (que espera YYYY-MM-DD) como el <input type="date"> del
+// cliente (que ignora un value que no matchee ese formato exacto).
+require('pg').types.setTypeParser(1082, val => val);
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand,
@@ -282,6 +287,24 @@ async function seedProjectMembers() {
   for (const r of replies) add(r.project_id, r.user_id, 'member');
 
   if (rows.length > 0) await db('project_members').insert(rows);
+}
+
+// Misma paleta que AVATAR_COLORS en client/src/pages/Team.jsx (el selector manual de color al
+// editar un usuario) — si se agregan colores acá, agregarlos también ahí para que coincidan.
+const AVATAR_COLORS = ['#6366f1','#ec4899','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ef4444','#14b8a6','#f97316','#06b6d4'];
+// Devuelve un color de la paleta que ningún usuario esté usando todavía. Si ya se usaron los 10
+// (más de 10 personas en el equipo), genera uno nuevo por rotación de tono (HSL) que sigue siendo
+// distinto de cualquier color de la paleta o generado previamente.
+function pickUnusedAvatarColor(usedColors) {
+  const free = AVATAR_COLORS.find(c => !usedColors.has(c));
+  if (free) return free;
+  let hue = 0;
+  let color;
+  do {
+    color = `hsl(${hue}, 65%, 55%)`;
+    hue = (hue + 137) % 360;
+  } while (usedColors.has(color));
+  return color;
 }
 
 async function initDB() {
@@ -611,6 +634,21 @@ async function initDB() {
     await db('users').insert({ id: uuidv4(), name: 'Admin', email: 'admin@agencyos.com', password: hash, role: 'admin', avatar_color: '#f59e0b' });
     console.log('✅ Admin creado: admin@agencyos.com / admin123');
   }
+
+  // El color de avatar se elegía al azar sin chequear contra los ya usados, así que dos personas
+  // podían terminar con el mismo color (pasó con dos integrantes reales del equipo). Se corre en
+  // cada arranque del server: no hace nada si ya no hay duplicados, así que es seguro repetirlo.
+  const allUsers = await db('users').orderBy('created_at', 'asc').select('id', 'avatar_color');
+  const usedColors = new Set();
+  for (const u of allUsers) {
+    if (u.avatar_color && !usedColors.has(u.avatar_color)) {
+      usedColors.add(u.avatar_color);
+    } else {
+      const newColor = pickUnusedAvatarColor(usedColors);
+      usedColors.add(newColor);
+      await db('users').where({ id: u.id }).update({ avatar_color: newColor });
+    }
+  }
 }
 
 // Headers de seguridad HTTP. CSP explícita (useDefaults: false) en vez de confiar en la
@@ -829,8 +867,8 @@ app.post('/api/auth/register', auth, async (req, res) => {
     const exists = await db('users').where({ email }).first();
     if (exists) return res.status(400).json({ error: 'Email ya registrado' });
     const hash = bcrypt.hashSync(password, 10);
-    const colors = ['#6366f1','#ec4899','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ef4444','#14b8a6'];
-    const color = colors[Math.floor(Math.random() * colors.length)];
+    const usedColors = new Set((await db('users').select('avatar_color')).map(u => u.avatar_color));
+    const color = pickUnusedAvatarColor(usedColors);
     await db('users').insert({ id: uuidv4(), name, email, password: hash, role: role || 'editor', avatar_color: color });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
