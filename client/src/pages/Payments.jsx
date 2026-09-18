@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
 
 const UPWORK_OPTIONS = ['Pendiente de carga', 'Cargado', 'No'];
 
 export default function Payments() {
   const { api, socket, user } = useAuth();
+  const { alert } = useAlert();
   const { openEditProject } = useOutletContext();
   const [projects, setProjects] = useState([]);
   const [clients, setClients] = useState([]);
@@ -39,7 +41,7 @@ export default function Payments() {
     try {
       const updated = await api(`/api/payments/${projectId}`, { method: 'PATCH', body: changes });
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
-    } catch (e) { console.error(e); alert('Error al actualizar el pago: ' + e.message); }
+    } catch (e) { console.error(e); await alert('Error al actualizar el pago: ' + e.message); }
   };
 
   // Pasar a "Completados" no debería ser automático — se pide confirmación (con el modal propio

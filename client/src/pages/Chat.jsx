@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import { initials as initialsBase } from '../utils/format';
 import { uploadWithProgress } from '../utils/upload';
 
@@ -70,6 +71,7 @@ function VoiceNotePlayer({ src, knownDuration }) {
 
 export default function Chat() {
   const { user, api, socket, onlineUsers, mediaUrl, token } = useAuth();
+  const { alert } = useAlert();
   const [conversations, setConversations] = useState([]);
   const [channels, setChannels] = useState([]);
   const [activeConv, setActiveConv] = useState(null);
@@ -349,7 +351,7 @@ export default function Chat() {
       await api('/api/chat/messages', { method: 'POST', body });
       setInput('');
     } catch (e) {
-      alert('No se pudo enviar: ' + e.message);
+      await alert('No se pudo enviar: ' + e.message);
     }
   };
 
@@ -376,7 +378,7 @@ export default function Chat() {
 
       await sendMessage('', fileUrl, fileType, file.name);
     } catch (err) {
-      if (err.name !== 'AbortError') alert('Error al subir archivo: ' + err.message);
+      if (err.name !== 'AbortError') await alert('Error al subir archivo: ' + err.message);
     } finally {
       setUploadingFile(false);
       setUploadProgress(0);
@@ -429,7 +431,7 @@ export default function Chat() {
 
   const startRecording = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      alert('Tu navegador no soporta grabación. Usá Chrome o Firefox.');
+      await alert('Tu navegador no soporta grabación. Usá Chrome o Firefox.');
       return;
     }
     try {
@@ -480,11 +482,11 @@ export default function Chat() {
       }, 1000);
     } catch (err) {
       if (err.name === 'NotAllowedError') {
-        alert('Permiso de micrófono denegado. Habilitalo en ajustes del navegador.');
+        await alert('Permiso de micrófono denegado. Habilitalo en ajustes del navegador.');
       } else if (err.name === 'NotFoundError') {
-        alert('No se encontró micrófono. Conectá uno e intentá de nuevo.');
+        await alert('No se encontró micrófono. Conectá uno e intentá de nuevo.');
       } else {
-        alert('Error al grabar: ' + err.message);
+        await alert('Error al grabar: ' + err.message);
       }
     }
   };
@@ -511,7 +513,7 @@ export default function Chat() {
       if (fileUrl) await sendMessage('', fileUrl, 'audio', `Nota de voz.${recordedAudio.ext}`, recordedAudio.durationSec);
       discardRecordedAudio();
     } catch (err) {
-      alert('Error al enviar nota de voz: ' + err.message);
+      await alert('Error al enviar nota de voz: ' + err.message);
     } finally {
       setSendingRecordedAudio(false);
     }
@@ -526,7 +528,7 @@ export default function Chat() {
       setChannelForm({ name: '', members: [] });
       openConv({ type: 'channel', id: newChannel.id, name: newChannel.name });
     } catch (e) {
-      alert('Error al crear canal: ' + e.message);
+      await alert('Error al crear canal: ' + e.message);
     }
   };
 

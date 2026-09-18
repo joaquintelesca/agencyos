@@ -84,7 +84,19 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 // tiene disco persistente compartido entre instancias), si no cae a disco local (desarrollo),
 // mismo patrón que ya usa `db` para elegir entre Postgres y SQLite según DATABASE_URL.
 const R2_BUCKET = process.env.R2_BUCKET;
-const useR2 = !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && R2_BUCKET);
+const r2VarNames = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'];
+const r2VarsPresent = r2VarNames.filter(v => !!process.env[v]);
+// Si falta UNA sola de las 4, es casi seguro un typo/olvido al configurar Render, no una decisión
+// consciente de usar disco local — y con las 4 a medio configurar el server caía a disco local
+// SIN avisar, que en Render es efímero: los archivos desaparecen en el próximo redeploy.
+if (r2VarsPresent.length > 0 && r2VarsPresent.length < r2VarNames.length) {
+  console.error(`❌ Configuración de R2 incompleta: definiste ${r2VarsPresent.join(', ')} pero faltan ${r2VarNames.filter(v => !process.env[v]).join(', ')}. Con la config a medias el server usaría disco local sin avisar (y en Render ese disco no persiste entre deploys). Completá las 4 variables o quitá todas para usar disco local a propósito.`);
+  process.exit(1);
+}
+const useR2 = r2VarsPresent.length === r2VarNames.length;
+if (process.env.DATABASE_URL && !useR2) {
+  console.warn('⚠️  No hay credenciales de R2 configuradas en producción — los archivos subidos (videos, adjuntos) se guardan en disco local, que en Render NO persiste entre deploys y se pierde en cada reinicio.');
+}
 // requestChecksumCalculation/responseChecksumValidation en 'WHEN_REQUIRED': el default nuevo del
 // SDK ('WHEN_SUPPORTED') agrega x-amz-checksum-mode a los GetObject y pide checksums en los
 // PutObject/UploadPart. R2 no resuelve bien ese modo para objetos armados con multipart upload
@@ -649,6 +661,35 @@ async function initDB() {
       await db('users').where({ id: u.id }).update({ avatar_color: newColor });
     }
   }
+
+  // Índices sobre las columnas que se filtran/joinean todo el tiempo (project_id, user_id, etc.) —
+  // no había ninguno declarado más allá de las PK y el unique de project_members, así que cada
+  // query de esas se resuelve con un full scan. Con el volumen de hoy no se nota, pero es gratis
+  // agregarlo ahora que arreglar una consulta lenta más adelante. `IF NOT EXISTS` es válido tanto
+  // en Postgres como en SQLite, así que es seguro correr esto en cada arranque.
+  const indexes = [
+    ['idx_tasks_project_id', 'tasks', 'project_id'],
+    ['idx_tasks_assigned_to', 'tasks', 'assigned_to'],
+    ['idx_messages_project_id', 'messages', 'project_id'],
+    ['idx_videos_project_id', 'videos', 'project_id'],
+    ['idx_video_comments_video_id', 'video_comments', 'video_id'],
+    ['idx_comment_attachments_comment_id', 'comment_attachments', 'comment_id'],
+    ['idx_chat_messages_sender_id', 'chat_messages', 'sender_id'],
+    ['idx_chat_messages_receiver_id', 'chat_messages', 'receiver_id'],
+    ['idx_chat_messages_channel_id', 'chat_messages', 'channel_id'],
+    ['idx_chat_channel_members_channel_id', 'chat_channel_members', 'channel_id'],
+    ['idx_chat_channel_members_user_id', 'chat_channel_members', 'user_id'],
+    ['idx_comment_replies_comment_id', 'comment_replies', 'comment_id'],
+    ['idx_reply_attachments_reply_id', 'reply_attachments', 'reply_id'],
+    ['idx_notifications_user_id', 'notifications', 'user_id'],
+    ['idx_notifications_project_id', 'notifications', 'project_id'],
+    ['idx_projects_client_id', 'projects', 'client_id'],
+    ['idx_projects_payment_editor_id', 'projects', 'payment_editor_id'],
+    ['idx_project_members_user_id', 'project_members', 'user_id'],
+  ];
+  for (const [indexName, table, column] of indexes) {
+    await db.raw(`CREATE INDEX IF NOT EXISTS ${indexName} ON ${table} (${column})`);
+  }
 }
 
 // Headers de seguridad HTTP. CSP explícita (useDefaults: false) en vez de confiar en la
@@ -789,9 +830,18 @@ async function isProjectMember(userId, role, projectId) {
 
 async function addProjectMember(projectId, userId, role = 'member') {
   if (!projectId || !userId) return;
-  const existing = await db('project_members').where({ project_id: projectId, user_id: userId }).first();
-  if (!existing) await db('project_members').insert({ project_id: projectId, user_id: userId, role });
+  // Upsert atómico con onConflict().ignore() en vez de "leer, después insertar si no existe": esa
+  // secuencia tenía una carrera real bajo doble-click o dos requests casi simultáneos (ej. crear
+  // tarea + asignar editor al mismo tiempo) — el segundo insert pisaba el unique(project_id,
+  // user_id) y tiraba un 500 sin manejar en vez de simplemente no hacer nada.
+  await db('project_members').insert({ project_id: projectId, user_id: userId, role }).onConflict(['project_id', 'user_id']).ignore();
 }
+
+// Mismas columnas del kanban que TASK_COLUMNS en client/src/pages/Project.jsx — sin este chequeo,
+// un editor podía mandar cualquier string como status de su propia tarea (PUT /api/tasks/:id) y
+// corromper el campo, rompiendo tanto el render del kanban como las notificaciones de review/
+// feedback que comparan contra estos valores exactos.
+const TASK_STATUSES = ['todo', 'in_progress', 'review', 'feedback', 'done'];
 
 // Campos de plata de un proyecto — nunca deben llegar a un editor, ni por REST ni por socket.
 // Ocultarlos solo en la UI no alcanza (el JSON crudo de /api/projects sigue viajando entero al
@@ -807,6 +857,15 @@ function stripProjectFinancials(project) {
   const clean = { ...project };
   for (const f of PROJECT_FINANCIAL_FIELDS) delete clean[f];
   return clean;
+}
+
+// Si el editor asignado a un proyecto fue borrado de la base, el LEFT JOIN a `users` devuelve el
+// nombre en null pero payment_editor_id sigue apuntando a él (a propósito: no lo desasignamos para
+// no perder el historial de a quién se le pagó). Sin este fallback el proyecto queda mostrando
+// "editor asignado" pero con nombre vacío, que confunde más que aclarar qué pasó.
+function withDeletedEditorFallback(row, nameField = 'payment_editor_name') {
+  if (row && row.payment_editor_id && !row[nameField]) row[nameField] = 'Editor eliminado';
+  return row;
 }
 
 // Emite un evento solo a los miembros de un proyecto (via sus rooms personales) y a todos los
@@ -1025,11 +1084,14 @@ app.get('/api/projects', auth, async (req, res) => {
       .groupBy('project_id');
     const unreadReviewMap = {};
     for (const row of unreadReviewRows) unreadReviewMap[row.project_id] = Number(row.count);
-    const withCounts = projects.map(p => ({
-      ...(req.user.role === 'admin' ? p : stripProjectFinancials(p)),
-      ...(countsMap[p.id] || { task_count: 0, done_count: 0, review_count: 0 }),
-      unread_review_count: unreadReviewMap[p.id] || 0
-    }));
+    const withCounts = projects.map(p => {
+      withDeletedEditorFallback(p);
+      return {
+        ...(req.user.role === 'admin' ? p : stripProjectFinancials(p)),
+        ...(countsMap[p.id] || { task_count: 0, done_count: 0, review_count: 0 }),
+        unread_review_count: unreadReviewMap[p.id] || 0
+      };
+    });
     res.json(withCounts);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1043,6 +1105,7 @@ app.get('/api/projects/:id', auth, requireProjectAccess('id'), async (req, res) 
       .select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color')
       .first();
     if (!project) return res.status(404).json({ error: 'No encontrado' });
+    withDeletedEditorFallback(project);
     res.json(req.user.role === 'admin' ? project : stripProjectFinancials(project));
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1078,26 +1141,34 @@ app.post('/api/projects', auth, async (req, res) => {
 app.put('/api/projects/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    const existing = await db('projects').where({ id: req.params.id }).first();
-    if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
     const { name, description, color, status, payment_editor_id, payment_type, payment_amount, payment_hours, payment_status, upwork_status, upwork_fee_pct, client_id, deadline, client_amount } = req.body;
-    const update = {
-      name, description, color, status,
-      client_id: client_id || null,
-      deadline: deadline || null,
-      payment_editor_id: payment_editor_id || null,
-      payment_type, payment_status, upwork_status,
-      upwork_fee_pct: upwork_status && upwork_status !== 'No' ? (parseFloat(upwork_fee_pct) || 15) : null
-    };
-    if (payment_amount !== undefined) update.payment_amount = Math.max(0, parseFloat(payment_amount) || 0);
-    if (payment_hours !== undefined) update.payment_hours = Math.max(0, parseFloat(payment_hours) || 0);
-    if (client_amount !== undefined) update.client_amount = Math.max(0, parseFloat(client_amount) || 0);
-    await db('projects').where({ id: req.params.id }).update(update);
+    let existing;
+    await db.transaction(async trx => {
+      // forUpdate() bloquea la fila hasta que termine esta transacción — si en paralelo se está
+      // marcando "pagado"/"cobrado" en PATCH /api/payments/:projectId (que toma el mismo lock),
+      // una de las dos operaciones espera a la otra en vez de que esta pise horas/monto justo
+      // cuando la otra está por congelar el monto pagado a partir de esos mismos campos.
+      existing = await trx('projects').where({ id: req.params.id }).forUpdate().first();
+      if (!existing) return;
+      const update = {
+        name, description, color, status,
+        client_id: client_id || null,
+        deadline: deadline || null,
+        payment_editor_id: payment_editor_id || null,
+        payment_type, payment_status, upwork_status,
+        upwork_fee_pct: upwork_status && upwork_status !== 'No' ? (parseFloat(upwork_fee_pct) || 15) : null
+      };
+      if (payment_amount !== undefined) update.payment_amount = Math.max(0, parseFloat(payment_amount) || 0);
+      if (payment_hours !== undefined) update.payment_hours = Math.max(0, parseFloat(payment_hours) || 0);
+      if (client_amount !== undefined) update.client_amount = Math.max(0, parseFloat(client_amount) || 0);
+      await trx('projects').where({ id: req.params.id }).update(update);
+    });
+    if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
     if (payment_editor_id) await addProjectMember(req.params.id, payment_editor_id);
     if (payment_editor_id && payment_editor_id !== existing.payment_editor_id) {
       await createNotification({ userId: payment_editor_id, type: 'project_assigned', actorId: req.user.id, projectId: req.params.id, preview: name || existing.name });
     }
-    const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first();
+    const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first());
     await emitToProject(req.params.id, 'project:updated', project, { sanitizeForNonAdmin: stripProjectFinancials });
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -1121,7 +1192,7 @@ app.patch('/api/projects/:id/status', auth, async (req, res) => {
       return res.status(400).json({ error: 'Para marcar el proyecto como terminado necesita un editor asignado y un precio cargado' });
     }
     await db('projects').where({ id: req.params.id }).update({ status });
-    const project = await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first();
+    const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first());
     await emitToProject(req.params.id, 'project:updated', project, { sanitizeForNonAdmin: stripProjectFinancials });
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -1279,9 +1350,11 @@ app.patch('/api/clients/:id', auth, async (req, res) => {
 app.delete('/api/clients/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    await db('projects').where({ client_id: req.params.id }).update({ client_id: null });
-    await db('chat_messages').where({ client_id: req.params.id }).update({ client_id: null });
-    await db('clients').where({ id: req.params.id }).delete();
+    await db.transaction(async trx => {
+      await trx('projects').where({ client_id: req.params.id }).update({ client_id: null });
+      await trx('chat_messages').where({ client_id: req.params.id }).update({ client_id: null });
+      await trx('clients').where({ id: req.params.id }).delete();
+    });
     io.to('admins').emit('client:deleted', { id: req.params.id });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -1408,13 +1481,17 @@ app.get('/api/payments', auth, async (req, res) => {
     // /api/projects/:id/status), no por inferirlo de las tareas — con proyectos donde se van
     // sumando tareas con el tiempo, "todas las tareas en done" es una señal que se puede romper
     // apenas se agrega una tarea nueva a un proyecto que ya se había dado por terminado.
+    // También entra si YA tiene un pago/cobro registrado aunque hoy esté "activo" de nuevo — si no,
+    // reabrir un proyecto ya pagado (ej. para un retoque pedido por el cliente) lo hacía desaparecer
+    // en silencio de acá y del Balance mensual hasta volver a marcarlo terminado.
     const projects = await db('projects as p')
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .whereNotNull('p.payment_editor_id')
-      .where('p.status', 'completed')
+      .where(function() { this.where('p.status', 'completed').orWhere('p.editor_paid', 'paid').orWhere('p.client_paid', 'cobrado'); })
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .orderBy('p.created_at', 'desc');
+    projects.forEach(p => withDeletedEditorFallback(p, 'editor_name'));
     res.json(projects);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1422,51 +1499,61 @@ app.get('/api/payments', auth, async (req, res) => {
 app.patch('/api/payments/:projectId', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    const existing = await db('projects').where({ id: req.params.projectId }).first();
-    if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
-    const { payment_hours, payment_status, upwork_status, payment_amount } = req.body;
-    const update = {};
-    if (payment_hours !== undefined) update.payment_hours = Math.max(0, parseFloat(payment_hours) || 0);
-    if (payment_status !== undefined) update.payment_status = payment_status;
-    if (upwork_status !== undefined) update.upwork_status = upwork_status;
-    if (payment_amount !== undefined) update.payment_amount = Math.max(0, parseFloat(payment_amount) || 0);
-    if (req.body.editor_paid !== undefined) {
-      update.editor_paid = req.body.editor_paid;
-      update.editor_paid_at = req.body.editor_paid === 'paid' ? new Date().toISOString() : null;
-    }
-    if (req.body.client_paid !== undefined) {
-      update.client_paid = req.body.client_paid;
-      update.client_paid_at = req.body.client_paid === 'cobrado' ? new Date().toISOString() : null;
-    }
-    await db('projects').where({ id: req.params.projectId }).update(update);
-    const current = await db('projects').where({ id: req.params.projectId }).first();
+    let found = false;
+    await db.transaction(async trx => {
+      // Mismo lock de fila que PUT /api/projects/:id (ver comentario ahí): todo lo que compone el
+      // monto (horas, tarifa, tipo de pago) se lee DESPUÉS de tomar el lock y dentro de la misma
+      // transacción que lo congela, así que si alguien edita esos campos justo mientras se marca
+      // "pagado"/"cobrado", una de las dos operaciones espera a la otra en vez de congelar un monto
+      // calculado con datos que ya cambiaron a mitad de camino.
+      const existing = await trx('projects').where({ id: req.params.projectId }).forUpdate().first();
+      if (!existing) return;
+      found = true;
+      const { payment_hours, payment_status, upwork_status, payment_amount } = req.body;
+      const update = {};
+      if (payment_hours !== undefined) update.payment_hours = Math.max(0, parseFloat(payment_hours) || 0);
+      if (payment_status !== undefined) update.payment_status = payment_status;
+      if (upwork_status !== undefined) update.upwork_status = upwork_status;
+      if (payment_amount !== undefined) update.payment_amount = Math.max(0, parseFloat(payment_amount) || 0);
+      if (req.body.editor_paid !== undefined) {
+        update.editor_paid = req.body.editor_paid;
+        update.editor_paid_at = req.body.editor_paid === 'paid' ? new Date().toISOString() : null;
+      }
+      if (req.body.client_paid !== undefined) {
+        update.client_paid = req.body.client_paid;
+        update.client_paid_at = req.body.client_paid === 'cobrado' ? new Date().toISOString() : null;
+      }
+      if (Object.keys(update).length) await trx('projects').where({ id: req.params.projectId }).update(update);
+      const current = await trx('projects').where({ id: req.params.projectId }).first();
 
-    // Congelar el monto real en el momento exacto en que se marca pagado/cobrado — así un
-    // proyecto por horas no cambia de monto en un mes ya cerrado solo porque después se
-    // corrigieron las horas cargadas.
-    const followUp = {};
-    if (req.body.editor_paid !== undefined) {
-      followUp.editor_paid_amount = current.editor_paid === 'paid' ? computeEditorAmount(current) : null;
-    }
-    if (req.body.client_paid !== undefined) {
-      followUp.client_paid_amount_gross = current.client_paid === 'cobrado' ? computeClientGrossAmount(current) : null;
-      followUp.client_paid_amount_net = current.client_paid === 'cobrado' ? computeClientNetAmount(current) : null;
-    }
-    const isCompleted = current.editor_paid === 'paid' && current.client_paid === 'cobrado';
-    if (isCompleted && !current.completed_at) {
-      followUp.completed_at = new Date().toISOString();
-    } else if (!isCompleted && current.completed_at) {
-      followUp.completed_at = null;
-    }
-    if (Object.keys(followUp).length) {
-      await db('projects').where({ id: req.params.projectId }).update(followUp);
-    }
-    const project = await db('projects as p')
+      // Congelar el monto real en el momento exacto en que se marca pagado/cobrado — así un
+      // proyecto por horas no cambia de monto en un mes ya cerrado solo porque después se
+      // corrigieron las horas cargadas.
+      const followUp = {};
+      if (req.body.editor_paid !== undefined) {
+        followUp.editor_paid_amount = current.editor_paid === 'paid' ? computeEditorAmount(current) : null;
+      }
+      if (req.body.client_paid !== undefined) {
+        followUp.client_paid_amount_gross = current.client_paid === 'cobrado' ? computeClientGrossAmount(current) : null;
+        followUp.client_paid_amount_net = current.client_paid === 'cobrado' ? computeClientNetAmount(current) : null;
+      }
+      const isCompleted = current.editor_paid === 'paid' && current.client_paid === 'cobrado';
+      if (isCompleted && !current.completed_at) {
+        followUp.completed_at = new Date().toISOString();
+      } else if (!isCompleted && current.completed_at) {
+        followUp.completed_at = null;
+      }
+      if (Object.keys(followUp).length) {
+        await trx('projects').where({ id: req.params.projectId }).update(followUp);
+      }
+    });
+    if (!found) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    const project = withDeletedEditorFallback(await db('projects as p')
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .where('p.id', req.params.projectId)
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
-      .first();
+      .first(), 'editor_name');
     io.to('admins').emit('payment:updated', project);
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -1505,6 +1592,7 @@ app.post('/api/projects/:projectId/tasks', auth, requireProjectAccess(), async (
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo el admin puede crear tareas' });
     const { title, description, status, priority, assigned_to, due_date } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: 'El título de la tarea es obligatorio' });
+    if (status !== undefined && !TASK_STATUSES.includes(status)) return res.status(400).json({ error: 'Estado de tarea inválido' });
     if (assigned_to && !await db('users').where({ id: assigned_to }).first()) {
       return res.status(400).json({ error: 'El usuario asignado no existe' });
     }
@@ -1529,6 +1617,7 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
       return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
     }
     const { title, description, status, priority, assigned_to, due_date } = req.body;
+    if (status !== undefined && !TASK_STATUSES.includes(status)) return res.status(400).json({ error: 'Estado de tarea inválido' });
     if (req.user.role !== 'admin') {
       if (existing.assigned_to !== req.user.id) return res.status(403).json({ error: 'Solo podés cambiar el estado de tus tareas asignadas' });
       await db('tasks').where({ id: req.params.id }).update({ status, updated_at: new Date().toISOString() });
@@ -2225,7 +2314,20 @@ app.post('/api/comments/:id/replies', auth, async (req, res, next) => {
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
 
-async function createNotification({ userId, type, actorId, projectId, videoId, commentId, chatMessageId, preview }) {
+// Se llama SIEMPRE después de que la acción principal (crear tarea, comentario, proyecto, etc.)
+// ya se guardó y se emitió por socket. Si esto tira una excepción sin capturarla acá, el catch del
+// endpoint que la llamó responde 500 al usuario aunque su acción ya se haya aplicado con éxito —
+// ve un error falso, puede reintentar, y termina duplicando lo que acaba de crear. Por eso nunca
+// propaga: en el peor caso se pierde una notificación, no la acción del usuario.
+async function createNotification(args) {
+  try {
+    return await createNotificationInner(args);
+  } catch (e) {
+    console.error('Error creando notificación (no se propaga):', e);
+    return null;
+  }
+}
+async function createNotificationInner({ userId, type, actorId, projectId, videoId, commentId, chatMessageId, preview }) {
   if (userId === actorId) return; // don't notify yourself
 
   // Notificaciones de chat: agrupar las no leídas del mismo emisor en una sola.
@@ -2577,15 +2679,22 @@ app.post('/api/chat/channels', auth, async (req, res) => {
     // Always add admin
     await db('chat_channel_members').insert({ channel_id: id, user_id: req.user.id });
 
+    // Validar que los ids realmente existan antes de insertarlos — sin esto, un id inventado o de
+    // un usuario ya borrado queda como fila huérfana en chat_channel_members y rompe el join de
+    // /api/chat/conversations más adelante.
+    let validMemberCount = 0;
     if (members?.length) {
       const otherMembers = members.filter(uid => uid !== req.user.id);
       if (otherMembers.length > 0) {
-        await db('chat_channel_members').insert(otherMembers.map(uid => ({ channel_id: id, user_id: uid })));
+        const validIds = await db('users').whereIn('id', otherMembers).pluck('id');
+        if (validIds.length > 0) {
+          await db('chat_channel_members').insert(validIds.map(uid => ({ channel_id: id, user_id: uid })));
+        }
+        validMemberCount = validIds.length;
       }
     }
 
-    const totalMembers = (members?.filter(uid => uid !== req.user.id).length || 0) + 1;
-    res.json({ id, name: name.trim(), member_count: totalMembers, created_by: req.user.id });
+    res.json({ id, name: name.trim(), member_count: validMemberCount + 1, created_by: req.user.id });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 

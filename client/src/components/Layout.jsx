@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
+import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#3b82f6','#8b5cf6','#ef4444','#14b8a6'];
@@ -9,6 +10,7 @@ const COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#3b82f6','#8b5cf6','#ef
 export default function Layout() {
   const { user, logout, api, socket } = useAuth();
   const { scheduleDelete } = useUndo();
+  const { alert } = useAlert();
   const navigate = useNavigate();
   const location = useLocation();
   const [projects, setProjects] = useState([]);
@@ -133,7 +135,7 @@ export default function Layout() {
       setClientForm({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
     } catch (e) {
       console.error('Error creando cliente:', e);
-      alert('Error: ' + e.message);
+      await alert('Error: ' + e.message);
     } finally {
       setIsCreatingClient(false);
     }
@@ -152,7 +154,7 @@ export default function Layout() {
       }
       setProjects(prev => prev.map(p => p.id === editingProject.id ? { ...p, ...updated } : p));
       setEditingProject(null);
-    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+    } catch (e) { console.error(e); await alert('Error: ' + e.message); }
   };
 
   // Pasar a "Completados" no debería ser automático — se pide confirmación (con el modal propio
@@ -178,7 +180,7 @@ export default function Layout() {
       const updated = await api('/api/clients');
       setClients(updated);
       setEditingClient(null);
-    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+    } catch (e) { console.error(e); await alert('Error: ' + e.message); }
   };
 
   const openChangePassword = () => {
@@ -307,7 +309,7 @@ export default function Layout() {
       navigate(`/project/${p.id}`);
     } catch (e) {
       console.error('Error creando proyecto:', e);
-      alert('Error: ' + e.message);
+      await alert('Error: ' + e.message);
     } finally {
       setIsCreatingProject(false);
     }

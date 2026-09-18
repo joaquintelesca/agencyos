@@ -17,6 +17,7 @@ export default function Team() {
   const [error, setError] = useState('');
   const [detailUser, setDetailUser] = useState(null);
   const [detailData, setDetailData] = useState(null);
+  const [detailError, setDetailError] = useState('');
 
   useEffect(() => { api('/api/users').then(setUsers).catch(console.error); }, []);
 
@@ -65,10 +66,14 @@ export default function Team() {
     if (user?.role !== 'admin') return;
     setDetailUser(u);
     setDetailData(null);
+    setDetailError('');
     try {
       const data = await api(`/api/users/${u.id}/detail`);
       setDetailData(data);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      setDetailError('No se pudo cargar el detalle. ' + (e.message || 'Reintentá.'));
+    }
   };
 
   const deleteUser = (id) => {
@@ -231,7 +236,12 @@ export default function Team() {
                 style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 18, cursor: 'pointer', padding: '2px 6px' }}>✕</button>
             </div>
 
-            {!detailData ? (
+            {detailError ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 20, textAlign: 'center' }}>
+                <span style={{ fontSize: 13, color: 'var(--red)' }}>{detailError}</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => openDetail(detailUser)}>Reintentar</button>
+              </div>
+            ) : !detailData ? (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" /></div>
             ) : (
               <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
+import { useAlert } from '../context/AlertContext';
 import VideoReview from '../components/VideoReview';
 import { initials } from '../utils/format';
 
@@ -19,6 +20,7 @@ export default function Project() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { api, user, socket } = useAuth();
   const { scheduleDelete } = useUndo();
+  const { alert } = useAlert();
   const [project, setProject] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [tasks, setTasks] = useState([]);
@@ -159,19 +161,18 @@ export default function Project() {
     socket.timeout(8000).emit('message:send', {
       project_id: id, content, type: 'project',
       sender_id: user.id, sender_name: user.name, sender_color: user.avatar_color
-    }, (err, response) => {
+    }, async (err, response) => {
       if (err || response?.error) {
         const reason = err ? 'sin respuesta del servidor' : response.error;
         // Si mientras tanto ya empezaste a escribir otra cosa, no la pisamos — pero tampoco
-        // podemos perder el texto que falló en silencio, así que va en el aviso.
-        setNewMsg(prev => {
-          if (prev) {
-            alert(`No se pudo enviar el mensaje (${reason}). Tu mensaje sin enviar era: "${content}"`);
-            return prev;
-          }
-          alert(`No se pudo enviar el mensaje (${reason}). Reintentá.`);
-          return content;
-        });
+        // podemos perder el texto que falló en silencio, así que va en el aviso. El alert() se
+        // dispara acá afuera (no dentro del updater de setNewMsg): un efecto secundario dentro
+        // de un updater se duplica si React lo vuelve a invocar (ej. StrictMode).
+        let hadDraft = false;
+        setNewMsg(prev => { hadDraft = !!prev; return prev || content; });
+        await alert(hadDraft
+          ? `No se pudo enviar el mensaje (${reason}). Tu mensaje sin enviar era: "${content}"`
+          : `No se pudo enviar el mensaje (${reason}). Reintentá.`);
       }
     });
   };
@@ -202,7 +203,7 @@ export default function Project() {
       const updated = await api(`/api/projects/${id}/status`, { method: 'PATCH', body: { status: newStatus } });
       setProject(updated);
     } catch (e) {
-      alert('Error al actualizar el estado del proyecto: ' + e.message);
+      await alert('Error al actualizar el estado del proyecto: ' + e.message);
     }
   };
 
@@ -239,7 +240,7 @@ export default function Project() {
       setProject(updated);
       setShowPriceModal(false);
     } catch (e) {
-      alert('Error al guardar el precio: ' + e.message);
+      await alert('Error al guardar el precio: ' + e.message);
     }
   };
 
@@ -256,7 +257,7 @@ export default function Project() {
         setReviewReminderTask({ ...task, status });
       }
     } catch (e) {
-      alert('Error al mover la tarea: ' + e.message);
+      await alert('Error al mover la tarea: ' + e.message);
     }
   };
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
+import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
 import { uploadVideoChunked } from '../utils/upload';
 
@@ -15,6 +16,7 @@ const DARK = {
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
   const { api, user, socket, mediaUrl, token } = useAuth();
   const { scheduleDelete } = useUndo();
+  const { alert, confirm } = useAlert();
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const appliedInitialVideoRef = useRef(null);
@@ -311,7 +313,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   // Un clic accidental en "Volver" o en el selector de versión no debe borrar un comentario
   // largo (con dibujo incluido) que el usuario todavía no envió.
   const hasUnsavedDraft = () => commentText.trim().length > 0 || annotations.length > 0 || commentFiles.length > 0;
-  const confirmDiscardDraft = () => !hasUnsavedDraft() || confirm('Tenés un comentario sin enviar. ¿Salir de todos modos? Se va a perder.');
+  const confirmDiscardDraft = async () => !hasUnsavedDraft() || await confirm('Tenés un comentario sin enviar. ¿Salir de todos modos? Se va a perder.', { confirmText: 'Salir', danger: true });
 
   const submitComment = async () => {
     if (!commentText.trim()) return;
@@ -336,7 +338,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       setRangeStart(null);
       setRangeEnd(null);
       clearAnnotations();
-    } catch (e) { console.error(e); alert('Error al enviar el comentario: ' + e.message); }
+    } catch (e) { console.error(e); await alert('Error al enviar el comentario: ' + e.message); }
   };
 
   const jumpToComment = (c) => {
@@ -375,7 +377,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       setComments(prev => prev.map(c => c.id === cid ? { ...c, resolved: updated.resolved } : c));
     } catch (e) {
       if (e.status === 404) { setComments(prev => prev.filter(c => c.id !== cid)); return; }
-      console.error(e); alert('Error al resolver el comentario: ' + e.message);
+      console.error(e); await alert('Error al resolver el comentario: ' + e.message);
     }
   };
 
@@ -392,7 +394,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       await api(`/api/comments/${commentId}/replies`, { method: 'POST', body: fd });
       const updated = await api(`/api/videos/${selectedVideo.id}/comments`);
       setComments(updated);
-    } catch (e) { console.error(e); alert('Error al enviar la respuesta: ' + e.message); }
+    } catch (e) { console.error(e); await alert('Error al enviar la respuesta: ' + e.message); }
   };
 
   const uploadVideo = async () => {
@@ -420,7 +422,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       setUploadForm({ title: '', version: '', task_id: '' });
       reloadVideos();
     } catch (e) {
-      if (e.name !== 'AbortError') { console.error(e); alert('Error al subir el video: ' + e.message); }
+      if (e.name !== 'AbortError') { console.error(e); await alert('Error al subir el video: ' + e.message); }
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -437,7 +439,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     try {
       await api(`/api/videos/${dragVideoId}/stack`, { method: 'PATCH', body: { targetVideoId } });
       reloadVideos();
-    } catch (e) { console.error(e); alert('Error al agrupar los videos: ' + e.message); }
+    } catch (e) { console.error(e); await alert('Error al agrupar los videos: ' + e.message); }
   };
 
   const deleteVideo = (v) => {
@@ -461,7 +463,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       await api(`/api/videos/${videoId}/unstack`, { method: 'PATCH' });
       setExpandedGroup(null);
       reloadVideos();
-    } catch (e) { console.error(e); alert('Error al desagrupar el video: ' + e.message); }
+    } catch (e) { console.error(e); await alert('Error al desagrupar el video: ' + e.message); }
   };
 
   const stackShadow = (count) => {
@@ -656,13 +658,13 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
 
       {/* Top bar: back, version dropdown, title */}
       <div style={{ padding: '8px 14px', background: DARK.bg1, borderBottom: `1px solid ${DARK.border}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        <button onClick={() => { if (confirmDiscardDraft()) setSelectedVideo(null); }}
+        <button onClick={async () => { if (await confirmDiscardDraft()) setSelectedVideo(null); }}
           style={{ background: 'transparent', border: `1px solid ${DARK.border}`, borderRadius: 6, padding: '4px 10px', color: DARK.text2, fontSize: 12, cursor: 'pointer' }}>
           ← Volver
         </button>
         {/* Version selector */}
         <select value={selectedVideo.id}
-          onChange={e => { if (!confirmDiscardDraft()) return; const v = videos.find(x => x.id === e.target.value); if (v) setSelectedVideo(v); }}
+          onChange={async e => { if (!(await confirmDiscardDraft())) return; const v = videos.find(x => x.id === e.target.value); if (v) setSelectedVideo(v); }}
           style={{ background: DARK.bg2, border: `1px solid ${DARK.border}`, borderRadius: 7, color: DARK.text, fontSize: 12, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
           {/* All versions of all videos — grouped by title */}
           {videos.map(v => (

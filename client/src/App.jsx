@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UndoProvider } from './context/UndoContext';
+import { AlertProvider } from './context/AlertContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Project from './pages/Project';
@@ -29,23 +30,25 @@ function AdminRoute({ children }) {
 export default function App() {
   return (
     <AuthProvider>
-      <UndoProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-              <Route index element={<Dashboard />} />
-              <Route path="project/:id" element={<Project />} />
-              <Route path="client/:id" element={<ClientDashboard />} />
-              <Route path="team" element={<Team />} />
-              <Route path="chat" element={<Chat />} />
-              <Route path="notifications" element={<Notifications />} />
-              <Route path="payments" element={<AdminRoute><Payments /></AdminRoute>} />
-              <Route path="videos" element={<AdminRoute><VideosDashboard /></AdminRoute>} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </UndoProvider>
+      <AlertProvider>
+        <UndoProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+                <Route index element={<Dashboard />} />
+                <Route path="project/:id" element={<Project />} />
+                <Route path="client/:id" element={<ClientDashboard />} />
+                <Route path="team" element={<Team />} />
+                <Route path="chat" element={<Chat />} />
+                <Route path="notifications" element={<Notifications />} />
+                <Route path="payments" element={<AdminRoute><Payments /></AdminRoute>} />
+                <Route path="videos" element={<AdminRoute><VideosDashboard /></AdminRoute>} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </UndoProvider>
+      </AlertProvider>
     </AuthProvider>
   );
 }
