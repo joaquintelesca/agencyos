@@ -298,6 +298,14 @@ export default function Project() {
 
   if (!project) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><div className="spinner" /></div>;
 
+  // Mismo chequeo que hace toggleProjectStatus antes de decidir si completar de una o pedir precio
+  // primero — se repite acá solo para poder avisar en el botón ANTES de clickearlo, en vez de que
+  // la sorpresa (el modal de precio) aparezca recién al hacer click sin ningún indicio previo.
+  const needsPriceToComplete = project.status !== 'completed' && (
+    (project.payment_editor_id === user.id ? !(Number(project.client_amount) > 0) : !(Number(project.payment_amount) > 0))
+    || !project.payment_editor_id
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Header */}
@@ -353,18 +361,24 @@ export default function Project() {
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>{project.payment_editor_name}</span>
             </div>
           )}
+          {user.role !== 'admin' && (
+            <span title="El precio y los pagos de este proyecto solo los puede ver un administrador"
+              style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8 }}>
+              💰 Precio — solo admin
+            </span>
+          )}
           {user.role === 'admin' && (
             <button onClick={toggleProjectStatus}
-              title={project.status === 'completed' ? 'Volver a activo' : 'Marcalo cuando no vayas a agregar más tareas — recién ahí pasa a Pagos'}
+              title={project.status === 'completed' ? 'Volver a activo' : needsPriceToComplete ? 'Todavía falta cargar el editor y/o el precio — se te va a pedir antes de completar' : 'Marcalo cuando no vayas a agregar más tareas — recién ahí pasa a Pagos'}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, padding: project.status === 'completed' ? '4px 10px' : '7px 16px', borderRadius: 8,
                 border: 'none',
-                background: project.status === 'completed' ? 'var(--bg3)' : 'var(--green)',
-                color: project.status === 'completed' ? 'var(--text2)' : '#fff',
+                background: project.status === 'completed' ? 'var(--bg3)' : needsPriceToComplete ? 'var(--yellow)' : 'var(--green)',
+                color: project.status === 'completed' ? 'var(--text2)' : needsPriceToComplete ? '#1a1a1a' : '#fff',
                 fontSize: project.status === 'completed' ? 12 : 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font)',
-                boxShadow: project.status === 'completed' ? 'none' : '0 1px 6px rgba(34,201,122,0.4)'
+                boxShadow: project.status === 'completed' ? 'none' : needsPriceToComplete ? '0 1px 6px rgba(240,168,58,0.4)' : '0 1px 6px rgba(34,201,122,0.4)'
               }}>
-              {project.status === 'completed' ? '↺ Reabrir proyecto' : '✓ Marcar como terminado'}
+              {project.status === 'completed' ? '↺ Reabrir proyecto' : needsPriceToComplete ? '⚠ Falta precio para terminar' : '✓ Marcar como terminado'}
             </button>
           )}
         </div>

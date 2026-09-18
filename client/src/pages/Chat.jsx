@@ -545,7 +545,14 @@ export default function Chat() {
         {/* Header del sidebar */}
         <div style={{ padding: '14px 14px 10px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>Chat</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>Chat</span>
+              <span tabIndex={0}
+                title="Mensajes directos: 1 a 1 con otra persona. Canales: grupales, con varios miembros. Notas (📝): tu bloc de notas personal, solo vos lo ves. Cada proyecto tiene además su propio chat, en la pestaña 'Chat' dentro del proyecto."
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: '50%', background: 'var(--bg3)', color: 'var(--text3)', fontSize: 10, cursor: 'default' }}>
+                ⓘ
+              </span>
+            </div>
             {totalUnread > 0 && (
               <span style={{ background: 'var(--red)', color: '#fff', fontSize: 10, borderRadius: 10, padding: '1px 7px', fontWeight: 700 }}>
                 {totalUnread}

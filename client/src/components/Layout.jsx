@@ -29,6 +29,12 @@ export default function Layout() {
   const [editingClient, setEditingClient] = useState(null);
   const [editClientForm, setEditClientForm] = useState({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
   const [editingProject, setEditingProject] = useState(null);
+  // La sección de pago del modal de editar cambia de forma según 3 variables (tipo fijo/hora, si
+  // sos el propio editor, si Upwork está activo) — nadie que no escribió el código puede predecir
+  // qué campos van a aparecer. Colapsada por default para que editar algo simple (deadline,
+  // descripción) no obligue a atravesarla, pero arranca abierta si el proyecto ya tiene algo de
+  // pago cargado (editor asignado, montos, Upwork, o ya cobrado) para no esconder info existente.
+  const [showPaymentSection, setShowPaymentSection] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [editProjectForm, setEditProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '', material_link: '', payment_editor_id: '', payment_type: 'fixed', payment_amount: '', client_amount: '', payment_hours: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' });
   const [storageWarning, setStorageWarning] = useState(null); // { gb, bytes } | null
@@ -285,6 +291,8 @@ export default function Layout() {
   const openEditProject = (p) => {
     setEditingProject(p);
     setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '', material_link: p.material_link || '', payment_editor_id: p.payment_editor_id || '', payment_type: p.payment_type || 'fixed', payment_amount: p.payment_amount || '', client_amount: p.client_amount || '', payment_hours: p.payment_hours || '', upwork_status: (p.upwork_status === 'Pendiente de carga' || p.upwork_status === 'Cargado') ? p.upwork_status : 'No', upwork_fee_pct: p.upwork_fee_pct ?? '', client_paid: p.client_paid === 'cobrado' ? 'cobrado' : 'unpaid' });
+    const hasPaymentData = !!(p.payment_editor_id || Number(p.payment_amount) > 0 || Number(p.client_amount) > 0 || p.client_paid === 'cobrado' || (p.upwork_status && p.upwork_status !== 'No'));
+    setShowPaymentSection(hasPaymentData);
   };
 
   const deleteClient = (c) => {
@@ -657,9 +665,15 @@ export default function Layout() {
             {/* Step 2 — pago (solo admin) */}
             {step === 2 && user?.role === 'admin' && (
               <>
-                <h2>Paso 2 — Configuración de pago</h2>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <h2>Paso 2 — Configuración de pago</h2>
+                  <button type="button" onClick={createProject} disabled={isCreatingProject}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--accent2)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}>
+                    Omitir por ahora →
+                  </button>
+                </div>
                 <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--yellow)' }}>
-                  🔒 Esta información es solo visible para vos
+                  🔒 Esta información es solo visible para vos — es opcional, se puede cargar después desde "Editar proyecto"
                 </div>
                 <div className="form-group">
                   <label>Editor responsable del pago</label>
@@ -689,14 +703,14 @@ export default function Layout() {
                           onChange={e => setPaymentForm(p => ({ ...p, upwork_status: e.target.checked ? 'Pendiente de carga' : 'No', upwork_fee_pct: e.target.checked ? (p.upwork_fee_pct || 15) : '' }))} />
                         Se cobra al cliente por Upwork
                       </label>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                        Solo afecta lo que se le cobra al cliente — el pago al editor nunca cambia por esto.
+                      </div>
                       {paymentForm.upwork_status !== 'No' && (
                         <div style={{ marginTop: 8 }}>
                           <label>% comisión que descuenta Upwork</label>
                           <input className="input" type="number" min="0" max="100" value={paymentForm.upwork_fee_pct}
                             onChange={e => setPaymentForm(p => ({ ...p, upwork_fee_pct: e.target.value }))} placeholder="Ej: 15" />
-                          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
-                            Este % se descuenta solo de lo que le cobrás al cliente. El pago al editor no se ve afectado — sigue siendo el monto fijo que cargues abajo.
-                          </div>
                         </div>
                       )}
                     </div>
@@ -857,18 +871,25 @@ export default function Layout() {
               <input className="input" type="url" value={editProjectForm.material_link} onChange={e => setEditProjectForm(p => ({ ...p, material_link: e.target.value }))} placeholder="Ej: link a Drive con el material" />
             </div>
             {user?.role === 'admin' && (
-              <div className="form-group">
-                <label>Editor asignado</label>
-                <select className="input" value={editProjectForm.payment_editor_id} onChange={e => setEditProjectForm(p => ({ ...p, payment_editor_id: e.target.value }))}>
-                  <option value="">Sin asignar</option>
-                  {users.map(u => (
-                    <option key={u.id} value={u.id}>{u.name}{u.id === user.id ? ' (vos)' : ''}</option>
-                  ))}
-                </select>
+              <div className="form-group" style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                <button type="button" onClick={() => setShowPaymentSection(s => !s)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent2)', fontSize: 13, fontWeight: 600, fontFamily: 'var(--font)' }}>
+                  <span style={{ display: 'inline-block', transform: showPaymentSection ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▸</span>
+                  Configuración de pago
+                </button>
               </div>
             )}
-            {user?.role === 'admin' && (
+            {user?.role === 'admin' && showPaymentSection && (
               <>
+                <div className="form-group">
+                  <label>Editor asignado</label>
+                  <select className="input" value={editProjectForm.payment_editor_id} onChange={e => setEditProjectForm(p => ({ ...p, payment_editor_id: e.target.value }))}>
+                    <option value="">Sin asignar</option>
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>{u.name}{u.id === user.id ? ' (vos)' : ''}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="form-group">
                   <label>Tipo de pago</label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -886,14 +907,14 @@ export default function Layout() {
                       onChange={e => setEditProjectForm(p => ({ ...p, upwork_status: e.target.checked ? 'Pendiente de carga' : 'No', upwork_fee_pct: e.target.checked ? (p.upwork_fee_pct || 15) : '' }))} />
                     Se cobra al cliente por Upwork
                   </label>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                    Solo afecta lo que se le cobra al cliente — el pago al editor nunca cambia por esto.
+                  </div>
                   {editProjectForm.upwork_status !== 'No' && (
                     <div style={{ marginTop: 8 }}>
                       <label>% comisión que descuenta Upwork</label>
                       <input className="input" type="number" min="0" max="100" value={editProjectForm.upwork_fee_pct}
                         onChange={e => setEditProjectForm(p => ({ ...p, upwork_fee_pct: e.target.value }))} placeholder="Ej: 15" />
-                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
-                        Este % se descuenta solo de lo que le cobrás al cliente. El pago al editor no se ve afectado — sigue siendo el monto fijo que cargues abajo.
-                      </div>
                     </div>
                   )}
                 </div>
