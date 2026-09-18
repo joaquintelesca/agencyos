@@ -34,7 +34,7 @@ export default function Project() {
   const [dragTask, setDragTask] = useState(null);
   const [reviewReminderTask, setReviewReminderTask] = useState(null);
   const [showPriceModal, setShowPriceModal] = useState(false);
-  const [priceForm, setPriceForm] = useState({ payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', payment_editor_id: '' });
+  const [priceForm, setPriceForm] = useState({ payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', payment_editor_id: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' });
   const [uploadForTaskId, setUploadForTaskId] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -219,7 +219,17 @@ export default function Project() {
     const missingPrice = isSelfEditor ? !(Number(project.client_amount) > 0) : !(Number(project.payment_amount) > 0);
     const missingEditor = !project.payment_editor_id;
     if (project.status !== 'completed' && (missingPrice || missingEditor)) {
-      setPriceForm({ payment_type: project.payment_type || 'fixed', payment_amount: '', payment_rate: '', payment_hours: project.payment_hours || '', client_amount: '', client_rate: '', payment_editor_id: project.payment_editor_id || '' });
+      setPriceForm({
+        payment_type: project.payment_type || 'fixed', payment_amount: '', payment_rate: '', payment_hours: project.payment_hours || '',
+        client_amount: '', client_rate: '', payment_editor_id: project.payment_editor_id || '',
+        // Preservar lo que ya estaba cargado (si el proyecto ya tenía Upwork activo o un anticipo
+        // cobrado antes de que le faltara editor/precio) — antes savePriceAndComplete mandaba
+        // upwork_status del proyecto pero nunca upwork_fee_pct, así que completar acá reseteaba en
+        // silencio la comisión guardada al default de 15%.
+        upwork_status: (project.upwork_status === 'Pendiente de carga' || project.upwork_status === 'Cargado') ? project.upwork_status : 'No',
+        upwork_fee_pct: project.upwork_fee_pct ?? '',
+        client_paid: project.client_paid === 'cobrado' ? 'cobrado' : 'unpaid'
+      });
       setShowPriceModal(true);
       return;
     }
@@ -244,11 +254,23 @@ export default function Project() {
     if (priceForm.payment_type === 'hourly') return (parseFloat(priceForm.client_rate) || 0) * (parseFloat(priceForm.payment_hours) || 0);
     return parseFloat(priceForm.client_amount) || 0;
   };
+  // Cuando se cobra por Upwork, lo que realmente llega a la cuenta es el cobro al cliente menos
+  // la comisión de la plataforma — el "Cobro cliente" que carga el admin es el bruto.
+  const estimatedClientNet = () => {
+    const gross = estimatedClientTotal();
+    if (priceForm.upwork_status === 'No') return gross;
+    return gross * (1 - (parseFloat(priceForm.upwork_fee_pct) || 0) / 100);
+  };
 
   const savePriceAndComplete = async () => {
     if (!priceFormValid()) return;
     try {
-      const updated = await api(`/api/projects/${id}`, {
+      // Guarda el precio/editor/Upwork primero (sin tocar el status todavía) y recién después pasa
+      // por PATCH /status para completar — ese endpoint es el único que valida precio+editor Y
+      // marca ever_completed=true (necesario para que Pagos no pierda el historial si el proyecto
+      // se reabre más adelante). Completar directo con un PUT status:'completed' se saltaba esa
+      // marca.
+      let updated = await api(`/api/projects/${id}`, {
         method: 'PUT',
         body: {
           name: project.name, description: project.description, color: project.color,
@@ -257,11 +279,19 @@ export default function Project() {
           payment_type: priceForm.payment_type,
           payment_amount: isSelfEditorPrice ? 0 : priceFormAmount(),
           payment_hours: priceForm.payment_hours,
-          payment_status: project.payment_status, upwork_status: project.upwork_status,
+          payment_status: project.payment_status,
+          upwork_status: priceForm.upwork_status, upwork_fee_pct: priceForm.upwork_fee_pct,
           client_amount: priceForm.payment_type === 'fixed' ? priceForm.client_amount : priceForm.client_rate,
-          status: 'completed'
+          status: project.status
         }
       });
+      updated = await api(`/api/projects/${id}/status`, { method: 'PATCH', body: { status: 'completed' } });
+      // client_paid necesita pasar por el endpoint de Pagos para "congelar" el monto real en ese
+      // momento (ver PATCH /api/payments/:id en el servidor).
+      if (priceForm.client_paid === 'cobrado' && project.client_paid !== 'cobrado') {
+        await api(`/api/payments/${id}`, { method: 'PATCH', body: { client_paid: 'cobrado' } });
+        updated = await api(`/api/projects/${id}`);
+      }
       setProject(updated);
       setShowPriceModal(false);
     } catch (e) {
@@ -611,6 +641,30 @@ export default function Project() {
                 ))}
               </div>
             </div>
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+                <input type="checkbox" checked={priceForm.upwork_status !== 'No'}
+                  onChange={e => setPriceForm(p => ({ ...p, upwork_status: e.target.checked ? 'Pendiente de carga' : 'No', upwork_fee_pct: e.target.checked ? (p.upwork_fee_pct || 15) : '' }))} />
+                Se cobra al cliente por Upwork
+              </label>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                Solo afecta lo que se le cobra al cliente — el pago al editor nunca cambia por esto.
+              </div>
+              {priceForm.upwork_status !== 'No' && (
+                <div style={{ marginTop: 8 }}>
+                  <label>% comisión que descuenta Upwork</label>
+                  <input className="input" type="number" min="0" max="100" value={priceForm.upwork_fee_pct}
+                    onChange={e => setPriceForm(p => ({ ...p, upwork_fee_pct: e.target.value }))} placeholder="Ej: 15" />
+                </div>
+              )}
+            </div>
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+                <input type="checkbox" checked={priceForm.client_paid === 'cobrado'}
+                  onChange={e => setPriceForm(p => ({ ...p, client_paid: e.target.checked ? 'cobrado' : 'unpaid' }))} />
+                El cliente ya pagó este proyecto
+              </label>
+            </div>
             {isSelfEditorPrice && (
               <div style={{ background: 'var(--bg3)', border: '1px dashed var(--border2)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: 'var(--text2)' }}>
                 Como el editor sos vos, no hay "pago a editor" — solo se registra lo que le cobrás al cliente.
@@ -663,13 +717,25 @@ export default function Project() {
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: '#a5b4fc' }}>Cobro cliente:</span>
+                  <span style={{ fontSize: 12, color: '#a5b4fc' }}>Cobro cliente{priceForm.upwork_status !== 'No' ? ' (bruto)' : ''}:</span>
                   <span style={{ fontSize: 16, fontWeight: 700, color: '#a5b4fc' }}>${estimatedClientTotal().toFixed(0)}</span>
                 </div>
-                {!isSelfEditorPrice && estimatedClientTotal() > estimatedEditorTotal() && (
+                {priceForm.upwork_status !== 'No' && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: 'var(--text3)' }}>Comisión Upwork ({priceForm.upwork_fee_pct || 0}%):</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text3)' }}>-${(estimatedClientTotal() - estimatedClientNet()).toFixed(0)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: '#a5b4fc' }}>Recibís (neto):</span>
+                      <span style={{ fontSize: 16, fontWeight: 700, color: '#a5b4fc' }}>${estimatedClientNet().toFixed(0)}</span>
+                    </div>
+                  </>
+                )}
+                {!isSelfEditorPrice && estimatedClientNet() > estimatedEditorTotal() && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
                     <span style={{ fontSize: 12, color: 'var(--green)' }}>Ganancia:</span>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>${(estimatedClientTotal() - estimatedEditorTotal()).toFixed(0)}</span>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>${(estimatedClientNet() - estimatedEditorTotal()).toFixed(0)}</span>
                   </div>
                 )}
               </div>
