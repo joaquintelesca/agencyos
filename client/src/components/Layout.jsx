@@ -10,7 +10,7 @@ const COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#3b82f6','#8b5cf6','#ef
 export default function Layout() {
   const { user, logout, api, socket } = useAuth();
   const { scheduleDelete } = useUndo();
-  const { alert, confirm } = useAlert();
+  const { alert } = useAlert();
   const navigate = useNavigate();
   const location = useLocation();
   const [projects, setProjects] = useState([]);
@@ -159,27 +159,47 @@ export default function Layout() {
 
   // Cambiar el editor del proyecto (campo usado para el pago) NUNCA mueve las tareas ya asignadas
   // al editor anterior — quedan donde estaban. Eso puede dejar un estado confuso (el editor nuevo
-  // no ve ninguna tarea, el viejo sigue viendo las suyas), así que se pregunta explícitamente en
-  // vez de mover todo solo o no mover nada silenciosamente.
-  const reassignOldEditorTasks = async () => {
+  // no ve ninguna tarea, el viejo sigue viendo las suyas), así que se pregunta tarea por tarea en
+  // vez de mover todo automáticamente o no mover nada en silencio — con un atajo para el caso
+  // común de "sí, todas". reassignReview: { tasks, index, newEditorId, oldName, newName, resolve }.
+  const [reassignReview, setReassignReview] = useState(null);
+
+  const reassignOldEditorTasks = () => new Promise(async (resolve) => {
     const oldEditorId = editingProject.payment_editor_id || '';
     const newEditorId = editProjectForm.payment_editor_id || '';
-    if (!newEditorId || !oldEditorId || newEditorId === oldEditorId) return;
+    if (!newEditorId || !oldEditorId || newEditorId === oldEditorId) return resolve();
+    let tasks;
     try {
-      const tasks = await api(`/api/projects/${editingProject.id}/tasks`);
-      const oldEditorTasks = tasks.filter(t => t.assigned_to === oldEditorId);
-      if (oldEditorTasks.length === 0) return;
-      const oldName = editingProject.payment_editor_name || 'el editor anterior';
-      const newName = users.find(u => u.id === newEditorId)?.name || 'el nuevo editor';
-      const taskWord = oldEditorTasks.length === 1 ? 'tarea asignada' : 'tareas asignadas';
-      const shouldReassign = await confirm(
-        `Este proyecto tiene ${oldEditorTasks.length} ${taskWord} a ${oldName}. ¿Querés reasignarlas también a ${newName}?`,
-        { confirmText: 'Sí, reasignar', cancelText: 'Dejarlas como están' }
-      );
-      if (shouldReassign) {
-        await Promise.all(oldEditorTasks.map(t => api(`/api/tasks/${t.id}`, { method: 'PUT', body: { assigned_to: newEditorId } })));
-      }
-    } catch (e) { console.error('Error chequeando/reasignando tareas del proyecto:', e); }
+      tasks = await api(`/api/projects/${editingProject.id}/tasks`);
+    } catch (e) { console.error('Error chequeando tareas del proyecto:', e); return resolve(); }
+    const oldEditorTasks = tasks.filter(t => t.assigned_to === oldEditorId);
+    if (oldEditorTasks.length === 0) return resolve();
+    setReassignReview({
+      tasks: oldEditorTasks, index: 0, newEditorId,
+      oldName: editingProject.payment_editor_name || 'el editor anterior',
+      newName: users.find(u => u.id === newEditorId)?.name || 'el nuevo editor',
+      resolve,
+    });
+  });
+
+  const finishReassignReview = () => { reassignReview.resolve(); setReassignReview(null); };
+
+  const reassignCurrentAndAdvance = async (accept) => {
+    const { tasks, index, newEditorId } = reassignReview;
+    if (accept) {
+      try { await api(`/api/tasks/${tasks[index].id}`, { method: 'PUT', body: { assigned_to: newEditorId } }); }
+      catch (e) { console.error('Error reasignando tarea:', e); }
+    }
+    if (index + 1 >= tasks.length) finishReassignReview();
+    else setReassignReview({ ...reassignReview, index: index + 1 });
+  };
+
+  const reassignAllRemaining = async () => {
+    const { tasks, index, newEditorId } = reassignReview;
+    try {
+      await Promise.all(tasks.slice(index).map(t => api(`/api/tasks/${t.id}`, { method: 'PUT', body: { assigned_to: newEditorId } })));
+    } catch (e) { console.error('Error reasignando tareas:', e); }
+    finishReassignReview();
   };
 
   // Pasar a "Completados" no debería ser automático — se pide confirmación (con el modal propio
@@ -920,6 +940,30 @@ export default function Layout() {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setShowCompleteConfirm(false)}>Cancelar</button>
               <button className="btn btn-primary" onClick={async () => { setShowCompleteConfirm(false); await reassignOldEditorTasks(); doSaveProject(); }}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reassignReview && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={finishReassignReview} title="Cerrar">✕</button>
+            <h2>Reasignar tareas</h2>
+            <p style={{ fontSize: 12, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+              Tarea {reassignReview.index + 1} de {reassignReview.tasks.length}
+            </p>
+            <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5, margin: '0 0 20px' }}>
+              "<strong>{reassignReview.tasks[reassignReview.index].title}</strong>" está asignada a {reassignReview.oldName}. ¿Reasignarla a {reassignReview.newName}?
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => reassignCurrentAndAdvance(false)}>No</button>
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => reassignCurrentAndAdvance(true)}>Sí, reasignar</button>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={reassignAllRemaining}>
+                Reasignar todas las restantes ({reassignReview.tasks.length - reassignReview.index})
+              </button>
             </div>
           </div>
         </div>
