@@ -394,12 +394,6 @@ export default function Project() {
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>{project.payment_editor_name}</span>
             </div>
           )}
-          {user.role !== 'admin' && (
-            <span title="El precio y los pagos de este proyecto solo los puede ver un administrador"
-              style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8 }}>
-              💰 Precio — solo admin
-            </span>
-          )}
           {user.role === 'admin' && (
             <button onClick={toggleProjectStatus}
               title={project.status === 'completed' ? 'Volver a activo' : needsPriceToComplete ? 'Todavía falta cargar el editor y/o el precio — se te va a pedir antes de completar' : 'Marcalo cuando no vayas a agregar más tareas — recién ahí pasa a Pagos'}
