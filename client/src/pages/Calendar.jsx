@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
@@ -35,65 +35,32 @@ export default function CalendarPage() {
   const { alert } = useAlert();
   const { projects } = useOutletContext();
   const navigate = useNavigate();
+  const isAdmin = user?.role === 'admin';
   const [viewDate, setViewDate] = useState(() => { const d = new Date(); d.setDate(1); return d; });
-  const [tasks, setTasks] = useState({}); // { projectId: [tasks] }
   const [dayModal, setDayModal] = useState(null); // dateKey | null
-  const [draggedItem, setDraggedItem] = useState(null); // { kind: 'task'|'deadline', id, projectId, dueDate }
+  const [draggedProjectId, setDraggedProjectId] = useState(null);
   const [dragOverKey, setDragOverKey] = useState(null); // dateKey | 'undated' | null, solo para resaltar el destino
-
-  // Mismo patrón que el Dashboard: una tarea por proyecto, en paralelo — para admin son todos sus
-  // proyectos, para un editor ya vienen filtrados a los suyos desde /api/projects.
-  const projectIds = projects.map(p => p.id).join(',');
-  useEffect(() => {
-    projects.forEach(p => {
-      api(`/api/projects/${p.id}/tasks`).then(t => setTasks(prev => ({ ...prev, [p.id]: t }))).catch(console.error);
-    });
-  }, [projectIds]); // eslint-disable-line
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
   const days = useMemo(() => getMonthGrid(year, month), [year, month]);
 
-  // Un solo mapa fecha -> eventos, mezclando deadlines de proyecto (si el proyecto no está
-  // terminado — uno ya terminado no necesita más recordatorio, mismo criterio que el Dashboard) y
-  // fechas límite de tarea. Cada evento se pinta con el color de su proyecto, para poder distinguir
-  // de un vistazo qué es de qué cliente, igual que en el board. `draggable` depende de quién puede
-  // realmente mover ese ítem: el deadline del proyecto es cosa de admin; una tarea ya viene
-  // filtrada por el servidor a "las mías" para un editor, así que siempre es arrastrable para quien
-  // la ve.
+  // Por ahora el calendario muestra solo deadlines de proyecto (no fechas límite de tarea) — se
+  // puede sumar más adelante si hace falta. Un proyecto ya terminado no aporta su deadline acá,
+  // mismo criterio que el Dashboard: ya no es información accionable.
   const eventsByDay = useMemo(() => {
     const map = {};
-    const addEvent = (dateKey, ev) => { (map[dateKey] = map[dateKey] || []).push(ev); };
     projects.forEach(p => {
       if (p.deadline && p.status !== 'completed') {
-        addEvent(p.deadline, { id: `deadline-${p.id}`, title: `📌 ${p.name}`, color: p.color, projectId: p.id, done: false, kind: 'deadline', draggable: user?.role === 'admin', dueDate: p.deadline });
+        (map[p.deadline] = map[p.deadline] || []).push(p);
       }
-      (tasks[p.id] || []).forEach(t => {
-        if (t.due_date) {
-          addEvent(t.due_date, { id: `task-${t.id}`, rawId: t.id, title: t.title, color: p.color, projectId: p.id, done: t.status === 'done', kind: 'task', draggable: true, dueDate: t.due_date });
-        }
-      });
     });
     return map;
-  }, [projects, tasks, user]);
+  }, [projects]);
 
-  // Tareas pendientes sin fecha límite, y proyectos activos sin deadline — ninguno tiene dónde
-  // plotearse en la grilla, así que se listan acá en vez de desaparecer del calendario. También es
-  // el destino de "arrastrar para sacarle la fecha" a algo que ya la tenía.
-  const undated = useMemo(() => {
-    const list = [];
-    projects.forEach(p => {
-      if (!p.deadline && p.status !== 'completed') {
-        list.push({ id: `deadline-${p.id}`, title: p.name, color: p.color, projectId: p.id, kind: 'deadline', draggable: user?.role === 'admin', isProject: true });
-      }
-      (tasks[p.id] || []).forEach(t => {
-        if (!t.due_date && t.status !== 'done') {
-          list.push({ id: `task-${t.id}`, rawId: t.id, title: t.title, color: p.color, projectId: p.id, kind: 'task', draggable: true, isProject: false });
-        }
-      });
-    });
-    return list;
-  }, [projects, tasks, user]);
+  // Proyectos activos sin deadline — no tienen dónde plotearse en la grilla, se listan acá en vez
+  // de desaparecer del calendario. También es el destino de "arrastrar para sacarle la fecha".
+  const undated = useMemo(() => projects.filter(p => !p.deadline && p.status !== 'completed'), [projects]);
 
   const monthLabel = viewDate.toLocaleDateString('es', { month: 'long', year: 'numeric' });
   const todayKey = toDateKey(new Date());
@@ -101,64 +68,53 @@ export default function CalendarPage() {
   const goToMonth = (delta) => setViewDate(d => { const nd = new Date(d); nd.setMonth(nd.getMonth() + delta); return nd; });
   const goToToday = () => { const d = new Date(); d.setDate(1); setViewDate(d); };
 
-  // ─── Drag and drop ──────────────────────────────────────────────────────────
+  // ─── Drag and drop (solo admin — mismo permiso que editar el deadline desde "Editar proyecto") ──
   // Mismo criterio que el Kanban de Project.jsx: se trackea en estado de React qué se está
-  // arrastrando, no con dataTransfer — más simple y sin las inconsistencias de esa API entre
-  // navegadores para este caso de uso.
-  const applyDrop = async (item, newDate) => {
-    if (item.dueDate === newDate || (newDate === null && item.dueDate == null)) return; // soltó en el mismo lugar
+  // arrastrando, no con dataTransfer — más simple para este caso de uso.
+  const applyDrop = async (projectId, newDate) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project || project.deadline === newDate) return; // soltó en el mismo lugar
     try {
-      if (item.kind === 'task') {
-        await api(`/api/tasks/${item.rawId}`, { method: 'PUT', body: { due_date: newDate } });
-        setTasks(prev => ({
-          ...prev,
-          [item.projectId]: (prev[item.projectId] || []).map(t => t.id === item.rawId ? { ...t, due_date: newDate } : t)
-        }));
-      } else {
-        // El PUT de proyecto espera el objeto completo (no un patch parcial) — mandar solo
-        // {deadline} pisaría a null el resto de los campos que ese endpoint sí sobreescribe
-        // siempre (nombre, status, tipo de pago, etc.).
-        const project = projects.find(p => p.id === item.projectId);
-        if (!project) return;
-        await api(`/api/projects/${item.projectId}`, { method: 'PUT', body: { ...project, deadline: newDate } });
-        // No hace falta actualizar el estado acá a mano: el socket 'project:updated' ya
-        // refresca `projects` (compartido vía Outlet) en Layout.jsx, igual que en el resto de la app.
-      }
+      // El PUT de proyecto espera el objeto completo (no un patch parcial) — mandar solo
+      // {deadline} pisaría a null el resto de los campos que ese endpoint sí sobreescribe siempre
+      // (nombre, status, tipo de pago, etc.).
+      await api(`/api/projects/${projectId}`, { method: 'PUT', body: { ...project, deadline: newDate } });
+      // No hace falta actualizar el estado acá a mano: el socket 'project:updated' ya refresca
+      // `projects` (compartido vía Outlet) en Layout.jsx, igual que en el resto de la app.
     } catch (e) {
       console.error(e);
-      await alert('No se pudo mover la fecha: ' + e.message);
+      await alert('No se pudo mover el deadline: ' + e.message);
     }
   };
 
   const onDropOnDay = (dateKey) => {
     setDragOverKey(null);
-    const item = draggedItem;
-    setDraggedItem(null);
-    if (item) applyDrop(item, dateKey);
+    const projectId = draggedProjectId;
+    setDraggedProjectId(null);
+    if (projectId) applyDrop(projectId, dateKey);
   };
 
   const onDropOnUndated = () => {
     setDragOverKey(null);
-    const item = draggedItem;
-    setDraggedItem(null);
-    if (item) applyDrop(item, null);
+    const projectId = draggedProjectId;
+    setDraggedProjectId(null);
+    if (projectId) applyDrop(projectId, null);
   };
 
   const navBtnStyle = { background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 7, width: 28, height: 28, color: 'var(--text2)', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' };
 
-  const renderChip = (ev) => (
-    <div key={ev.id}
-      draggable={ev.draggable}
-      onDragStart={() => setDraggedItem(ev)}
-      onDragEnd={() => setDraggedItem(null)}
-      onClick={() => navigate(`/project/${ev.projectId}`)}
-      title={ev.title}
+  const renderChip = (p) => (
+    <div key={p.id}
+      draggable={isAdmin}
+      onDragStart={() => setDraggedProjectId(p.id)}
+      onDragEnd={() => setDraggedProjectId(null)}
+      onClick={() => navigate(`/project/${p.id}`)}
+      title={p.name}
       style={{
-        fontSize: 10.5, padding: '2px 6px', borderRadius: 5, background: `${ev.color}2a`, color: ev.color,
-        cursor: ev.draggable ? 'grab' : 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        textDecoration: ev.done ? 'line-through' : 'none', opacity: ev.done ? 0.6 : 1
+        fontSize: 10.5, padding: '2px 6px', borderRadius: 5, background: `${p.color}2a`, color: p.color,
+        cursor: isAdmin ? 'grab' : 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
       }}>
-      {ev.title}
+      📌 {p.name}
     </div>
   );
 
@@ -192,9 +148,9 @@ export default function CalendarPage() {
               const extra = dayEvents.length - visible.length;
               return (
                 <div key={key}
-                  onDragOver={e => { if (draggedItem) { e.preventDefault(); setDragOverKey(key); } }}
+                  onDragOver={e => { if (isAdmin && draggedProjectId) { e.preventDefault(); setDragOverKey(key); } }}
                   onDragLeave={() => setDragOverKey(k => k === key ? null : k)}
-                  onDrop={e => { e.preventDefault(); onDropOnDay(key); }}
+                  onDrop={e => { if (isAdmin) { e.preventDefault(); onDropOnDay(key); } }}
                   style={{
                     minHeight: 96, borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)',
                     padding: 6, background: dragOverKey === key ? 'var(--accent-glow)' : isCurrentMonth ? 'var(--bg2)' : 'var(--bg)',
@@ -220,9 +176,9 @@ export default function CalendarPage() {
 
       {/* Sin fecha — siempre visible, incluso vacía, porque es el destino de "sacarle la fecha" a algo */}
       <div
-        onDragOver={e => { if (draggedItem) { e.preventDefault(); setDragOverKey('undated'); } }}
+        onDragOver={e => { if (isAdmin && draggedProjectId) { e.preventDefault(); setDragOverKey('undated'); } }}
         onDragLeave={() => setDragOverKey(k => k === 'undated' ? null : k)}
-        onDrop={e => { e.preventDefault(); onDropOnUndated(); }}
+        onDrop={e => { if (isAdmin) { e.preventDefault(); onDropOnUndated(); } }}
         style={{
           width: 260, flexShrink: 0, borderRadius: 12, padding: 10,
           background: dragOverKey === 'undated' ? 'var(--accent-glow)' : 'transparent',
@@ -231,22 +187,17 @@ export default function CalendarPage() {
         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
           Sin fecha ({undated.length})
         </div>
-        {undated.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>Nada pendiente sin fecha — arrastrá algo acá para sacarle la fecha</div>}
+        {undated.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>Ningún proyecto activo sin deadline{isAdmin ? ' — arrastrá uno acá para sacarle la fecha' : ''}</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {undated.map(t => (
-            <div key={t.id}
-              draggable={t.draggable}
-              onDragStart={() => setDraggedItem(t)}
-              onDragEnd={() => setDraggedItem(null)}
-              onClick={() => navigate(`/project/${t.projectId}`)}
-              style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 10px', cursor: t.draggable ? 'grab' : 'pointer' }}>
-              <div style={{ fontSize: 12.5, color: 'var(--text)', marginBottom: t.isProject ? 0 : 4 }}>{t.isProject ? `📌 ${t.title}` : t.title}</div>
-              {!t.isProject && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: t.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>{projects.find(p => p.id === t.projectId)?.name}</span>
-                </div>
-              )}
+          {undated.map(p => (
+            <div key={p.id}
+              draggable={isAdmin}
+              onDragStart={() => setDraggedProjectId(p.id)}
+              onDragEnd={() => setDraggedProjectId(null)}
+              onClick={() => navigate(`/project/${p.id}`)}
+              style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 10px', cursor: isAdmin ? 'grab' : 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 12.5, color: 'var(--text)' }}>{p.name}</span>
             </div>
           ))}
         </div>
@@ -259,11 +210,11 @@ export default function CalendarPage() {
             <button className="modal-close" onClick={() => setDayModal(null)} title="Cerrar">✕</button>
             <h2 style={{ textTransform: 'capitalize' }}>{new Date(dayModal + 'T00:00:00').toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' })}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14, maxHeight: '50vh', overflowY: 'auto' }}>
-              {(eventsByDay[dayModal] || []).map(ev => (
-                <div key={ev.id} onClick={() => { setDayModal(null); navigate(`/project/${ev.projectId}`); }}
+              {(eventsByDay[dayModal] || []).map(p => (
+                <div key={p.id} onClick={() => { setDayModal(null); navigate(`/project/${p.id}`); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: ev.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, color: 'var(--text)', flex: 1, textDecoration: ev.done ? 'line-through' : 'none' }}>{ev.title}</span>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
                 </div>
               ))}
             </div>
