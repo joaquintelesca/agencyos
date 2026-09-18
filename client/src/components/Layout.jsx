@@ -141,7 +141,9 @@ export default function Layout() {
     }
   };
 
-  const doSaveProject = async () => {
+  // taskIdsToReassign: se aplican recién si el guardado del proyecto en sí sale bien — nada de
+  // esto se toca si el PUT del proyecto falla o si el usuario cancela antes de llegar acá.
+  const doSaveProject = async (taskIdsToReassign = []) => {
     const clientPaidChanged = editProjectForm.client_paid !== (editingProject.client_paid === 'cobrado' ? 'cobrado' : 'unpaid');
     try {
       const isSelf = editProjectForm.payment_editor_id === user?.id;
@@ -152,6 +154,10 @@ export default function Layout() {
       if (clientPaidChanged) {
         updated = await api(`/api/payments/${editingProject.id}`, { method: 'PATCH', body: { client_paid: editProjectForm.client_paid } });
       }
+      if (taskIdsToReassign.length > 0) {
+        const newEditorId = editProjectForm.payment_editor_id;
+        await Promise.all(taskIdsToReassign.map(tid => api(`/api/tasks/${tid}`, { method: 'PUT', body: { assigned_to: newEditorId } })));
+      }
       setProjects(prev => prev.map(p => p.id === editingProject.id ? { ...p, ...updated } : p));
       setEditingProject(null);
     } catch (e) { console.error(e); await alert('Error: ' + e.message); }
@@ -161,53 +167,46 @@ export default function Layout() {
   // al editor anterior — quedan donde estaban. Eso puede dejar un estado confuso (el editor nuevo
   // no ve ninguna tarea, el viejo sigue viendo las suyas), así que se pregunta tarea por tarea en
   // vez de mover todo automáticamente o no mover nada en silencio — con un atajo para el caso
-  // común de "sí, todas". reassignReview: { tasks, index, newEditorId, oldName, newName, resolve }.
+  // común de "sí, todas". Las respuestas se acumulan en memoria nada más (ningún PUT de tarea
+  // hasta el final): si el cambio de editor del proyecto se termina cancelando, no puede quedar
+  // ninguna tarea reasignada sin que el proyecto en sí haya cambiado.
+  // reassignReview: { tasks, index, selected, newEditorId, oldName, newName, resolve }.
   const [reassignReview, setReassignReview] = useState(null);
 
-  // Devuelve una Promise<boolean>: true = seguir adelante con el guardado del proyecto, false =
-  // se canceló desde el popup (la "✕") y NO hay que guardar nada — antes cerrar con la "✕" resolvía
-  // la promesa igual que terminar de revisar todo, así que el código que esperaba este resultado
-  // seguía de largo a doSaveProject() y terminaba guardando el proyecto (con el editor nuevo ya
-  // puesto) aunque el usuario solo quisiera salir del popup de reasignación.
+  // Devuelve una Promise: null si se canceló (la "✕" — no guardar nada de nada), o un array con
+  // los ids de las tareas a reasignar (puede ser vacío) para que doSaveProject los aplique junto
+  // con el guardado del proyecto.
   const reassignOldEditorTasks = () => new Promise(async (resolve) => {
     const oldEditorId = editingProject.payment_editor_id || '';
     const newEditorId = editProjectForm.payment_editor_id || '';
-    if (!newEditorId || !oldEditorId || newEditorId === oldEditorId) return resolve(true);
+    if (!newEditorId || !oldEditorId || newEditorId === oldEditorId) return resolve([]);
     let tasks;
     try {
       tasks = await api(`/api/projects/${editingProject.id}/tasks`);
-    } catch (e) { console.error('Error chequeando tareas del proyecto:', e); return resolve(true); }
+    } catch (e) { console.error('Error chequeando tareas del proyecto:', e); return resolve([]); }
     const oldEditorTasks = tasks.filter(t => t.assigned_to === oldEditorId);
-    if (oldEditorTasks.length === 0) return resolve(true);
+    if (oldEditorTasks.length === 0) return resolve([]);
     setReassignReview({
-      tasks: oldEditorTasks, index: 0, newEditorId,
+      tasks: oldEditorTasks, index: 0, selected: [], newEditorId,
       oldName: editingProject.payment_editor_name || 'el editor anterior',
       newName: users.find(u => u.id === newEditorId)?.name || 'el nuevo editor',
       resolve,
     });
   });
 
-  // proceed=false (la "✕") deja de preguntar Y cancela el guardado del proyecto — las tareas que
-  // ya se hayan reasignado con un "Sí" anterior quedan como están (esas ya se aplicaron al toque),
-  // pero el cambio de editor del proyecto en sí no se guarda hasta que se apriete "Guardar" de nuevo.
-  const finishReassignReview = (proceed) => { reassignReview.resolve(proceed); setReassignReview(null); };
+  // result=null (la "✕") cancela todo — ni el proyecto ni ninguna tarea se tocan.
+  const finishReassignReview = (result) => { reassignReview.resolve(result); setReassignReview(null); };
 
-  const reassignCurrentAndAdvance = async (accept) => {
-    const { tasks, index, newEditorId } = reassignReview;
-    if (accept) {
-      try { await api(`/api/tasks/${tasks[index].id}`, { method: 'PUT', body: { assigned_to: newEditorId } }); }
-      catch (e) { console.error('Error reasignando tarea:', e); }
-    }
-    if (index + 1 >= tasks.length) finishReassignReview(true);
-    else setReassignReview({ ...reassignReview, index: index + 1 });
+  const reassignCurrentAndAdvance = (accept) => {
+    const { tasks, index, selected } = reassignReview;
+    const nextSelected = accept ? [...selected, tasks[index].id] : selected;
+    if (index + 1 >= tasks.length) finishReassignReview(nextSelected);
+    else setReassignReview({ ...reassignReview, index: index + 1, selected: nextSelected });
   };
 
-  const reassignAllRemaining = async () => {
-    const { tasks, index, newEditorId } = reassignReview;
-    try {
-      await Promise.all(tasks.slice(index).map(t => api(`/api/tasks/${t.id}`, { method: 'PUT', body: { assigned_to: newEditorId } })));
-    } catch (e) { console.error('Error reasignando tareas:', e); }
-    finishReassignReview(true);
+  const reassignAllRemaining = () => {
+    const { tasks, index, selected } = reassignReview;
+    finishReassignReview([...selected, ...tasks.slice(index).map(t => t.id)]);
   };
 
   // Pasar a "Completados" no debería ser automático — se pide confirmación (con el modal propio
@@ -223,9 +222,9 @@ export default function Layout() {
         return;
       }
     }
-    const proceed = await reassignOldEditorTasks();
-    if (!proceed) return;
-    doSaveProject();
+    const taskIdsToReassign = await reassignOldEditorTasks();
+    if (taskIdsToReassign === null) return;
+    doSaveProject(taskIdsToReassign);
   };
 
   const saveClient = async () => {
@@ -956,7 +955,7 @@ export default function Layout() {
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setShowCompleteConfirm(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={async () => { setShowCompleteConfirm(false); const proceed = await reassignOldEditorTasks(); if (!proceed) return; doSaveProject(); }}>Confirmar</button>
+              <button className="btn btn-primary" onClick={async () => { setShowCompleteConfirm(false); const taskIdsToReassign = await reassignOldEditorTasks(); if (taskIdsToReassign === null) return; doSaveProject(taskIdsToReassign); }}>Confirmar</button>
             </div>
           </div>
         </div>
@@ -965,7 +964,7 @@ export default function Layout() {
       {reassignReview && (
         <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => finishReassignReview(false)} title="Cerrar">✕</button>
+            <button className="modal-close" onClick={() => finishReassignReview(null)} title="Cerrar">✕</button>
             <h2>Reasignar tareas</h2>
             <p style={{ fontSize: 12, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
               Tarea {reassignReview.index + 1} de {reassignReview.tasks.length}
