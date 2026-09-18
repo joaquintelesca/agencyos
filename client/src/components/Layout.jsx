@@ -10,7 +10,7 @@ const COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#3b82f6','#8b5cf6','#ef
 export default function Layout() {
   const { user, logout, api, socket } = useAuth();
   const { scheduleDelete } = useUndo();
-  const { alert } = useAlert();
+  const { alert, confirm } = useAlert();
   const navigate = useNavigate();
   const location = useLocation();
   const [projects, setProjects] = useState([]);
@@ -157,9 +157,34 @@ export default function Layout() {
     } catch (e) { console.error(e); await alert('Error: ' + e.message); }
   };
 
+  // Cambiar el editor del proyecto (campo usado para el pago) NUNCA mueve las tareas ya asignadas
+  // al editor anterior — quedan donde estaban. Eso puede dejar un estado confuso (el editor nuevo
+  // no ve ninguna tarea, el viejo sigue viendo las suyas), así que se pregunta explícitamente en
+  // vez de mover todo solo o no mover nada silenciosamente.
+  const reassignOldEditorTasks = async () => {
+    const oldEditorId = editingProject.payment_editor_id || '';
+    const newEditorId = editProjectForm.payment_editor_id || '';
+    if (!newEditorId || !oldEditorId || newEditorId === oldEditorId) return;
+    try {
+      const tasks = await api(`/api/projects/${editingProject.id}/tasks`);
+      const oldEditorTasks = tasks.filter(t => t.assigned_to === oldEditorId);
+      if (oldEditorTasks.length === 0) return;
+      const oldName = editingProject.payment_editor_name || 'el editor anterior';
+      const newName = users.find(u => u.id === newEditorId)?.name || 'el nuevo editor';
+      const taskWord = oldEditorTasks.length === 1 ? 'tarea asignada' : 'tareas asignadas';
+      const shouldReassign = await confirm(
+        `Este proyecto tiene ${oldEditorTasks.length} ${taskWord} a ${oldName}. ¿Querés reasignarlas también a ${newName}?`,
+        { confirmText: 'Sí, reasignar', cancelText: 'Dejarlas como están' }
+      );
+      if (shouldReassign) {
+        await Promise.all(oldEditorTasks.map(t => api(`/api/tasks/${t.id}`, { method: 'PUT', body: { assigned_to: newEditorId } })));
+      }
+    } catch (e) { console.error('Error chequeando/reasignando tareas del proyecto:', e); }
+  };
+
   // Pasar a "Completados" no debería ser automático — se pide confirmación (con el modal propio
   // de la app) solo cuando guardar haría que AMBOS lados (editor y cliente) queden saldados.
-  const saveProject = () => {
+  const saveProject = async () => {
     if (!editProjectForm.name.trim()) return;
     const clientPaidChanged = editProjectForm.client_paid !== (editingProject.client_paid === 'cobrado' ? 'cobrado' : 'unpaid');
     if (clientPaidChanged && editProjectForm.client_paid === 'cobrado') {
@@ -170,6 +195,7 @@ export default function Layout() {
         return;
       }
     }
+    await reassignOldEditorTasks();
     doSaveProject();
   };
 
@@ -893,7 +919,7 @@ export default function Layout() {
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setShowCompleteConfirm(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={() => { setShowCompleteConfirm(false); doSaveProject(); }}>Confirmar</button>
+              <button className="btn btn-primary" onClick={async () => { setShowCompleteConfirm(false); await reassignOldEditorTasks(); doSaveProject(); }}>Confirmar</button>
             </div>
           </div>
         </div>
