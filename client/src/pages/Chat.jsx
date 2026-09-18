@@ -107,6 +107,10 @@ export default function Chat() {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
+  // true justo después de cargar los mensajes de una conversación recién abierta (o un cambio de
+  // tab dentro de un DM) — hace que el scroll al fondo sea instantáneo en vez de animado, y evita
+  // que la animación quede "a mitad de camino" si el layout crece mientras tanto (ver más abajo).
+  const justLoadedRef = useRef(false);
 
   // Usar refs para valores que el socket handler necesita sin re-registrarse
   const activeConvRef = useRef(null);
@@ -235,10 +239,26 @@ export default function Chat() {
     };
   }, [socket]); // solo depende del socket, no de activeConv ni user
 
-  // Scroll al último mensaje
+  // Scroll al último mensaje. Al recién abrir una conversación (o cambiar de tab dentro de un DM)
+  // va instantáneo (justLoadedRef), no animado — con "smooth" el destino se calcula una sola vez al
+  // arrancar la animación, así que si el layout todavía estaba creciendo (una imagen sin cargar
+  // corriendo el alto del mensaje hacia abajo) el scroll quedaba "corto", a mitad de camino en vez
+  // de llegar al final real. El onLoad de las imágenes (más abajo) corrige ese caso además de esto.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: justLoadedRef.current ? 'auto' : 'smooth' });
+    justLoadedRef.current = false;
   }, [messages]);
+
+  // Si una imagen recién cargada empuja el contenido hacia abajo y ya estábamos cerca del final,
+  // reajusta el scroll — sin el chequeo de distancia, esto tironearía la vista de alguien que
+  // scrolleó arriba a propósito para leer mensajes viejos con imágenes todavía sin cachear.
+  const rescrollIfNearBottom = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 300) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
+  };
 
   const loadConversations = async () => {
     try {
@@ -277,6 +297,7 @@ export default function Chat() {
       }
       const msgs = await api(`/api/chat/messages?type=${conv.type}&id=${conv.id}`);
       if (isStale()) return;
+      justLoadedRef.current = true;
       setMessages(msgs);
       setHasMore(msgs.length >= 50);
       await api('/api/chat/read', { method: 'POST', body: { type: conv.type, id: conv.id } });
@@ -298,6 +319,7 @@ export default function Chat() {
       const tabParam = clientId ? `&client_id=${clientId}` : '';
       const msgs = await api(`/api/chat/messages?type=dm&id=${conv.id}${tabParam}`);
       if (activeTabRef.current !== clientId || activeConvRef.current !== conv) return;
+      justLoadedRef.current = true;
       setMessages(msgs);
       setHasMore(msgs.length >= 50);
     } catch (e) {
@@ -788,6 +810,7 @@ export default function Chat() {
                   compact={compact}
                   initials={initials}
                   mediaUrl={mediaUrl}
+                  onImageLoad={rescrollIfNearBottom}
                 />
               );
             })}
@@ -1019,7 +1042,7 @@ function SidebarItem({ label, subtitle, active, unread, online, color, isUser, i
   );
 }
 
-function Message({ msg, isMe, compact, initials, mediaUrl }) {
+function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   return (
     <div style={{ display: 'flex', gap: 10, padding: compact ? '1px 0' : '8px 0 2px', alignItems: 'flex-start' }}>
@@ -1047,6 +1070,7 @@ function Message({ msg, isMe, compact, initials, mediaUrl }) {
             alt={msg.file_name || 'imagen'}
             style={{ maxWidth: 300, maxHeight: 220, borderRadius: 8, display: 'block', cursor: 'pointer', marginBottom: 2 }}
             onClick={() => window.open(mediaUrl(msg.file_url), '_blank')}
+            onLoad={onImageLoad}
           />
         )}
         {msg.file_type === 'video' && (
