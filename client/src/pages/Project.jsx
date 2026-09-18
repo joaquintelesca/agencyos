@@ -38,6 +38,9 @@ export default function Project() {
   const [uploadForTaskId, setUploadForTaskId] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [members, setMembers] = useState(null);
+  const [showMembers, setShowMembers] = useState(false);
+  const [membersError, setMembersError] = useState('');
   const msgEndRef = useRef(null);
   const msgContainerRef = useRef(null);
 
@@ -46,6 +49,8 @@ export default function Project() {
     setNotFound(false);
     setTasks([]);
     setMessages([]);
+    setMembers(null);
+    setMembersError('');
     api(`/api/projects/${id}`).then(setProject).catch(e => {
       console.error(e);
       setNotFound(true);
@@ -54,6 +59,26 @@ export default function Project() {
     api(`/api/projects/${id}/messages`).then(msgs => { setMessages(msgs); setHasMore(msgs.length >= 50); });
     api('/api/users').then(setUsers);
   }, [id]);
+
+  // Quién tiene acceso a este proyecto (project_members) es un cálculo implícito del lado del
+  // servidor — se le agrega gente automáticamente al asignarle una tarea o ponerla de editora, y
+  // se la saca sola cuando ya no le queda ningún motivo para seguir ahí. Sin esta lista visible,
+  // nadie puede saber quién ve este proyecto en un momento dado sin ir a revisar caso por caso.
+  const openMembers = async () => {
+    setShowMembers(true);
+    if (members) return;
+    try {
+      const data = await api(`/api/projects/${id}/members`);
+      // Los admins tienen acceso a TODOS los proyectos siempre, no solo a los que figuran en
+      // project_members (esa tabla es para editores) — si no se agregan acá a mano, un admin que
+      // no creó el proyecto ni es su editor asignado quedaría afuera de esta lista aunque sí tenga
+      // acceso real.
+      const memberIds = new Set(data.map(m => m.id));
+      const missingAdmins = users.filter(u => u.role === 'admin' && !memberIds.has(u.id))
+        .map(u => ({ id: u.id, name: u.name, avatar_color: u.avatar_color, role: 'admin' }));
+      setMembers([...data, ...missingAdmins]);
+    } catch (e) { console.error(e); setMembersError('No se pudo cargar quién tiene acceso.'); }
+  };
 
   // Deep link desde una notificación (?tab=videos): si ya estamos en este proyecto, React Router
   // no remonta el componente al cambiar solo el query param, así que hay que resincronizar el tab.
@@ -287,6 +312,34 @@ export default function Project() {
             </div>
           )}
           <span style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8 }}>{tasks.length} tareas</span>
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => showMembers ? setShowMembers(false) : openMembers()}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'var(--font)' }}>
+              👥 Acceso
+            </button>
+            {showMembers && (
+              <>
+                <div onClick={() => setShowMembers(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: 220, zIndex: 11,
+                  background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.35)', padding: 8
+                }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 6px 8px' }}>Quién tiene acceso</div>
+                  {membersError && <div style={{ fontSize: 12, color: 'var(--red)', padding: '4px 6px' }}>{membersError}</div>}
+                  {!membersError && !members && <div style={{ fontSize: 12, color: 'var(--text3)', padding: '4px 6px' }}>Cargando...</div>}
+                  {members && members.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', padding: '4px 6px' }}>Nadie tiene acceso todavía</div>}
+                  {members && members.map(m => (
+                    <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px' }}>
+                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: m.avatar_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff', flexShrink: 0 }}>{initials(m.name)}</div>
+                      <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{m.name}</span>
+                      <span style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>{m.role === 'admin' ? 'admin' : m.member_role === 'owner' ? 'creador' : 'editor'}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           {project.material_link && (
             <a href={/^https?:\/\//i.test(project.material_link) ? project.material_link : `https://${project.material_link}`}
               target="_blank" rel="noopener noreferrer" title={project.material_link}

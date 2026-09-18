@@ -44,7 +44,7 @@ export default function Payments() {
     } catch (e) { console.error(e); await alert('Error al actualizar el pago: ' + e.message); }
   };
 
-  // Pasar a "Completados" no debería ser automático — se pide confirmación (con el modal propio
+  // Pasar a "Saldados" no debería ser automático — se pide confirmación (con el modal propio
   // de la app, no window.confirm) solo cuando el cambio hace que AMBOS lados queden saldados.
   const requestUpdate = (projectId, changes, wouldComplete) => {
     if (wouldComplete) setPendingComplete({ projectId, changes });
@@ -55,33 +55,14 @@ export default function Payments() {
     setPendingComplete(null);
   };
 
-  const getTotal = (p) => {
-    if (p.payment_type === 'hourly') return (parseFloat(p.payment_amount) || 0) * (parseFloat(p.payment_hours) || 0);
-    return parseFloat(p.payment_amount) || 0;
-  };
-
-  const getClientTotal = (p) => {
-    if (p.payment_type === 'hourly') return (parseFloat(p.client_amount) || 0) * (parseFloat(p.payment_hours) || 0);
-    return parseFloat(p.client_amount) || 0;
-  };
-
   // Proyectos facturados vía Upwork: lo que carga el admin en "Cobro cliente" es el bruto que
   // ve el cliente — Upwork se queda con upwork_fee_pct% antes de que llegue a la cuenta.
   const isUpworkBilled = (p) => p.upwork_status === 'Pendiente de carga' || p.upwork_status === 'Cargado';
-  const getClientNet = (p) => {
-    const gross = getClientTotal(p);
-    if (!isUpworkBilled(p)) return gross;
-    return gross * (1 - (parseFloat(p.upwork_fee_pct) || 0) / 100);
-  };
 
-  // Una vez marcado pagado/cobrado, el monto queda congelado (ver PATCH /api/payments/:id en el
-  // servidor) — se usa ese valor guardado en vez de recalcular en vivo, así un proyecto por horas
-  // no cambia de monto en un mes ya cerrado solo porque después se corrigieron las horas cargadas.
-  // Los ya marcados como pagados/cobrados ANTES de este cambio no tienen el valor congelado
-  // (queda null) y caen al cálculo en vivo como antes.
-  const displayEditorAmount = (p) => p.editor_paid === 'paid' && p.editor_paid_amount != null ? p.editor_paid_amount : getTotal(p);
-  const displayClientGross = (p) => p.client_paid === 'cobrado' && p.client_paid_amount_gross != null ? p.client_paid_amount_gross : getClientTotal(p);
-  const displayClientNet = (p) => p.client_paid === 'cobrado' && p.client_paid_amount_net != null ? p.client_paid_amount_net : getClientNet(p);
+  // computed_editor_total/computed_client_gross/computed_client_net vienen calculados del
+  // servidor (congelado si ya está pagado/cobrado, en vivo si no) — antes esta cuenta estaba
+  // reimplementada acá a mano (y de nuevo en Dashboard.jsx, y de nuevo en el servidor); si cambiaba
+  // una regla de negocio (ej. el neto de Upwork) había que acordarse de tocar los 3 lugares.
 
   // Cuando el editor asignado sos vos mismo no hay pago real que marcar — se trata como
   // "resuelto" en ese lado en vez de quedar eternamente pendiente por un toggle que nunca aplica.
@@ -113,8 +94,8 @@ export default function Payments() {
     return Object.values(groups);
   };
 
-  const totalEditorPending = activeProjects.filter(p => !editorSettled(p)).reduce((s, p) => s + getTotal(p), 0);
-  const totalClientPending = activeProjects.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + getClientNet(p), 0);
+  const totalEditorPending = activeProjects.filter(p => !editorSettled(p)).reduce((s, p) => s + p.computed_editor_total, 0);
+  const totalClientPending = activeProjects.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + p.computed_client_net, 0);
   const readyToCollect = activeProjects.filter(p => !editorSettled(p) || p.client_paid !== 'cobrado').length;
 
   // Balance mensual: se basa en la fecha real en que se marcó pagado/cobrado cada lado (no en
@@ -123,9 +104,9 @@ export default function Payments() {
   // (admin), ese "pago" no es un gasto real — no cuenta en "Pagado a editores".
   const receivedThisMonth = projects.filter(p => p.client_paid_at && p.client_paid_at.slice(0, 7) === selectedMonth);
   const paidToEditorsThisMonth = projects.filter(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id !== user.id);
-  const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + displayClientNet(p), 0);
-  const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + displayEditorAmount(p), 0);
-  const totalUpworkFeeMonth = receivedThisMonth.reduce((s, p) => s + (displayClientGross(p) - displayClientNet(p)), 0);
+  const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + p.computed_client_net, 0);
+  const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + p.computed_editor_total, 0);
+  const totalUpworkFeeMonth = receivedThisMonth.reduce((s, p) => s + (p.computed_client_gross - p.computed_client_net), 0);
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><div className="spinner" /></div>;
 
@@ -158,7 +139,7 @@ export default function Payments() {
               {['Proyecto','Editor','Tipo','Upwork'].map(h => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
-              {isHistory && <th style={thStyle}>Completado</th>}
+              {isHistory && <th style={thStyle}>Saldado</th>}
               <th style={{ ...thStyle, textAlign: 'right', color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>Monto</th>
               <th style={{ ...thStyle, color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>Pagado al editor</th>
               <th style={{ ...thStyle, textAlign: 'right', color: '#a5b4fc', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>Monto</th>
@@ -172,9 +153,9 @@ export default function Payments() {
             {isHistory && sorted.length > 0 && (
               <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
                 <td colSpan={baseCols} style={{ padding: '8px 12px', fontSize: 11, color: 'var(--text2)' }}>Total ({sorted.length} proyecto{sorted.length > 1 ? 's' : ''})</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>${sorted.reduce((s, p) => s + displayEditorAmount(p), 0).toFixed(0)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>${sorted.reduce((s, p) => s + p.computed_editor_total, 0).toFixed(0)}</td>
                 <td style={{ background: 'rgba(236,72,153,0.05)' }} />
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#a5b4fc', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>${sorted.reduce((s, p) => s + displayClientGross(p), 0).toFixed(0)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#a5b4fc', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>${sorted.reduce((s, p) => s + p.computed_client_gross, 0).toFixed(0)}</td>
                 <td style={{ background: 'rgba(99,102,241,0.05)' }} />
               </tr>
             )}
@@ -211,7 +192,7 @@ export default function Payments() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ display: 'flex', gap: 2, background: 'var(--bg3)', padding: 3, borderRadius: 9 }}>
-              {[['active','Activos'],['completed','Completados']].map(([val, label]) => (
+              {[['active','Por cobrar/pagar'],['completed','Saldados']].map(([val, label]) => (
                 <button key={val} onClick={() => setTab(val)} style={{ padding: '5px 14px', borderRadius: 7, border: 'none', fontFamily: 'var(--font)', fontSize: 12, cursor: 'pointer', background: tab === val ? 'var(--bg2)' : 'transparent', color: tab === val ? 'var(--text)' : 'var(--text2)', fontWeight: tab === val ? 600 : 400 }}>{label}</button>
               ))}
             </div>
@@ -244,7 +225,7 @@ export default function Payments() {
             </div>
 
             {activeProjects.length === 0 && (
-              <div className="empty"><div className="empty-icon">💰</div><p>Sin proyectos activos con pago asignado</p></div>
+              <div className="empty"><div className="empty-icon">💰</div><p>Sin proyectos con pago pendiente de cobrar o pagar</p></div>
             )}
 
             {groupByClient(activeProjects).map(client => (
@@ -272,7 +253,7 @@ export default function Payments() {
         {tab === 'completed' && (
           <>
             {completedProjects.length === 0 && (
-              <div className="empty"><div className="empty-icon">✅</div><p>Aún no hay proyectos completados</p><p style={{ fontSize: 12 }}>Cuando un proyecto tenga el editor pagado y el cliente cobrado, aparecerá acá como registro histórico</p></div>
+              <div className="empty"><div className="empty-icon">✅</div><p>Aún no hay proyectos saldados</p><p style={{ fontSize: 12 }}>Cuando un proyecto tenga el editor pagado y el cliente cobrado, aparecerá acá como registro histórico</p></div>
             )}
             {groupByClient(completedProjects).map(client => (
               <div key={client.name} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 14, opacity: 0.85 }}>
@@ -335,9 +316,9 @@ export default function Payments() {
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.client_name ? `${p.client_name} · ` : ''}{p.name}</span>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#a5b4fc', whiteSpace: 'nowrap' }}>${displayClientNet(p).toFixed(0)}</div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#a5b4fc', whiteSpace: 'nowrap' }}>${p.computed_client_net.toFixed(0)}</div>
                         {isUpworkBilled(p) && (
-                          <div style={{ fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap' }}>bruto ${displayClientGross(p).toFixed(0)} · -${(displayClientGross(p) - displayClientNet(p)).toFixed(0)} Upwork ({p.upwork_fee_pct || 0}%)</div>
+                          <div style={{ fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap' }}>bruto ${p.computed_client_gross.toFixed(0)} · -${(p.computed_client_gross - p.computed_client_net).toFixed(0)} Upwork ({p.upwork_fee_pct || 0}%)</div>
                         )}
                       </div>
                     </div>
@@ -352,7 +333,7 @@ export default function Payments() {
                     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.editor_name ? `${p.editor_name} · ` : ''}{p.name}</span>
-                      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#f472b6', whiteSpace: 'nowrap' }}>${displayEditorAmount(p).toFixed(0)}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#f472b6', whiteSpace: 'nowrap' }}>${p.computed_editor_total.toFixed(0)}</span>
                     </div>
                   ))}
                 </div>
@@ -366,13 +347,13 @@ export default function Payments() {
         <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={() => setPendingComplete(null)} title="Cerrar">✕</button>
-            <h2>Confirmar</h2>
+            <h2>¿Marcar como saldado?</h2>
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
-              Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Completados".
+              Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Saldados".
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setPendingComplete(null)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={confirmPendingComplete}>Confirmar</button>
+              <button className="btn btn-primary" onClick={confirmPendingComplete}>Sí, marcar como saldado</button>
             </div>
           </div>
         </div>
@@ -387,6 +368,11 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, currentU
   // Si otra sesión/socket actualiza payment_hours mientras esta fila está montada (misma key={p.id}),
   // hay que reflejarlo — si no, un blur posterior pisa ese cambio con el valor local desactualizado.
   useEffect(() => { setHours(p.payment_hours || 0); }, [p.payment_hours]);
+  // Única cuenta que sigue haciéndose acá en vez de leer computed_editor_total/computed_client_*
+  // del servidor: `hours` es un borrador local sin guardar todavía (se guarda recién al blur del
+  // input), así que el total en pantalla mientras se edita tiene que reflejar ese valor en vivo, no
+  // el que ya quedó persistido. Esta fórmula tiene que coincidir con computeEditorAmount/
+  // computeClientGrossAmount/computeClientNetAmount en server/index.js.
   const liveTotal = p.payment_type === 'hourly'
     ? (parseFloat(p.payment_amount) || 0) * (parseFloat(hours) || 0)
     : (parseFloat(p.payment_amount) || 0);
@@ -400,7 +386,7 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, currentU
   const total = p.editor_paid === 'paid' && p.editor_paid_amount != null ? p.editor_paid_amount : liveTotal;
   const clientTotal = p.client_paid === 'cobrado' && p.client_paid_amount_gross != null ? p.client_paid_amount_gross : liveClientTotal;
   const clientNet = p.client_paid === 'cobrado' && p.client_paid_amount_net != null ? p.client_paid_amount_net : liveClientNet;
-  // Pasar a "Completados" no debería ser automático — se pide confirmación (con el modal propio
+  // Pasar a "Saldados" no debería ser automático — se pide confirmación (con el modal propio
   // de la app) solo cuando el cambio hace que AMBOS lados queden saldados a la vez (revertir uno
   // no cuenta como completar).
   const wouldComplete = (nextEditorPaid, nextClientPaid) => {

@@ -949,13 +949,13 @@ export default function Layout() {
         <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={() => setShowCompleteConfirm(false)} title="Cerrar">✕</button>
-            <h2>Confirmar</h2>
+            <h2>¿Marcar como saldado?</h2>
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
-              Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Completados" en Pagos.
+              Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Saldados" en Pagos.
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setShowCompleteConfirm(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={async () => { setShowCompleteConfirm(false); const taskIdsToReassign = await reassignOldEditorTasks(); if (taskIdsToReassign === null) return; doSaveProject(taskIdsToReassign); }}>Confirmar</button>
+              <button className="btn btn-primary" onClick={async () => { setShowCompleteConfirm(false); const taskIdsToReassign = await reassignOldEditorTasks(); if (taskIdsToReassign === null) return; doSaveProject(taskIdsToReassign); }}>Sí, marcar como saldado</button>
             </div>
           </div>
         </div>

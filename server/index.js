@@ -838,6 +838,21 @@ function computeClientNetAmount(p) {
   return gross * (1 - (parseFloat(p.upwork_fee_pct) || 0) / 100);
 }
 
+// Antes Dashboard.jsx y Payments.jsx reimplementaban esta misma cuenta cada uno por su lado (3
+// copias entre servidor y los dos archivos de cliente) — si mañana cambia una regla de negocio
+// (ej. cómo se calcula el neto de Upwork), hay que acordarse de tocar los 3 lugares. Estos 3
+// campos calculados van en la respuesta de cualquier endpoint que devuelva proyectos con datos de
+// pago, así que el cliente solo los lee en vez de recalcularlos — "congelado si ya está saldado
+// (editor_paid/client_paid), en vivo si no" es exactamente lo que antes hacían displayEditorAmount/
+// displayClientGross/displayClientNet en Payments.jsx a mano.
+function withComputedTotals(p) {
+  if (!p) return p;
+  p.computed_editor_total = p.editor_paid === 'paid' && p.editor_paid_amount != null ? Number(p.editor_paid_amount) : computeEditorAmount(p);
+  p.computed_client_gross = p.client_paid === 'cobrado' && p.client_paid_amount_gross != null ? Number(p.client_paid_amount_gross) : computeClientGrossAmount(p);
+  p.computed_client_net = p.client_paid === 'cobrado' && p.client_paid_amount_net != null ? Number(p.client_paid_amount_net) : computeClientNetAmount(p);
+  return p;
+}
+
 // ─── PROJECT MEMBERSHIP ───────────────────────────────────────────────────────
 
 async function isProjectMember(userId, role, projectId) {
@@ -891,7 +906,8 @@ const PROJECT_FINANCIAL_FIELDS = [
   'payment_amount', 'client_amount', 'payment_type', 'payment_hours', 'payment_status',
   'editor_paid', 'client_paid', 'editor_paid_at', 'client_paid_at',
   'editor_paid_amount', 'client_paid_amount_gross', 'client_paid_amount_net',
-  'upwork_status', 'upwork_fee_pct'
+  'upwork_status', 'upwork_fee_pct',
+  'computed_editor_total', 'computed_client_gross', 'computed_client_net'
 ];
 function stripProjectFinancials(project) {
   if (!project) return project;
@@ -910,14 +926,19 @@ function withDeletedEditorFallback(row, nameField = 'payment_editor_name') {
 }
 
 // Emite un evento solo a los miembros de un proyecto (via sus rooms personales) y a todos los
-// admins. Si se pasa sanitizeForNonAdmin, los no-admin reciben esa versión filtrada del payload
-// en vez del original — para eventos de proyecto que llevan datos de plata.
-async function emitToProject(projectId, event, data, { sanitizeForNonAdmin } = {}) {
+// admins. Los no-admin reciben la versión sin campos de plata (stripProjectFinancials) POR
+// DEFECTO — antes era al revés (opt-in con `sanitizeForNonAdmin`), así que un endpoint nuevo que
+// se olvidara de pasar esa opción reintroducía la fuga de datos financieros sin que nadie lo
+// notara (pasó una vez, era exactamente este patrón). stripProjectFinancials es inofensivo sobre
+// payloads que no son proyectos (tareas, videos, comentarios no tienen esos campos, así que no
+// hace nada), por eso es seguro aplicarlo siempre. Para el caso — hoy inexistente — de necesitar
+// mandar el dato crudo a propósito, está `skipSanitize: true` como escape hatch explícito.
+async function emitToProject(projectId, event, data, { skipSanitize } = {}) {
   const memberIds = await db('project_members').where({ project_id: projectId }).pluck('user_id');
   const admins = await db('users').where({ role: 'admin' }).select('id');
   const adminIdSet = new Set(admins.map(a => a.id));
   const targetIds = new Set([...memberIds, ...adminIdSet]);
-  const sanitized = sanitizeForNonAdmin ? sanitizeForNonAdmin(data) : data;
+  const sanitized = skipSanitize ? data : stripProjectFinancials(data);
   for (const uid of targetIds) {
     io.to(`user:${uid}`).emit(event, adminIdSet.has(uid) ? data : sanitized);
   }
@@ -1127,6 +1148,7 @@ app.get('/api/projects', auth, async (req, res) => {
     for (const row of unreadReviewRows) unreadReviewMap[row.project_id] = Number(row.count);
     const withCounts = projects.map(p => {
       withDeletedEditorFallback(p);
+      withComputedTotals(p);
       return {
         ...(req.user.role === 'admin' ? p : stripProjectFinancials(p)),
         ...(countsMap[p.id] || { task_count: 0, done_count: 0, review_count: 0 }),
@@ -1147,6 +1169,7 @@ app.get('/api/projects/:id', auth, requireProjectAccess('id'), async (req, res) 
       .first();
     if (!project) return res.status(404).json({ error: 'No encontrado' });
     withDeletedEditorFallback(project);
+    withComputedTotals(project);
     res.json(req.user.role === 'admin' ? project : stripProjectFinancials(project));
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1174,7 +1197,7 @@ app.post('/api/projects', auth, async (req, res) => {
     await addProjectMember(id, req.user.id, 'owner');
     if (payment_editor_id) await addProjectMember(id, payment_editor_id);
     const project = await db('projects').where({ id }).first();
-    await emitToProject(id, 'project:created', project, { sanitizeForNonAdmin: stripProjectFinancials });
+    await emitToProject(id, 'project:created', project);
     if (payment_editor_id) await createNotification({ userId: payment_editor_id, type: 'project_assigned', actorId: req.user.id, projectId: id, preview: name });
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -1218,7 +1241,7 @@ app.put('/api/projects/:id', auth, async (req, res) => {
       await removeProjectMemberIfOrphaned(req.params.id, existing.payment_editor_id);
     }
     const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first());
-    await emitToProject(req.params.id, 'project:updated', project, { sanitizeForNonAdmin: stripProjectFinancials });
+    await emitToProject(req.params.id, 'project:updated', project);
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1244,7 +1267,7 @@ app.patch('/api/projects/:id/status', auth, async (req, res) => {
     if (status === 'completed') update.ever_completed = true; // nunca se vuelve a poner en false
     await db('projects').where({ id: req.params.id }).update(update);
     const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first());
-    await emitToProject(req.params.id, 'project:updated', project, { sanitizeForNonAdmin: stripProjectFinancials });
+    await emitToProject(req.params.id, 'project:updated', project);
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1544,7 +1567,7 @@ app.get('/api/payments', auth, async (req, res) => {
       .where(function() { this.where('p.status', 'completed').orWhere('p.ever_completed', true); })
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .orderBy('p.created_at', 'desc');
-    projects.forEach(p => withDeletedEditorFallback(p, 'editor_name'));
+    projects.forEach(p => { withDeletedEditorFallback(p, 'editor_name'); withComputedTotals(p); });
     res.json(projects);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
