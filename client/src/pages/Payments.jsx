@@ -176,7 +176,7 @@ export default function Payments() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 20 }}>💰</span>
           <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'var(--fs-xl)' }}>Pagos</h1>
-          <span style={{ fontSize: 11, background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)', padding: '2px 8px', borderRadius: 8, fontWeight: 600 }}>🔒 Solo admin</span>
+          <span className="badge" style={{ background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)' }}>🔒 Solo admin</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -244,7 +244,7 @@ export default function Payments() {
                     {client.email && <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>{client.email}</span>}
                   </div>
                   {client.projects.some(p => !editorSettled(p) || p.client_paid !== 'cobrado') && (
-                    <span style={{ fontSize: 10, background: 'rgba(124,106,247,0.15)', color: 'var(--accent2)', padding: '2px 8px', borderRadius: 8, fontWeight: 600 }}>
+                    <span className="badge" style={{ fontSize: 10, background: 'rgba(124,106,247,0.15)', color: 'var(--accent2)' }}>
                       {client.projects.filter(p => !editorSettled(p) || p.client_paid !== 'cobrado').length} pendiente(s)
                     </span>
                   )}
@@ -267,7 +267,7 @@ export default function Payments() {
                     {client.name[0].toUpperCase()}
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{client.name}</span>
-                  <span style={{ fontSize: 10, background: 'rgba(34,201,122,0.12)', color: 'var(--green)', padding: '2px 8px', borderRadius: 8, fontWeight: 600 }}>✓ Todo resuelto</span>
+                  <span className="badge" style={{ fontSize: 10, background: 'rgba(34,201,122,0.12)', color: 'var(--green)' }}>✓ Todo resuelto</span>
                 </div>
                 {renderTable(client.projects, true)}
               </div>
@@ -436,7 +436,7 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, currentU
 
       {/* Tipo */}
       <td style={{ padding: '9px 12px' }}>
-        <span style={{ fontSize: 10, background: 'var(--bg4)', color: 'var(--text3)', padding: '2px 7px', borderRadius: 8 }}>
+        <span className="badge" style={{ fontSize: 10, fontWeight: 400, background: 'var(--bg4)', color: 'var(--text3)', padding: '2px 7px' }}>
           {p.payment_type === 'hourly' ? 'Horas' : 'Fijo'}
         </span>
       </td>

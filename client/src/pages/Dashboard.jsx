@@ -125,7 +125,7 @@ export default function Dashboard() {
                       <span style={{ fontSize: 11, color: 'var(--text3)' }}>{t.assignee_name}</span>
                     </div>
                   )}
-                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: `${TASK_STATUS_COLORS[t.status] || 'var(--text3)'}18`, color: TASK_STATUS_COLORS[t.status] || 'var(--text3)' }}>
+                  <span className="badge" style={{ fontWeight: 500, background: `${TASK_STATUS_COLORS[t.status] || 'var(--text3)'}18`, color: TASK_STATUS_COLORS[t.status] || 'var(--text3)' }}>
                     {TASK_STATUS_LABELS[t.status] || t.status}
                   </span>
                 </div>
@@ -141,7 +141,7 @@ export default function Dashboard() {
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
                   {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
-                  {dl && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
+                  {dl && <span className="badge" style={{ fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
                 </div>
               );
             }))}
@@ -176,7 +176,7 @@ export default function Dashboard() {
                   {initials(p.payment_editor_name)}
                 </div>
               )}
-              {dl && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
+              {dl && <span className="badge" style={{ fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
             </div>
           );
         })}
@@ -203,7 +203,7 @@ export default function Dashboard() {
                   <span style={{ fontSize: 11, color: 'var(--text3)' }}>{t.assignee_name}</span>
                 </div>
               )}
-              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)' }}>En revisión</span>
+              <span className="badge" style={{ fontWeight: 500, background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)' }}>En revisión</span>
             </div>
           );
         })}
@@ -234,8 +234,8 @@ export default function Dashboard() {
               </div>
             )}
             {v.type === 'review'
-              ? <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)' }}>En revisión</span>
-              : <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: 'rgba(240,92,92,0.12)', color: 'var(--red)' }}>{v.unresolved_count} comentario{v.unresolved_count !== 1 ? 's' : ''}</span>
+              ? <span className="badge" style={{ fontWeight: 500, background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)' }}>En revisión</span>
+              : <span className="badge" style={{ fontWeight: 500, background: 'rgba(240,92,92,0.12)', color: 'var(--red)' }}>{v.unresolved_count} comentario{v.unresolved_count !== 1 ? 's' : ''}</span>
             }
           </div>
         ))}
@@ -278,7 +278,7 @@ export default function Dashboard() {
                   {initials(p.editor_name)}
                 </div>
               )}
-              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 7, fontWeight: 600, whiteSpace: 'nowrap', background: `${chipColor}22`, color: chipColor }}>
+              <span className="badge" style={{ borderRadius: 7, whiteSpace: 'nowrap', background: `${chipColor}22`, color: chipColor }}>
                 {missingEditor && missingClient ? 'Falta pagar y cobrar' : missingEditor ? 'Falta pagar editor' : 'Falta cobrar cliente'}
               </span>
             </div>
@@ -304,7 +304,7 @@ export default function Dashboard() {
       {error && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'rgba(240,92,92,0.08)', border: '1px solid rgba(240,92,92,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: 'var(--red)' }}>
           <span>⚠️ {error}</span>
-          <button onClick={() => setRetryCount(c => c + 1)} style={{ background: 'transparent', border: '1px solid var(--red)', borderRadius: 6, padding: '3px 10px', color: 'var(--red)', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>Reintentar</button>
+          <button className="btn-retry" onClick={() => setRetryCount(c => c + 1)}>Reintentar</button>
         </div>
       )}
 

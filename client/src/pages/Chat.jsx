@@ -576,7 +576,7 @@ export default function Chat() {
               </span>
             </div>
             {totalUnread > 0 && (
-              <span style={{ background: 'var(--red)', color: '#fff', fontSize: 10, borderRadius: 10, padding: '1px 7px', fontWeight: 700 }}>
+              <span className="badge badge-count" style={{ fontSize: 10, padding: '1px 7px' }}>
                 {totalUnread}
               </span>
             )}

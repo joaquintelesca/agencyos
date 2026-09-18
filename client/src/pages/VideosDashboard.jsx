@@ -28,7 +28,7 @@ function VideoRow({ v, navigate, showClient }) {
           <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.uploader_name}</span>
         </div>
       )}
-      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: meta.bg, color: meta.color }}>
+      <span className="badge" style={{ fontWeight: 500, background: meta.bg, color: meta.color }}>
         {v.category === 'editing' ? `${v.unresolved_count} comentario${v.unresolved_count !== 1 ? 's' : ''}` : meta.label}
       </span>
     </div>
@@ -70,14 +70,9 @@ export default function VideosDashboard() {
     <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-xl)', fontWeight: 800 }}>Videos</h1>
-        <div style={{ display: 'flex', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: 3, gap: 2 }}>
+        <div className="tab-switch">
           {[['general', 'General'], ['client', 'Por cliente']].map(([key, label]) => (
-            <button key={key} onClick={() => setView(key)}
-              style={{
-                padding: '6px 14px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                fontFamily: 'var(--font)', background: view === key ? 'var(--accent)' : 'transparent',
-                color: view === key ? '#fff' : 'var(--text2)'
-              }}>{label}</button>
+            <button key={key} className={view === key ? 'active' : ''} onClick={() => setView(key)}>{label}</button>
           ))}
         </div>
       </div>

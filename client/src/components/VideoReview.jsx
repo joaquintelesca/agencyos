@@ -503,7 +503,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       </div>
       <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{v.title}</div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 11, background: 'var(--accent-glow)', color: 'var(--accent2)', padding: '2px 7px', borderRadius: 8, fontWeight: 700 }}>v{v.version}</span>
+        <span className="badge" style={{ padding: '2px 7px', background: 'var(--accent-glow)', color: 'var(--accent2)', fontWeight: 700 }}>v{v.version}</span>
         <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.uploader_name}</span>
       </div>
       {v.task_title && (
@@ -574,7 +574,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                 <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{item.latest.title}</div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ fontSize: 11, background: 'var(--accent-glow)', color: 'var(--accent2)', padding: '2px 7px', borderRadius: 8, fontWeight: 700 }}>v{item.latest.version}</span>
+                    <span className="badge" style={{ padding: '2px 7px', background: 'var(--accent-glow)', color: 'var(--accent2)', fontWeight: 700 }}>v{item.latest.version}</span>
                     <button onClick={e => { e.stopPropagation(); setExpandedGroup(item.groupId); }}
                       style={{ fontSize: 10, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '2px 7px', color: 'var(--text2)', cursor: 'pointer', fontWeight: 600 }}>
                       {item.videos.length} versiones

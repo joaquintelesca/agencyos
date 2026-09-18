@@ -134,26 +134,21 @@ export default function Notifications() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'var(--fs-xl)' }}>Notificaciones</h1>
-          {unread > 0 && <span style={{ background: 'var(--red)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>{unread}</span>}
+          {unread > 0 && <span className="badge badge-count">{unread}</span>}
         </div>
         {unread > 0 && <button onClick={markAll} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 12px', color: 'var(--accent2)', fontSize: 12, cursor: 'pointer' }}>Marcar todo como leído</button>}
       </div>
 
-      <div style={{ display: 'flex', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: 3, gap: 2, width: 'fit-content', marginBottom: 20 }}>
+      <div className="tab-switch" style={{ marginBottom: 20 }}>
         {[['general', 'General'], ['client', 'Por cliente']].map(([key, lbl]) => (
-          <button key={key} onClick={() => setView(key)}
-            style={{
-              padding: '6px 14px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-              fontFamily: 'var(--font)', background: view === key ? 'var(--accent)' : 'transparent',
-              color: view === key ? '#fff' : 'var(--text2)'
-            }}>{lbl}</button>
+          <button key={key} className={view === key ? 'active' : ''} onClick={() => setView(key)}>{lbl}</button>
         ))}
       </div>
 
       {error && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'rgba(240,92,92,0.08)', border: '1px solid rgba(240,92,92,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: 'var(--red)' }}>
           <span>⚠️ {error}</span>
-          <button onClick={() => setRetryCount(c => c + 1)} style={{ background: 'transparent', border: '1px solid var(--red)', borderRadius: 6, padding: '3px 10px', color: 'var(--red)', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>Reintentar</button>
+          <button className="btn-retry" onClick={() => setRetryCount(c => c + 1)}>Reintentar</button>
         </div>
       )}
 

@@ -450,7 +450,7 @@ export default function Layout() {
           {sidebarError && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(240,92,92,0.08)', border: '1px solid rgba(240,92,92,0.3)', borderRadius: 7, padding: '6px 8px', marginBottom: 6, fontSize: 11, color: 'var(--red)' }}>
               <span style={{ flex: 1 }}>⚠️ {sidebarError}</span>
-              <button onClick={() => setSidebarRetryCount(c => c + 1)} style={{ background: 'transparent', border: '1px solid var(--red)', borderRadius: 5, padding: '2px 6px', color: 'var(--red)', fontSize: 10, cursor: 'pointer', flexShrink: 0 }}>Reintentar</button>
+              <button className="btn-retry btn-retry-sm" onClick={() => setSidebarRetryCount(c => c + 1)}>Reintentar</button>
             </div>
           )}
 
@@ -1101,7 +1101,7 @@ function NavItem({ to, label, icon, active, admin, badge, badgeRed }) {
         <span>{icon}</span>
         <span style={{ flex: 1 }}>{label}</span>
         {admin && <span style={{ fontSize: 9, background: 'rgba(240,168,58,0.15)', color: 'var(--yellow)', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>ADMIN</span>}
-        {badge > 0 && <span style={{ background: badgeRed ? 'var(--red)' : 'var(--accent)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, minWidth: 18, textAlign: 'center' }}>{badge}</span>}
+        {badge > 0 && <span className="badge badge-count" style={{ background: badgeRed ? 'var(--red)' : 'var(--accent)', fontSize: 10, padding: '1px 6px', minWidth: 18, textAlign: 'center' }}>{badge}</span>}
       </div>
     </Link>
   );

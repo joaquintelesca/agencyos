@@ -82,6 +82,28 @@ body {
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 .btn-icon { padding: 7px; border-radius: 8px; }
 
+/* Botón de "Reintentar" tras un error de carga — antes Dashboard.jsx, Notifications.jsx y
+   Layout.jsx repetían el mismo estilo cada uno por su lado. */
+.btn-retry {
+  background: transparent; border: 1px solid var(--red); border-radius: 6px;
+  padding: 3px 10px; color: var(--red); font-size: 12px; cursor: pointer;
+  font-family: var(--font); flex-shrink: 0;
+}
+.btn-retry-sm { padding: 2px 6px; border-radius: 5px; font-size: 10px; }
+
+/* Selector de vista tipo pestañas (segmented control) — Notifications.jsx y VideosDashboard.jsx
+   reimplementaban exactamente el mismo control por separado. */
+.tab-switch {
+  display: flex; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 9px; padding: 3px; gap: 2px; width: fit-content;
+}
+.tab-switch button {
+  padding: 6px 14px; border-radius: 7px; border: none; cursor: pointer;
+  font-size: 12px; font-weight: 600; font-family: var(--font);
+  background: transparent; color: var(--text2);
+}
+.tab-switch button.active { background: var(--accent); color: #fff; }
+
 /* Botones de editar/borrar que solo se ven al pasar el mouse por la fila del sidebar */
 .sidebar-row .reveal-btn { background: transparent; border: none; cursor: pointer; color: var(--text3); opacity: 0; transition: opacity 0.15s, color 0.15s; }
 .sidebar-row:hover .reveal-btn { opacity: 1; }
@@ -175,11 +197,17 @@ select.input { cursor: pointer; }
 }
 .avatar-lg { width: 40px; height: 40px; font-size: 16px; }
 
-/* Badge */
+/* Badge/chip — shape base para estados, prioridades, deadlines y contadores. El radio de 20px
+   (pill) que tenía antes no lo usaba ningún componente: la convención real en toda la app, ya
+   repetida decenas de veces por separado, es este chip "soft-square" de 7-8px. Cada instancia
+   sobreescribe background/color (y a veces fontSize/fontWeight/padding) según su semántica. */
 .badge {
   display: inline-flex; align-items: center; padding: 2px 8px;
-  border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
+  border-radius: 8px; font-size: 11px; font-weight: 600;
 }
+/* Contador de no leídos (Chat, Notificaciones) — más redondeado y en rojo sólido a propósito,
+   para distinguirse de un badge de estado. */
+.badge-count { border-radius: 10px; font-weight: 700; background: var(--red); color: #fff; }
 .badge-todo { background: rgba(152,152,168,0.15); color: var(--text2); }
 .badge-in_progress { background: rgba(58,158,240,0.15); color: var(--blue); }
 .badge-review { background: rgba(240,168,58,0.15); color: var(--yellow); }

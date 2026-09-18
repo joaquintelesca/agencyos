@@ -145,12 +145,12 @@ export default function ClientDashboard() {
           <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
           <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{p.name}</span>
           {isDone && (
-            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, fontWeight: 600, background: 'rgba(34,201,122,0.12)', color: 'var(--green)' }}>
+            <span className="badge" style={{ fontSize: 10, background: 'rgba(34,201,122,0.12)', color: 'var(--green)' }}>
               ✓ Terminado
             </span>
           )}
           {settled !== null && (
-            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, fontWeight: 600, background: settled ? 'rgba(34,201,122,0.12)' : 'rgba(240,168,58,0.12)', color: settled ? 'var(--green)' : 'var(--yellow)' }}>
+            <span className="badge" style={{ fontSize: 10, background: settled ? 'rgba(34,201,122,0.12)' : 'rgba(240,168,58,0.12)', color: settled ? 'var(--green)' : 'var(--yellow)' }}>
               {settled ? '💰 Saldado' : '💰 Pago pendiente'}
             </span>
           )}
@@ -162,7 +162,7 @@ export default function ClientDashboard() {
               <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.payment_editor_name}</span>
             </div>
           )}
-          {dl && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
+          {dl && <span className="badge" style={{ fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
           {p.deadline && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{new Date(p.deadline + 'T00:00:00').toLocaleDateString('es', { day: 'numeric', month: 'short' })}</span>}
         </div>
 
@@ -178,7 +178,7 @@ export default function ClientDashboard() {
         {total > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {Object.entries(statusCounts).map(([status, count]) => (
-              <span key={status} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, fontWeight: 600, background: `${STATUS_COLORS[status]}18`, color: STATUS_COLORS[status] }}>
+              <span key={status} className="badge" style={{ fontSize: 10, background: `${STATUS_COLORS[status]}18`, color: STATUS_COLORS[status] }}>
                 {STATUS_LABELS[status]} {count}
               </span>
             ))}

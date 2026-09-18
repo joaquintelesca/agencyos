@@ -354,7 +354,7 @@ export default function Project() {
               <span style={{ fontSize: 12, color: 'var(--text3)' }}>{project.client_name}</span>
             </div>
           )}
-          <span style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8 }}>{tasks.length} tareas</span>
+          <span className="badge" style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', background: 'var(--bg3)' }}>{tasks.length} tareas</span>
           <div style={{ position: 'relative' }}>
             <button onClick={() => showMembers ? setShowMembers(false) : openMembers()}
               style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'var(--font)' }}>
@@ -441,7 +441,7 @@ export default function Project() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: col.color }}>{col.label}</span>
-                    <span style={{ fontSize: 11, background: 'var(--bg3)', color: 'var(--text3)', padding: '1px 7px', borderRadius: 8 }}>
+                    <span className="badge" style={{ fontWeight: 400, background: 'var(--bg3)', color: 'var(--text3)', padding: '1px 7px' }}>
                       {tasks.filter(t => t.status === col.key).length}
                     </span>
                   </div>
@@ -775,7 +775,7 @@ function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, 
         </button>
       )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 8, background: `${priorityColors[task.priority]}18`, color: priorityColors[task.priority] }}>
+        <span className="badge" style={{ padding: '2px 7px', background: `${priorityColors[task.priority]}18`, color: priorityColors[task.priority] }}>
           {priorityLabels[task.priority]}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
