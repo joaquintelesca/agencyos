@@ -175,7 +175,7 @@ export default function Payments() {
       <div style={{ padding: '0 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 20 }}>💰</span>
-          <h2 style={{ fontWeight: 700, fontSize: 18 }}>Pagos</h2>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'var(--fs-xl)' }}>Pagos</h1>
           <span style={{ fontSize: 11, background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)', padding: '2px 8px', borderRadius: 8, fontWeight: 600 }}>🔒 Solo admin</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -224,7 +224,7 @@ export default function Payments() {
               ].map(m => (
                 <div key={m.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px' }}>
                   <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{m.label}</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: m.color }}>{m.val}</div>
+                  <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: m.color }}>{m.val}</div>
                 </div>
               ))}
             </div>
@@ -289,17 +289,17 @@ export default function Payments() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 24 }}>
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Recibido de clientes</div>
-                <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--lavender)' }}>${totalReceivedMonth.toFixed(0)}</div>
+                <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--lavender)' }}>${totalReceivedMonth.toFixed(0)}</div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{receivedThisMonth.length} proyecto{receivedThisMonth.length !== 1 ? 's' : ''}</div>
               </div>
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Pagado a editores</div>
-                <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--pink)' }}>${totalPaidEditorsMonth.toFixed(0)}</div>
+                <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--pink)' }}>${totalPaidEditorsMonth.toFixed(0)}</div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{paidToEditorsThisMonth.length} proyecto{paidToEditorsThisMonth.length !== 1 ? 's' : ''}{projects.some(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id === user.id) ? ' · no incluye tus proyectos propios' : ''}</div>
               </div>
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Ganancia del mes</div>
-                <div style={{ fontSize: 26, fontWeight: 700, color: (totalReceivedMonth - totalPaidEditorsMonth) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: (totalReceivedMonth - totalPaidEditorsMonth) >= 0 ? 'var(--green)' : 'var(--red)' }}>
                   ${(totalReceivedMonth - totalPaidEditorsMonth).toFixed(0)}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Recibido − pagado a editores</div>

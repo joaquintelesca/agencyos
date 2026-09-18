@@ -69,7 +69,7 @@ export default function VideosDashboard() {
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Videos</h1>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-xl)', fontWeight: 800 }}>Videos</h1>
         <div style={{ display: 'flex', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: 3, gap: 2 }}>
           {[['general', 'General'], ['client', 'Por cliente']].map(([key, label]) => (
             <button key={key} onClick={() => setView(key)}

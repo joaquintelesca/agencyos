@@ -82,7 +82,7 @@ export default function Dashboard() {
           onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
           <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{s.label}</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: s.color }}>{s.val}</div>
+          <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: s.color }}>{s.val}</div>
         </div>
       ))}
     </div>
@@ -255,11 +255,11 @@ export default function Dashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
           <div style={{ background: 'var(--bg3)', borderRadius: 9, padding: '10px 12px' }}>
             <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 3 }}>Total a pagar a editores</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--red)' }}>${totalEditorPending.toFixed(0)}</div>
+            <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--red)' }}>${totalEditorPending.toFixed(0)}</div>
           </div>
           <div style={{ background: 'var(--bg3)', borderRadius: 9, padding: '10px 12px' }}>
             <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 3 }}>Total a cobrar de clientes</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--blue)' }}>${totalClientPending.toFixed(0)}</div>
+            <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--blue)' }}>${totalClientPending.toFixed(0)}</div>
           </div>
         </div>
         {unpaidPayments.slice(0, PAYMENTS_PREVIEW_LIMIT).map((p, i) => {
@@ -301,7 +301,7 @@ export default function Dashboard() {
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
       <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Hola, {user?.name?.split(' ')[0]} 👋</h1>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-xl)', fontWeight: 800 }}>Hola, {user?.name?.split(' ')[0]} 👋</h1>
       </div>
 
       {error && (

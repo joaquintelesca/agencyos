@@ -90,7 +90,7 @@ export default function Team() {
     <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 4 }}>Equipo</h1>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-xl)', fontWeight: 800, marginBottom: 4 }}>Equipo</h1>
           <p style={{ color: 'var(--text2)', fontSize: 14 }}>{users.length} miembro{users.length !== 1 ? 's' : ''} en total</p>
         </div>
         {user?.role === 'admin' && (
@@ -259,15 +259,15 @@ export default function Team() {
                     <>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 20 }}>
                         <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
-                          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--yellow)' }}>{pending}</div>
+                          <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--yellow)' }}>{pending}</div>
                           <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>Pendientes</div>
                         </div>
                         <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
-                          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--yellow)' }}>{review}</div>
+                          <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--yellow)' }}>{review}</div>
                           <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>En revisión</div>
                         </div>
                         <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
-                          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>{done}</div>
+                          <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--green)' }}>{done}</div>
                           <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>Completadas</div>
                         </div>
                       </div>
@@ -302,11 +302,11 @@ export default function Team() {
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
                             <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
                               <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Pagado</div>
-                              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--green)' }}>${totalPaid.toFixed(0)}</div>
+                              <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--green)' }}>${totalPaid.toFixed(0)}</div>
                             </div>
                             <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
                               <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Pendiente</div>
-                              <div style={{ fontSize: 18, fontWeight: 700, color: totalPending > 0 ? 'var(--red)' : 'var(--text3)' }}>${totalPending.toFixed(0)}</div>
+                              <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: totalPending > 0 ? 'var(--red)' : 'var(--text3)' }}>${totalPending.toFixed(0)}</div>
                             </div>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

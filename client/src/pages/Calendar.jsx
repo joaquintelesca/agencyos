@@ -123,7 +123,7 @@ export default function CalendarPage() {
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, flex: 1, textTransform: 'capitalize' }}>{monthLabel}</h1>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-xl)', fontWeight: 800, flex: 1, textTransform: 'capitalize' }}>{monthLabel}</h1>
           <button onClick={goToToday} className="btn btn-ghost btn-sm">Hoy</button>
           <div style={{ display: 'flex', gap: 4 }}>
             <button onClick={() => goToMonth(-1)} style={navBtnStyle} title="Mes anterior">‹</button>

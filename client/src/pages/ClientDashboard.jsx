@@ -63,7 +63,7 @@ export default function ClientDashboard() {
           {client.name[0].toUpperCase()}
         </div>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700 }}>{client.name}</h1>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-xl)', fontWeight: 800 }}>{client.name}</h1>
           <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
             {client.email && <span>{client.email}</span>}
             {client.phone && <span>{client.phone}</span>}
@@ -87,7 +87,7 @@ export default function ClientDashboard() {
         ].map(s => (
           <div key={s.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px' }}>
             <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{s.label}</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: s.color }}>{s.val}</div>
+            <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: s.color }}>{s.val}</div>
           </div>
         ))}
       </div>
