@@ -269,10 +269,7 @@ export default function Project() {
     }
   };
 
-  const onDragStart = (task) => setDragTask(task);
-  const onDrop = async (status) => {
-    const task = dragTask;
-    setDragTask(null);
+  const moveTaskToStatus = async (task, status) => {
     if (!task || task.status === status) return;
     try {
       // Solo se manda el campo que cambió: mandar la tarea entera (snapshot capturado al
@@ -284,6 +281,12 @@ export default function Project() {
     } catch (e) {
       await alert('Error al mover la tarea: ' + e.message);
     }
+  };
+  const onDragStart = (task) => setDragTask(task);
+  const onDrop = (status) => {
+    const task = dragTask;
+    setDragTask(null);
+    moveTaskToStatus(task, status);
   };
 
   const formatTime = (ts) => new Date(ts).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
@@ -426,7 +429,8 @@ export default function Project() {
                     onDelete={user.role === 'admin' ? () => deleteTask(task.id) : null}
                     onDragStart={() => onDragStart(task)} initials={initials}
                     onOpenVideo={openTaskVideo}
-                    canDrag={user.role === 'admin' || task.assigned_to === user.id} />
+                    canDrag={user.role === 'admin' || task.assigned_to === user.id}
+                    onMoveToReview={(user.role === 'admin' || task.assigned_to === user.id) ? () => moveTaskToStatus(task, 'review') : null} />
                 ))}
               </div>
               {user.role === 'admin' && (
@@ -681,7 +685,7 @@ export default function Project() {
   );
 }
 
-function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, canDrag = true }) {
+function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, canDrag = true, onMoveToReview }) {
   const priorityColors = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' };
   const priorityLabels = { high: 'Alta', medium: 'Media', low: 'Baja' };
   return (
@@ -698,6 +702,14 @@ function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, 
           title="Ver el video de esta tarea"
           style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 7, padding: '3px 8px', marginBottom: 10, color: 'var(--text2)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}>
           🎬 Ver video
+        </button>
+      )}
+      {task.status === 'feedback' && onMoveToReview && (
+        <button
+          onClick={e => { e.stopPropagation(); onMoveToReview(); }}
+          title="Mueve la tarea a 'En revisión'"
+          style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%', justifyContent: 'center', background: 'var(--accent-glow)', border: '1px solid var(--accent)', borderRadius: 7, padding: '5px 8px', marginBottom: 10, color: 'var(--accent2)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)' }}>
+          ✓ Ya apliqué el feedback → revisión
         </button>
       )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

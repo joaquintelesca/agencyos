@@ -709,6 +709,16 @@ async function initDB() {
   for (const [indexName, table, column] of indexes) {
     await db.raw(`CREATE INDEX IF NOT EXISTS ${indexName} ON ${table} (${column})`);
   }
+
+  // Todo lo de arriba es el patrón viejo (~35 bloques `hasColumn`/`hasTable` acumulados con el
+  // tiempo) — se deja tal cual, sin tocar, porque ya funciona y es idempotente. De acá en
+  // adelante, cualquier cambio de esquema NUEVO va como una migración de knex versionada (carpeta
+  // migrations/, se crea con `npx knex migrate:make nombre_del_cambio`) en vez de otro bloque
+  // inline — con 35 ya acumulados, cada arranque hacía esa cantidad de queries de introspección
+  // solo para decidir si migrar, y no quedaba ningún historial ni forma de hacer rollback. knex
+  // guarda su propia tabla de control (knex_migrations) así que esto es seguro de correr en cada
+  // arranque: si no hay migraciones nuevas pendientes, no hace nada.
+  await db.migrate.latest({ directory: path.join(__dirname, '../migrations') });
 }
 
 // Headers de seguridad HTTP. CSP explícita (useDefaults: false) en vez de confiar en la
