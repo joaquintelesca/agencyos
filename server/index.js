@@ -555,6 +555,18 @@ async function initDB() {
     });
   }
 
+  // Si se marca "cliente ya pagó" (o "editor pagado") en un proyecto que todavía está activo —
+  // ej. un anticipo antes de terminar el trabajo — eso NO debería alcanzar para que aparezca en
+  // Pagos: esa sección es específicamente para proyectos ya marcados "terminado". ever_completed
+  // guarda que el proyecto llegó a estar terminado alguna vez, y una vez en true nunca se vuelve a
+  // false — así, si después se reabre para un retoque, Pagos/Balance mensual no pierden el
+  // historial de lo que ya se pagó/cobró (ese sí era el bug real a resolver).
+  const hasEverCompleted = await db.schema.hasColumn('projects', 'ever_completed');
+  if (!hasEverCompleted) {
+    await db.schema.table('projects', t => { t.boolean('ever_completed').defaultTo(false); });
+    await db('projects').where({ status: 'completed' }).update({ ever_completed: true });
+  }
+
   // Clients table
   const hasClients = await db.schema.hasTable('clients');
   if (!hasClients) {
@@ -1191,7 +1203,9 @@ app.patch('/api/projects/:id/status', auth, async (req, res) => {
     if (status === 'completed' && (!existing.payment_editor_id || !hasPrice)) {
       return res.status(400).json({ error: 'Para marcar el proyecto como terminado necesita un editor asignado y un precio cargado' });
     }
-    await db('projects').where({ id: req.params.id }).update({ status });
+    const update = { status };
+    if (status === 'completed') update.ever_completed = true; // nunca se vuelve a poner en false
+    await db('projects').where({ id: req.params.id }).update(update);
     const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first());
     await emitToProject(req.params.id, 'project:updated', project, { sanitizeForNonAdmin: stripProjectFinancials });
     res.json(project);
@@ -1481,14 +1495,16 @@ app.get('/api/payments', auth, async (req, res) => {
     // /api/projects/:id/status), no por inferirlo de las tareas — con proyectos donde se van
     // sumando tareas con el tiempo, "todas las tareas en done" es una señal que se puede romper
     // apenas se agrega una tarea nueva a un proyecto que ya se había dado por terminado.
-    // También entra si YA tiene un pago/cobro registrado aunque hoy esté "activo" de nuevo — si no,
-    // reabrir un proyecto ya pagado (ej. para un retoque pedido por el cliente) lo hacía desaparecer
-    // en silencio de acá y del Balance mensual hasta volver a marcarlo terminado.
+    // ever_completed (en vez de mirar status='completed' solo) para que reabrir un proyecto ya
+    // pagado (ej. para un retoque) no lo haga desaparecer en silencio de acá y del Balance mensual
+    // — pero OJO: un proyecto activo con un anticipo cobrado (client_paid sin haberse completado
+    // nunca) NO debe aparecer acá, es información de bookkeeping del proyecto, no un "pago" listo
+    // para trackear en esta sección.
     const projects = await db('projects as p')
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .whereNotNull('p.payment_editor_id')
-      .where(function() { this.where('p.status', 'completed').orWhere('p.editor_paid', 'paid').orWhere('p.client_paid', 'cobrado'); })
+      .where(function() { this.where('p.status', 'completed').orWhere('p.ever_completed', true); })
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .orderBy('p.created_at', 'desc');
     projects.forEach(p => withDeletedEditorFallback(p, 'editor_name'));
