@@ -5,14 +5,6 @@ import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
 import { uploadVideoChunked } from '../utils/upload';
 
-const DARK = {
-  bg0: '#0d0d0f', bg1: '#141417', bg2: '#1c1c21', bg3: '#2a2a31',
-  text: '#f0f0f5', text2: '#9898a8', text3: '#5c5c70',
-  accent: '#7c6af7', accentDim: '#7c6af720', accentText: '#9b8df9',
-  orange: '#f0a83a', orangeDim: '#f0a83a20',
-  red: '#f05c5c', border: '#2a2a31',
-};
-
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
   const { api, user, socket, mediaUrl, token } = useAuth();
   const { scheduleDelete } = useUndo();
@@ -247,8 +239,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   }, [annotations, comments, currentTime, currentAnnotation, activeComment]);
 
   const drawAnnotation = (ctx, ann) => {
-    ctx.strokeStyle = ann.color || DARK.orange;
-    ctx.fillStyle = ann.color || DARK.orange;
+    ctx.strokeStyle = ann.color || 'var(--yellow)';
+    ctx.fillStyle = ann.color || 'var(--yellow)';
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -654,31 +646,31 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const rangeEndPct = duration && rangeEnd != null ? (rangeEnd / duration) * 100 : null;
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: DARK.bg0 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
 
       {/* Top bar: back, version dropdown, title */}
-      <div style={{ padding: '8px 14px', background: DARK.bg1, borderBottom: `1px solid ${DARK.border}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+      <div style={{ padding: '8px 14px', background: 'var(--bg2)', borderBottom: `1px solid var(--border)`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <button onClick={async () => { if (await confirmDiscardDraft()) setSelectedVideo(null); }}
-          style={{ background: 'transparent', border: `1px solid ${DARK.border}`, borderRadius: 6, padding: '4px 10px', color: DARK.text2, fontSize: 12, cursor: 'pointer' }}>
+          style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
           ← Volver
         </button>
         {/* Version selector */}
         <select value={selectedVideo.id}
           onChange={async e => { if (!(await confirmDiscardDraft())) return; const v = videos.find(x => x.id === e.target.value); if (v) setSelectedVideo(v); }}
-          style={{ background: DARK.bg2, border: `1px solid ${DARK.border}`, borderRadius: 7, color: DARK.text, fontSize: 12, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
+          style={{ background: 'var(--bg3)', border: `1px solid var(--border)`, borderRadius: 7, color: 'var(--text)', fontSize: 12, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
           {/* All versions of all videos — grouped by title */}
           {videos.map(v => (
             <option key={v.id} value={v.id}>{v.title} — v{v.version}</option>
           ))}
         </select>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: DARK.accentDim, border: `1px solid ${DARK.accent}50`, borderRadius: 6, padding: '3px 9px', fontSize: 11, color: DARK.accentText, fontWeight: 600 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--accent-glow)', border: `1px solid rgba(124,106,247,0.31)`, borderRadius: 6, padding: '3px 9px', fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>
           v{selectedVideo.version}
         </div>
-        <span style={{ fontSize: 13, fontWeight: 600, color: DARK.text, flex: 1 }}>{selectedVideo.title}</span>
-        <span style={{ fontSize: 11, color: DARK.text3 }}>{comments.length} comentarios</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{selectedVideo.title}</span>
+        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{comments.length} comentarios</span>
         {(user.role === 'admin' || selectedVideo.uploaded_by === user.id) && (
           <button onClick={() => deleteVideo(selectedVideo)} title="Eliminar video"
-            style={{ background: 'transparent', border: `1px solid ${DARK.border}`, borderRadius: 6, padding: '4px 10px', color: DARK.text2, fontSize: 12, cursor: 'pointer' }}>
+            style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
             🗑 Eliminar
           </button>
         )}
@@ -710,17 +702,17 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           </div>
 
           {/* Drawing toolbar */}
-          <div style={{ background: DARK.bg1, borderTop: `1px solid ${DARK.border}`, borderBottom: `1px solid ${DARK.border}`, padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <span style={{ fontSize: 11, color: DARK.text3, marginRight: 4 }}>Dibujar:</span>
+          <div style={{ background: 'var(--bg2)', borderTop: `1px solid var(--border)`, borderBottom: `1px solid var(--border)`, padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <span style={{ fontSize: 11, color: 'var(--text3)', marginRight: 4 }}>Dibujar:</span>
             {[['freehand', '✏️', 'Libre'], ['arrow', '↗', 'Flecha'], ['rect', '⬜', 'Rectángulo']].map(([t, icon, label]) => (
               <button key={t} onClick={() => setTool(t)}
-                style={{ background: tool === t ? DARK.accentDim : 'transparent', border: `1px solid ${tool === t ? DARK.accent : DARK.border}`, borderRadius: 6, padding: '4px 10px', color: tool === t ? DARK.accentText : DARK.text2, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                style={{ background: tool === t ? 'var(--accent-glow)' : 'transparent', border: `1px solid ${tool === t ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 6, padding: '4px 10px', color: tool === t ? 'var(--accent2)' : 'var(--text2)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                 {icon} {label}
               </button>
             ))}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
-              <span style={{ fontSize: 11, color: DARK.text3 }}>Color:</span>
-              {[DARK.orange, DARK.accent, DARK.red, '#10b981', '#fff'].map(c => (
+              <span style={{ fontSize: 11, color: 'var(--text3)' }}>Color:</span>
+              {['var(--yellow)', 'var(--accent)', 'var(--red)', '#10b981', '#fff'].map(c => (
                 <div key={c} onClick={() => setDrawColor(c)}
                   style={{ width: 18, height: 18, borderRadius: '50%', background: c, cursor: 'pointer', border: drawColor === c ? '2px solid #fff' : '2px solid transparent', transition: 'all 0.1s' }} />
               ))}
@@ -728,24 +720,24 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
             <div style={{ flex: 1 }} />
             {annotations.length > 0 && (
               <button onClick={clearAnnotations}
-                style={{ background: 'transparent', border: `1px solid ${DARK.border}`, borderRadius: 6, padding: '4px 10px', color: DARK.red, fontSize: 12, cursor: 'pointer' }}>
+                style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--red)', fontSize: 12, cursor: 'pointer' }}>
                 🗑 Limpiar dibujo
               </button>
             )}
           </div>
 
           {/* Timeline */}
-          <div style={{ background: DARK.bg1, padding: '0 14px', flexShrink: 0 }}>
+          <div style={{ background: 'var(--bg2)', padding: '0 14px', flexShrink: 0 }}>
             <div style={{ position: 'relative', height: 40, display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={seek}>
-              <div style={{ width: '100%', height: 4, background: DARK.bg3, borderRadius: 2, position: 'relative' }}>
+              <div style={{ width: '100%', height: 4, background: 'var(--border)', borderRadius: 2, position: 'relative' }}>
                 {/* Progress */}
-                <div style={{ width: `${progressPct}%`, height: '100%', background: DARK.accent, borderRadius: 2 }} />
+                <div style={{ width: `${progressPct}%`, height: '100%', background: 'var(--accent)', borderRadius: 2 }} />
                 {/* Range highlight */}
                 {rangePct != null && rangeEndPct != null && (
-                  <div style={{ position: 'absolute', top: 0, left: `${rangePct}%`, width: `${rangeEndPct - rangePct}%`, height: '100%', background: `${DARK.orange}50`, borderLeft: `2px solid ${DARK.orange}`, borderRight: `2px solid ${DARK.orange}` }} />
+                  <div style={{ position: 'absolute', top: 0, left: `${rangePct}%`, width: `${rangeEndPct - rangePct}%`, height: '100%', background: `rgba(240,168,58,0.31)`, borderLeft: `2px solid var(--yellow)`, borderRight: `2px solid var(--yellow)` }} />
                 )}
                 {/* Playhead */}
-                <div style={{ position: 'absolute', top: '50%', left: `${progressPct}%`, transform: 'translate(-50%,-50%)', width: 13, height: 13, borderRadius: '50%', background: DARK.accent, border: '2px solid #fff', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', top: '50%', left: `${progressPct}%`, transform: 'translate(-50%,-50%)', width: 13, height: 13, borderRadius: '50%', background: 'var(--accent)', border: '2px solid #fff', pointerEvents: 'none' }} />
                 {/* Comment markers */}
                 {comments.map(c => {
                   const pct = duration ? (c.timestamp_sec / duration) * 100 : 0;
@@ -754,12 +746,12 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                     const endPct = duration ? (c.timestamp_end / duration) * 100 : 0;
                     return (
                       <div key={c.id} onClick={e => { e.stopPropagation(); jumpToComment(c); }}
-                        style={{ position: 'absolute', top: 0, left: `${pct}%`, width: `${endPct - pct}%`, height: '100%', background: `${DARK.orange}40`, borderLeft: `2px solid ${DARK.orange}`, borderRight: `2px solid ${DARK.orange}`, cursor: 'pointer' }} />
+                        style={{ position: 'absolute', top: 0, left: `${pct}%`, width: `${endPct - pct}%`, height: '100%', background: `rgba(240,168,58,0.25)`, borderLeft: `2px solid var(--yellow)`, borderRight: `2px solid var(--yellow)`, cursor: 'pointer' }} />
                     );
                   }
                   return (
                     <div key={c.id} onClick={e => { e.stopPropagation(); jumpToComment(c); }}
-                      style={{ position: 'absolute', top: '50%', left: `${pct}%`, transform: 'translate(-50%,-50%)', width: 3, height: 16, background: c.user_id === user.id ? DARK.accent : DARK.orange, borderRadius: 2, cursor: 'pointer' }}
+                      style={{ position: 'absolute', top: '50%', left: `${pct}%`, transform: 'translate(-50%,-50%)', width: 3, height: 16, background: c.user_id === user.id ? 'var(--accent)' : 'var(--yellow)', borderRadius: 2, cursor: 'pointer' }}
                       title={c.content} />
                   );
                 })}
@@ -771,10 +763,10 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
               <button onClick={() => { if (videoRef.current) { videoRef.current.currentTime = 0; setCurrentTime(0); } }}
                 style={ctrlBtn}>⏮</button>
               <button onClick={togglePlay}
-                style={{ ...ctrlBtn, color: DARK.text, fontSize: 20 }}>{playing ? '⏸' : '▶'}</button>
+                style={{ ...ctrlBtn, color: 'var(--text)', fontSize: 20 }}>{playing ? '⏸' : '▶'}</button>
               <button onClick={() => { if (videoRef.current) { videoRef.current.currentTime = Math.min(duration, currentTime + 5); } }}
                 style={ctrlBtn}>⏩</button>
-              <span style={{ fontSize: 12, color: DARK.text2, fontVariantNumeric: 'tabular-nums', minWidth: 80 }}>
+              <span style={{ fontSize: 12, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums', minWidth: 80 }}>
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>
               <div style={{ flex: 1 }} />
@@ -782,30 +774,30 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
               {/* Range mode button */}
               {!rangeMode ? (
                 <button onClick={() => { setRangeMode(true); setRangeStart(null); setRangeEnd(null); }}
-                  style={{ background: DARK.orangeDim, border: `1px solid ${DARK.orange}50`, borderRadius: 6, padding: '4px 10px', color: DARK.orange, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                  style={{ background: 'rgba(240,168,58,0.15)', border: `1px solid rgba(240,168,58,0.31)`, borderRadius: 6, padding: '4px 10px', color: 'var(--yellow)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                   ⬌ Seleccionar rango
                 </button>
               ) : (
                 <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
                   <button onClick={markRangeStart}
-                    style={{ background: rangeStart != null ? DARK.orangeDim : 'transparent', border: `1px solid ${DARK.orange}`, borderRadius: 6, padding: '4px 10px', color: DARK.orange, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                    style={{ background: rangeStart != null ? 'rgba(240,168,58,0.15)' : 'transparent', border: `1px solid var(--yellow)`, borderRadius: 6, padding: '4px 10px', color: 'var(--yellow)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                     {rangeStart != null ? `▶ ${formatTime(rangeStart)}` : '▶ Marcar inicio'}
                   </button>
                   {rangeStart != null && (
                     <button onClick={markRangeEnd}
-                      style={{ background: rangeEnd != null ? DARK.orangeDim : 'transparent', border: `1px solid ${DARK.orange}`, borderRadius: 6, padding: '4px 10px', color: DARK.orange, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                      style={{ background: rangeEnd != null ? 'rgba(240,168,58,0.15)' : 'transparent', border: `1px solid var(--yellow)`, borderRadius: 6, padding: '4px 10px', color: 'var(--yellow)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                       {rangeEnd != null ? `⏹ ${formatTime(rangeEnd)}` : '⏹ Marcar fin'}
                     </button>
                   )}
                   <button onClick={() => { setRangeMode(false); setRangeStart(null); setRangeEnd(null); setCapturedTs(null); setShowCommentInput(false); }}
-                    style={{ background: 'transparent', border: `1px solid ${DARK.border}`, borderRadius: 6, padding: '4px 8px', color: DARK.text3, fontSize: 11, cursor: 'pointer' }}>✕</button>
+                    style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 8px', color: 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>✕</button>
                 </div>
               )}
 
               {/* Playback speed */}
               {[0.5, 1, 1.5, 2].map(r => (
                 <button key={r} onClick={() => setRate(r)}
-                  style={{ background: playbackRate === r ? DARK.accentDim : 'transparent', border: `1px solid ${playbackRate === r ? DARK.accent : 'transparent'}`, borderRadius: 5, padding: '3px 7px', color: playbackRate === r ? DARK.accentText : DARK.text3, fontSize: 11, cursor: 'pointer' }}>
+                  style={{ background: playbackRate === r ? 'var(--accent-glow)' : 'transparent', border: `1px solid ${playbackRate === r ? 'var(--accent)' : 'transparent'}`, borderRadius: 5, padding: '3px 7px', color: playbackRate === r ? 'var(--accent2)' : 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>
                   {r}×
                 </button>
               ))}
@@ -815,7 +807,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                 const t = videoRef.current?.currentTime || 0;
                 setCapturedTs({ type: 'single', ts: t });
                 setShowCommentInput(true);
-              }} style={{ background: DARK.accentDim, border: `1px solid ${DARK.accent}`, borderRadius: 6, padding: '4px 10px', color: DARK.accentText, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              }} style={{ background: 'var(--accent-glow)', border: `1px solid var(--accent)`, borderRadius: 6, padding: '4px 10px', color: 'var(--accent2)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                 💬 Comentar aquí
               </button>
             </div>
@@ -823,45 +815,45 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
 
           {/* Comment input */}
           {showCommentInput && (
-            <div style={{ background: DARK.bg1, borderTop: `1px solid ${DARK.border}`, padding: '10px 14px', flexShrink: 0 }}>
+            <div style={{ background: 'var(--bg2)', borderTop: `1px solid var(--border)`, padding: '10px 14px', flexShrink: 0 }}>
               {capturedTs?.type === 'range' ? (
-                <div style={{ background: DARK.bg2, border: `1px solid ${DARK.orange}`, borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, color: DARK.orange, fontWeight: 600 }}>⬌ Rango: {formatTime(capturedTs.start)} → {formatTime(capturedTs.end)}</span>
+                <div style={{ background: 'var(--bg3)', border: `1px solid var(--yellow)`, borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 11, color: 'var(--yellow)', fontWeight: 600 }}>⬌ Rango: {formatTime(capturedTs.start)} → {formatTime(capturedTs.end)}</span>
                   <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); setRangeMode(false); setRangeStart(null); setRangeEnd(null); clearAnnotations(); }}
-                    style={{ background: 'transparent', border: 'none', color: DARK.text3, cursor: 'pointer', fontSize: 13 }}>✕</button>
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 13 }}>✕</button>
                 </div>
               ) : (
-                <div style={{ background: DARK.bg2, border: `1px solid ${DARK.accent}`, borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, color: DARK.accentText, fontWeight: 600 }}>⏸ Pausado en {formatTime(capturedTs.ts)}</span>
+                <div style={{ background: 'var(--bg3)', border: `1px solid var(--accent)`, borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>⏸ Pausado en {formatTime(capturedTs.ts)}</span>
                   <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
-                    style={{ background: 'transparent', border: 'none', color: DARK.text3, cursor: 'pointer', fontSize: 13 }}>✕</button>
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 13 }}>✕</button>
                 </div>
               )}
               <textarea value={commentText} onChange={e => setCommentText(e.target.value)}
                 placeholder="Escribí tu feedback..."
                 autoFocus
-                style={{ width: '100%', background: DARK.bg2, border: `1px solid ${DARK.border}`, borderRadius: 8, padding: '8px 10px', color: DARK.text, fontSize: 13, fontFamily: 'inherit', resize: 'none', minHeight: 56, outline: 'none', boxSizing: 'border-box' }}
-                onFocus={e => e.target.style.borderColor = DARK.accent}
-                onBlur={e => e.target.style.borderColor = DARK.border}
+                style={{ width: '100%', background: 'var(--bg3)', border: `1px solid var(--border)`, borderRadius: 8, padding: '8px 10px', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit', resize: 'none', minHeight: 56, outline: 'none', boxSizing: 'border-box' }}
+                onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                onBlur={e => e.target.style.borderColor = 'var(--border)'}
                 onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitComment(); }}
               />
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button onClick={() => commentFileRef.current?.click()}
-                    style={{ background: 'transparent', border: `1px solid ${DARK.border}`, borderRadius: 6, padding: '4px 10px', color: DARK.text2, fontSize: 12, cursor: 'pointer' }}>
+                    style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
                     📎 Adjuntar
                   </button>
                   <input ref={commentFileRef} type="file" multiple style={{ display: 'none' }} onChange={e => setCommentFiles(Array.from(e.target.files))} />
-                  {commentFiles.length > 0 && <span style={{ fontSize: 11, color: DARK.text2 }}>{commentFiles.length} archivo(s)</span>}
-                  {annotations.length > 0 && <span style={{ fontSize: 11, color: DARK.orange }}>✏️ Incluye dibujo</span>}
+                  {commentFiles.length > 0 && <span style={{ fontSize: 11, color: 'var(--text2)' }}>{commentFiles.length} archivo(s)</span>}
+                  {annotations.length > 0 && <span style={{ fontSize: 11, color: 'var(--yellow)' }}>✏️ Incluye dibujo</span>}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
-                    style={{ background: 'transparent', border: `1px solid ${DARK.border}`, borderRadius: 6, padding: '5px 12px', color: DARK.text2, fontSize: 12, cursor: 'pointer' }}>
+                    style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '5px 12px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
                     Cancelar
                   </button>
                   <button onClick={submitComment} disabled={!commentText.trim()}
-                    style={{ background: DARK.accent, border: 'none', borderRadius: 6, padding: '5px 14px', color: '#fff', fontSize: 12, fontWeight: 600, cursor: commentText.trim() ? 'pointer' : 'not-allowed', opacity: commentText.trim() ? 1 : 0.5 }}>
+                    style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '5px 14px', color: '#fff', fontSize: 12, fontWeight: 600, cursor: commentText.trim() ? 'pointer' : 'not-allowed', opacity: commentText.trim() ? 1 : 0.5 }}>
                     Comentar
                   </button>
                 </div>
@@ -871,22 +863,22 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         </div>
 
         {/* RIGHT: comments panel */}
-        <div style={{ width: 320, background: DARK.bg1, borderLeft: `1px solid ${DARK.border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
-          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${DARK.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: DARK.text }}>Comentarios</span>
-            <span style={{ fontSize: 11, color: DARK.text3 }}>{comments.length}</span>
+        <div style={{ width: 320, background: 'var(--bg2)', borderLeft: `1px solid var(--border)`, display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid var(--border)`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Comentarios</span>
+            <span style={{ fontSize: 11, color: 'var(--text3)' }}>{comments.length}</span>
           </div>
-          <div style={{ display: 'flex', borderBottom: `1px solid ${DARK.border}`, flexShrink: 0 }}>
+          <div style={{ display: 'flex', borderBottom: `1px solid var(--border)`, flexShrink: 0 }}>
             {[['all','Todos'],['pending','Pendientes'],['resolved','Hechos']].map(([val, label]) => (
               <button key={val} onClick={() => setFilter(val)}
-                style={{ flex: 1, background: 'transparent', border: 'none', borderBottom: filter === val ? `2px solid ${DARK.accent}` : '2px solid transparent', padding: '7px 4px', fontSize: 11, color: filter === val ? DARK.accentText : DARK.text3, cursor: 'pointer', fontWeight: filter === val ? 600 : 400, transition: 'all 0.15s' }}>
+                style={{ flex: 1, background: 'transparent', border: 'none', borderBottom: filter === val ? `2px solid var(--accent)` : '2px solid transparent', padding: '7px 4px', fontSize: 11, color: filter === val ? 'var(--accent2)' : 'var(--text3)', cursor: 'pointer', fontWeight: filter === val ? 600 : 400, transition: 'all 0.15s' }}>
                 {label}
               </button>
             ))}
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {comments.filter(c => filter === 'all' ? true : filter === 'resolved' ? c.resolved : !c.resolved).length === 0 && (
-              <div style={{ padding: 30, textAlign: 'center', color: DARK.text3, fontSize: 13 }}>
+              <div style={{ padding: 30, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
                 <div>Pausá el video para comentar</div>
               </div>
@@ -895,39 +887,39 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
               .filter(c => filter === 'all' ? true : filter === 'resolved' ? c.resolved : !c.resolved)
               .map(c => (
               <div key={c.id} onClick={() => jumpToComment(c)}
-                style={{ padding: '8px 12px', borderBottom: `1px solid ${DARK.bg2}`, cursor: 'pointer', background: activeComment === c.id ? DARK.bg2 : 'transparent', borderLeft: activeComment === c.id ? `2px solid ${DARK.accent}` : c.resolved ? `2px solid #10b981` : '2px solid transparent', opacity: c.resolved ? 0.6 : 1, transition: 'all 0.1s' }}
-                onMouseEnter={e => { if (activeComment !== c.id) e.currentTarget.style.background = DARK.bg2; }}
+                style={{ padding: '8px 12px', borderBottom: `1px solid var(--bg3)`, cursor: 'pointer', background: activeComment === c.id ? 'var(--bg3)' : 'transparent', borderLeft: activeComment === c.id ? `2px solid var(--accent)` : c.resolved ? `2px solid #10b981` : '2px solid transparent', opacity: c.resolved ? 0.6 : 1, transition: 'all 0.1s' }}
+                onMouseEnter={e => { if (activeComment !== c.id) e.currentTarget.style.background = 'var(--bg3)'; }}
                 onMouseLeave={e => { if (activeComment !== c.id) e.currentTarget.style.background = 'transparent'; }}>
                 {/* Timestamp badge */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   {c.timestamp_end != null ? (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: DARK.orangeDim, color: DARK.orange, fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10 }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(240,168,58,0.15)', color: 'var(--yellow)', fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10 }}>
                       ⬌ {formatTime(c.timestamp_sec)} → {formatTime(c.timestamp_end)}
                     </div>
                   ) : (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: DARK.accentDim, color: DARK.accentText, fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10 }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--accent-glow)', color: 'var(--accent2)', fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10 }}>
                       ▶ {formatTime(c.timestamp_sec)}
                     </div>
                   )}
                   <button onClick={e => { e.stopPropagation(); resolveComment(c.id); }}
                     title={c.resolved ? 'Marcar como pendiente' : 'Marcar como hecho'}
-                    style={{ background: c.resolved ? '#10b98120' : 'transparent', border: `1px solid ${c.resolved ? '#10b981' : DARK.border}`, borderRadius: 6, width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 13, transition: 'all 0.15s', flexShrink: 0 }}>
+                    style={{ background: c.resolved ? '#10b98120' : 'transparent', border: `1px solid ${c.resolved ? '#10b981' : 'var(--border)'}`, borderRadius: 6, width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 13, transition: 'all 0.15s', flexShrink: 0 }}>
                     {c.resolved ? '✅' : '☐'}
                   </button>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: c.avatar_color || DARK.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: c.avatar_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
                     {initials(c.user_name)}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, color: DARK.text2, marginBottom: 3 }}>{c.user_name}</div>
-                    <div style={{ fontSize: 12, color: DARK.text, lineHeight: 1.5 }}>{c.content}</div>
-                    {c.annotation && <div style={{ fontSize: 10, color: DARK.orange, marginTop: 3 }}>✏️ Incluye dibujo</div>}
+                    <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 3 }}>{c.user_name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{c.content}</div>
+                    {c.annotation && <div style={{ fontSize: 10, color: 'var(--yellow)', marginTop: 3 }}>✏️ Incluye dibujo</div>}
                     {c.attachments?.length > 0 && (
                       <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 3 }}>
                         {c.attachments.map(a => (
                           <a key={a.id} href={mediaUrl(`/uploads/${a.filename}`)} target="_blank" rel="noreferrer"
-                            style={{ fontSize: 11, color: DARK.accentText, display: 'flex', alignItems: 'center', gap: 4, background: DARK.bg3, padding: '3px 7px', borderRadius: 5, textDecoration: 'none' }}
+                            style={{ fontSize: 11, color: 'var(--accent2)', display: 'flex', alignItems: 'center', gap: 4, background: 'var(--border)', padding: '3px 7px', borderRadius: 5, textDecoration: 'none' }}
                             onClick={e => e.stopPropagation()}>
                             📎 {a.original_name}
                           </a>
@@ -937,36 +929,36 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                     {/* Reply button */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
                       <button onClick={e => { e.stopPropagation(); setReplyingTo(replyingTo === c.id ? null : c.id); setReplyText(''); setReplyFiles([]); }}
-                        style={{ background: 'transparent', border: 'none', color: DARK.text3, cursor: 'pointer', fontSize: 11, padding: 0, display: 'flex', alignItems: 'center', gap: 3 }}
-                        onMouseEnter={e => e.currentTarget.style.color = DARK.text2}
-                        onMouseLeave={e => e.currentTarget.style.color = DARK.text3}>
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 11, padding: 0, display: 'flex', alignItems: 'center', gap: 3 }}
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--text2)'}
+                        onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
                         ↩ Responder
                       </button>
                       {(c.user_id === user.id || user.role === 'admin') && (
                         <button onClick={e => { e.stopPropagation(); deleteComment(c.id); }}
-                          style={{ background: 'transparent', border: 'none', color: DARK.text3, cursor: 'pointer', fontSize: 11, padding: 0 }}
-                          onMouseEnter={e => e.currentTarget.style.color = DARK.red}
-                          onMouseLeave={e => e.currentTarget.style.color = DARK.text3}>
+                          style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 11, padding: 0 }}
+                          onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
                           🗑 Eliminar
                         </button>
                       )}
                     </div>
                     {/* Reply thread */}
                     {c.replies?.length > 0 && (
-                      <div style={{ marginTop: 8, borderTop: `1px solid ${DARK.bg3}`, paddingTop: 8, display: 'flex', gap: 6 }}>
-                        <div style={{ width: 1, background: DARK.bg3, flexShrink: 0, marginLeft: 10 }} />
+                      <div style={{ marginTop: 8, borderTop: `1px solid var(--border)`, paddingTop: 8, display: 'flex', gap: 6 }}>
+                        <div style={{ width: 1, background: 'var(--border)', flexShrink: 0, marginLeft: 10 }} />
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {c.replies.map(r => (
                             <div key={r.id} style={{ display: 'flex', gap: 7 }}>
-                              <div style={{ width: 20, height: 20, borderRadius: '50%', background: r.avatar_color || DARK.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                              <div style={{ width: 20, height: 20, borderRadius: '50%', background: r.avatar_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
                                 {initials(r.user_name)}
                               </div>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 10, color: DARK.text3, marginBottom: 2 }}>{r.user_name}</div>
-                                <div style={{ fontSize: 12, color: DARK.text, lineHeight: 1.4 }}>{r.content}</div>
+                                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2 }}>{r.user_name}</div>
+                                <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.4 }}>{r.content}</div>
                                 {r.attachments?.length > 0 && r.attachments.map(a => (
                                   <a key={a.id} href={mediaUrl(`/uploads/${a.filename}`)} target="_blank" rel="noreferrer"
-                                    style={{ fontSize: 11, color: DARK.accentText, display: 'flex', alignItems: 'center', gap: 3, marginTop: 3, textDecoration: 'none' }}
+                                    style={{ fontSize: 11, color: 'var(--accent2)', display: 'flex', alignItems: 'center', gap: 3, marginTop: 3, textDecoration: 'none' }}
                                     onClick={e => e.stopPropagation()}>
                                     📎 {a.original_name}
                                   </a>
@@ -979,33 +971,33 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                     )}
                     {/* Reply input */}
                     {replyingTo === c.id && (
-                      <div style={{ marginTop: 8, borderTop: `1px solid ${DARK.bg3}`, paddingTop: 8 }} onClick={e => e.stopPropagation()}>
+                      <div style={{ marginTop: 8, borderTop: `1px solid var(--border)`, paddingTop: 8 }} onClick={e => e.stopPropagation()}>
                         <textarea
                           value={replyText}
                           onChange={e => setReplyText(e.target.value)}
                           placeholder="Dejá tu respuesta acá..."
                           autoFocus
                           rows={2}
-                          style={{ width: '100%', background: DARK.bg0, border: `1px solid ${DARK.border}`, borderRadius: 7, padding: '6px 9px', color: DARK.text, fontSize: 12, fontFamily: 'inherit', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
-                          onFocus={e => e.target.style.borderColor = DARK.accent}
-                          onBlur={e => e.target.style.borderColor = DARK.border}
+                          style={{ width: '100%', background: 'var(--bg)', border: `1px solid var(--border)`, borderRadius: 7, padding: '6px 9px', color: 'var(--text)', fontSize: 12, fontFamily: 'inherit', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+                          onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                          onBlur={e => e.target.style.borderColor = 'var(--border)'}
                           onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitReply(c.id); }}
                         />
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 5 }}>
                           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                             <input ref={replyFileRef} type="file" multiple style={{ display: 'none' }} onChange={e => setReplyFiles(Array.from(e.target.files))} />
                             <button onClick={() => replyFileRef.current?.click()}
-                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: replyFiles.length > 0 ? DARK.orange : DARK.text3, fontSize: 16, padding: '2px 4px', borderRadius: 5 }}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: replyFiles.length > 0 ? 'var(--yellow)' : 'var(--text3)', fontSize: 16, padding: '2px 4px', borderRadius: 5 }}
                               title="Adjuntar archivo">📎</button>
-                            {replyFiles.length > 0 && <span style={{ fontSize: 10, color: DARK.orange }}>{replyFiles.length} archivo(s)</span>}
+                            {replyFiles.length > 0 && <span style={{ fontSize: 10, color: 'var(--yellow)' }}>{replyFiles.length} archivo(s)</span>}
                           </div>
                           <div style={{ display: 'flex', gap: 5 }}>
                             <button onClick={() => { setReplyingTo(null); setReplyText(''); setReplyFiles([]); }}
-                              style={{ background: 'transparent', border: `1px solid ${DARK.border}`, borderRadius: 6, padding: '3px 9px', color: DARK.text2, fontSize: 11, cursor: 'pointer' }}>
+                              style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '3px 9px', color: 'var(--text2)', fontSize: 11, cursor: 'pointer' }}>
                               Cancelar
                             </button>
                             <button onClick={() => submitReply(c.id)} disabled={!replyText.trim()}
-                              style={{ background: replyText.trim() ? DARK.accent : DARK.bg3, border: 'none', borderRadius: 6, padding: '3px 10px', color: '#fff', fontSize: 11, fontWeight: 600, cursor: replyText.trim() ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              style={{ background: replyText.trim() ? 'var(--accent)' : 'var(--border)', border: 'none', borderRadius: 6, padding: '3px 10px', color: '#fff', fontSize: 11, fontWeight: 600, cursor: replyText.trim() ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 4 }}>
                               ↑ Enviar
                             </button>
                           </div>

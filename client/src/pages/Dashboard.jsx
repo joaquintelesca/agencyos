@@ -265,7 +265,10 @@ export default function Dashboard() {
         {unpaidPayments.slice(0, PAYMENTS_PREVIEW_LIMIT).map((p, i) => {
           const missingEditor = !editorSettled(p);
           const missingClient = p.client_paid !== 'cobrado';
-          const chipColor = missingEditor && missingClient ? 'var(--yellow)' : missingEditor ? 'var(--red)' : 'var(--blue)';
+          // "Falta cobrar cliente" en violeta (mismo color que ya usa Pagos para todo lo
+          // relacionado al cobro al cliente) en vez de azul — antes era el único de los 3 estados
+          // que no seguía ninguna lógica compartida con el resto de la app.
+          const chipColor = missingEditor && missingClient ? 'var(--yellow)' : missingEditor ? 'var(--red)' : 'var(--lavender)';
           return (
             <div key={p.id} onClick={() => navigate('/payments')}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 4px', borderTop: i === 0 ? 'none' : '1px solid var(--border)', cursor: 'pointer' }}>

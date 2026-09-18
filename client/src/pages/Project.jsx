@@ -708,13 +708,13 @@ export default function Project() {
               <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {!isSelfEditorPrice && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: '#f472b6' }}>Pago editor:</span>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: '#f472b6' }}>${estimatedEditorTotal().toFixed(0)}</span>
+                    <span style={{ fontSize: 12, color: 'var(--pink)' }}>Pago editor:</span>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--pink)' }}>${estimatedEditorTotal().toFixed(0)}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: '#a5b4fc' }}>Cobro cliente{priceForm.upwork_status !== 'No' ? ' (bruto)' : ''}:</span>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: '#a5b4fc' }}>${estimatedClientTotal().toFixed(0)}</span>
+                  <span style={{ fontSize: 12, color: 'var(--lavender)' }}>Cobro cliente{priceForm.upwork_status !== 'No' ? ' (bruto)' : ''}:</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--lavender)' }}>${estimatedClientTotal().toFixed(0)}</span>
                 </div>
                 {priceForm.upwork_status !== 'No' && (
                   <>
@@ -723,8 +723,8 @@ export default function Project() {
                       <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text3)' }}>-${(estimatedClientTotal() - estimatedClientNet()).toFixed(0)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, color: '#a5b4fc' }}>Recibís (neto):</span>
-                      <span style={{ fontSize: 16, fontWeight: 700, color: '#a5b4fc' }}>${estimatedClientNet().toFixed(0)}</span>
+                      <span style={{ fontSize: 12, color: 'var(--lavender)' }}>Recibís (neto):</span>
+                      <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--lavender)' }}>${estimatedClientNet().toFixed(0)}</span>
                     </div>
                   </>
                 )}

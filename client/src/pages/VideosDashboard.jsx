@@ -6,7 +6,7 @@ import { initials } from '../utils/format';
 const CATEGORIES = [
   { key: 'review', label: 'Pendiente de revisión', color: 'var(--yellow)', bg: 'rgba(240,168,58,0.12)' },
   { key: 'editing', label: 'Pendiente de edición', color: 'var(--red)', bg: 'rgba(240,92,92,0.12)' },
-  { key: 'approved', label: 'Aprobado', color: 'var(--green)', bg: 'rgba(70,200,120,0.12)' },
+  { key: 'approved', label: 'Aprobado', color: 'var(--green)', bg: 'rgba(34,201,122,0.12)' },
 ];
 const categoryMeta = (key) => CATEGORIES.find(c => c.key === key);
 

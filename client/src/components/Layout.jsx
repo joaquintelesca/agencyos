@@ -575,10 +575,10 @@ export default function Layout() {
 
       <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {storageWarning && user?.role === 'admin' && (
-          <div style={{ background: '#f59e0b15', borderBottom: '1px solid #f59e0b50', padding: '8px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ background: 'rgba(240,168,58,0.08)', borderBottom: '1px solid rgba(240,168,58,0.31)', padding: '8px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 16 }}>⚠️</span>
-              <span style={{ fontSize: 13, color: '#f59e0b', fontWeight: 600 }}>Almacenamiento: {storageWarning.gb} GB usados</span>
+              <span style={{ fontSize: 13, color: 'var(--yellow)', fontWeight: 600 }}>Almacenamiento: {storageWarning.gb} GB usados</span>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>— Superaste los 20GB. Considerá borrar archivos viejos o migrar a la nube.</span>
             </div>
             <button onClick={() => setStorageWarning(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
@@ -764,13 +764,13 @@ export default function Layout() {
                       <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {showEditorPaymentNew && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: 12, color: '#f472b6' }}>Pago editor:</span>
-                            <span style={{ fontSize: 16, fontWeight: 700, color: '#f472b6' }}>${estimatedTotal().toFixed(0)}</span>
+                            <span style={{ fontSize: 12, color: 'var(--pink)' }}>Pago editor:</span>
+                            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--pink)' }}>${estimatedTotal().toFixed(0)}</span>
                           </div>
                         )}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 12, color: '#a5b4fc' }}>Cobro cliente (bruto):</span>
-                          <span style={{ fontSize: 16, fontWeight: 700, color: '#a5b4fc' }}>${estimatedClientTotal().toFixed(0)}</span>
+                          <span style={{ fontSize: 12, color: 'var(--lavender)' }}>Cobro cliente (bruto):</span>
+                          <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--lavender)' }}>${estimatedClientTotal().toFixed(0)}</span>
                         </div>
                         {paymentForm.upwork_status !== 'No' && (
                           <>
@@ -779,8 +779,8 @@ export default function Layout() {
                               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text3)' }}>-${(estimatedClientTotal() - estimatedClientNet()).toFixed(0)}</span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontSize: 12, color: '#a5b4fc' }}>Recibís (neto):</span>
-                              <span style={{ fontSize: 16, fontWeight: 700, color: '#a5b4fc' }}>${estimatedClientNet().toFixed(0)}</span>
+                              <span style={{ fontSize: 12, color: 'var(--lavender)' }}>Recibís (neto):</span>
+                              <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--lavender)' }}>${estimatedClientNet().toFixed(0)}</span>
                             </div>
                           </>
                         )}
@@ -1100,7 +1100,7 @@ function NavItem({ to, label, icon, active, admin, badge, badgeRed }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7, marginBottom: 1, cursor: 'pointer', background: active ? 'var(--bg3)' : 'transparent', color: active ? 'var(--text)' : 'var(--text2)', fontSize: 13, transition: 'all 0.1s' }}>
         <span>{icon}</span>
         <span style={{ flex: 1 }}>{label}</span>
-        {admin && <span style={{ fontSize: 9, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>ADMIN</span>}
+        {admin && <span style={{ fontSize: 9, background: 'rgba(240,168,58,0.15)', color: 'var(--yellow)', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>ADMIN</span>}
         {badge > 0 && <span style={{ background: badgeRed ? 'var(--red)' : 'var(--accent)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, minWidth: 18, textAlign: 'center' }}>{badge}</span>}
       </div>
     </Link>

@@ -88,7 +88,7 @@ export default function Payments() {
     const groups = {};
     projs.forEach(p => {
       const key = p.client_name || '__none__';
-      if (!groups[key]) groups[key] = { name: p.client_name || 'Sin cliente', color: p.client_color || '#888', email: p.client_email, projects: [] };
+      if (!groups[key]) groups[key] = { name: p.client_name || 'Sin cliente', color: p.client_color || 'var(--text3)', email: p.client_email, projects: [] };
       groups[key].projects.push(p);
     });
     return Object.values(groups);
@@ -137,18 +137,18 @@ export default function Payments() {
           <thead>
             <tr>
               <td colSpan={baseCols} style={{ padding: 0, border: 'none' }} />
-              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(236,72,153,0.08)', color: '#f472b6', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Editor —</td>
-              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(99,102,241,0.08)', color: '#a5b4fc', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase', borderLeft: '1px solid var(--border)' }}>— Cliente —</td>
+              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(236,72,153,0.08)', color: 'var(--pink)', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase' }}>— Editor —</td>
+              <td colSpan={2} style={{ padding: '4px 12px', background: 'rgba(99,102,241,0.08)', color: 'var(--lavender)', fontSize: 10, fontWeight: 500, textAlign: 'center', letterSpacing: '0.05em', textTransform: 'uppercase', borderLeft: '1px solid var(--border)' }}>— Cliente —</td>
             </tr>
             <tr style={{ background: 'var(--bg3)' }}>
               {['Proyecto','Editor','Tipo','Upwork'].map(h => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
               {isHistory && <th style={thStyle}>Saldado</th>}
-              <th style={{ ...thStyle, textAlign: 'right', color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>Monto</th>
-              <th style={{ ...thStyle, color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>Pagado al editor</th>
-              <th style={{ ...thStyle, textAlign: 'right', color: '#a5b4fc', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>Monto</th>
-              <th style={{ ...thStyle, color: '#a5b4fc', background: 'rgba(99,102,241,0.05)' }}>Cobrado al cliente</th>
+              <th style={{ ...thStyle, textAlign: 'right', color: 'var(--pink)', background: 'rgba(236,72,153,0.05)' }}>Monto</th>
+              <th style={{ ...thStyle, color: 'var(--pink)', background: 'rgba(236,72,153,0.05)' }}>Pagado al editor</th>
+              <th style={{ ...thStyle, textAlign: 'right', color: 'var(--lavender)', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>Monto</th>
+              <th style={{ ...thStyle, color: 'var(--lavender)', background: 'rgba(99,102,241,0.05)' }}>Cobrado al cliente</th>
             </tr>
           </thead>
           <tbody>
@@ -158,9 +158,9 @@ export default function Payments() {
             {isHistory && sorted.length > 0 && (
               <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
                 <td colSpan={baseCols} style={{ padding: '8px 12px', fontSize: 11, color: 'var(--text2)' }}>Total ({sorted.length} proyecto{sorted.length > 1 ? 's' : ''})</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#f472b6', background: 'rgba(236,72,153,0.05)' }}>${sorted.reduce((s, p) => s + p.computed_editor_total, 0).toFixed(0)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--pink)', background: 'rgba(236,72,153,0.05)' }}>${sorted.reduce((s, p) => s + p.computed_editor_total, 0).toFixed(0)}</td>
                 <td style={{ background: 'rgba(236,72,153,0.05)' }} />
-                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#a5b4fc', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>${sorted.reduce((s, p) => s + p.computed_client_gross, 0).toFixed(0)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--lavender)', background: 'rgba(99,102,241,0.05)', borderLeft: '1px solid var(--border)' }}>${sorted.reduce((s, p) => s + p.computed_client_gross, 0).toFixed(0)}</td>
                 <td style={{ background: 'rgba(99,102,241,0.05)' }} />
               </tr>
             )}
@@ -176,7 +176,7 @@ export default function Payments() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 20 }}>💰</span>
           <h2 style={{ fontWeight: 700, fontSize: 18 }}>Pagos</h2>
-          <span style={{ fontSize: 11, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', padding: '2px 8px', borderRadius: 8, fontWeight: 600 }}>🔒 Solo admin</span>
+          <span style={{ fontSize: 11, background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)', padding: '2px 8px', borderRadius: 8, fontWeight: 600 }}>🔒 Solo admin</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -217,8 +217,8 @@ export default function Payments() {
             {/* Summary */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 24 }}>
               {[
-                { label: 'Por pagar a editores', val: `$${totalEditorPending.toFixed(0)}`, color: '#f472b6' },
-                { label: 'Por cobrar a clientes', val: `$${totalClientPending.toFixed(0)}`, color: '#a5b4fc' },
+                { label: 'Por pagar a editores', val: `$${totalEditorPending.toFixed(0)}`, color: 'var(--pink)' },
+                { label: 'Por cobrar a clientes', val: `$${totalClientPending.toFixed(0)}`, color: 'var(--lavender)' },
                 { label: 'Proyectos con pago pendiente', val: activeProjects.length, color: 'var(--yellow)' },
                 { label: 'Clientes con pago pendiente', val: clientsPending, color: 'var(--accent2)' },
               ].map(m => (
@@ -289,12 +289,12 @@ export default function Payments() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 24 }}>
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Recibido de clientes</div>
-                <div style={{ fontSize: 26, fontWeight: 700, color: '#a5b4fc' }}>${totalReceivedMonth.toFixed(0)}</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--lavender)' }}>${totalReceivedMonth.toFixed(0)}</div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{receivedThisMonth.length} proyecto{receivedThisMonth.length !== 1 ? 's' : ''}</div>
               </div>
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Pagado a editores</div>
-                <div style={{ fontSize: 26, fontWeight: 700, color: '#f472b6' }}>${totalPaidEditorsMonth.toFixed(0)}</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--pink)' }}>${totalPaidEditorsMonth.toFixed(0)}</div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{paidToEditorsThisMonth.length} proyecto{paidToEditorsThisMonth.length !== 1 ? 's' : ''}{projects.some(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id === user.id) ? ' · no incluye tus proyectos propios' : ''}</div>
               </div>
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
@@ -321,7 +321,7 @@ export default function Payments() {
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.client_name ? `${p.client_name} · ` : ''}{p.name}</span>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#a5b4fc', whiteSpace: 'nowrap' }}>${p.computed_client_net.toFixed(0)}</div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--lavender)', whiteSpace: 'nowrap' }}>${p.computed_client_net.toFixed(0)}</div>
                         {isUpworkBilled(p) && (
                           <div style={{ fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap' }}>bruto ${p.computed_client_gross.toFixed(0)} · -${(p.computed_client_gross - p.computed_client_net).toFixed(0)} Upwork ({p.upwork_fee_pct || 0}%)</div>
                         )}
@@ -338,7 +338,7 @@ export default function Payments() {
                     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.editor_name ? `${p.editor_name} · ` : ''}{p.name}</span>
-                      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#f472b6', whiteSpace: 'nowrap' }}>${p.computed_editor_total.toFixed(0)}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--pink)', whiteSpace: 'nowrap' }}>${p.computed_editor_total.toFixed(0)}</span>
                     </div>
                   ))}
                 </div>
