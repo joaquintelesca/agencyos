@@ -4,6 +4,7 @@ import { UndoProvider } from './context/UndoContext';
 import { AlertProvider } from './context/AlertContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import CalendarPage from './pages/Calendar';
 import Project from './pages/Project';
 import Payments from './pages/Payments';
 import VideosDashboard from './pages/VideosDashboard';
@@ -37,6 +38,7 @@ export default function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
                 <Route index element={<Dashboard />} />
+                <Route path="calendar" element={<CalendarPage />} />
                 <Route path="project/:id" element={<Project />} />
                 <Route path="client/:id" element={<ClientDashboard />} />
                 <Route path="team" element={<Team />} />

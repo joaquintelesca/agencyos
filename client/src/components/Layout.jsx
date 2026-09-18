@@ -427,6 +427,7 @@ export default function Layout() {
         <div style={{ padding: '12px 8px 6px' }}>
           <SideLabel>General</SideLabel>
           <NavItem to="/" label="Dashboard" icon="🏠" active={isActive('/')} />
+          <NavItem to="/calendar" label="Calendario" icon="📅" active={isActive('/calendar')} />
           <NavItem to="/chat" label="Chat" icon="💬" active={isActive('/chat')} badge={Object.values(chatUnread).reduce((a, b) => a + b, 0)} />
           <NavItem to="/team" label="Equipo" icon="👥" active={isActive('/team')} />
           <NavItem to="/notifications" label="Notificaciones" icon="🔔" active={isActive('/notifications')} badge={unreadNotifs} badgeRed />
