@@ -567,6 +567,13 @@ async function initDB() {
     await db('projects').where({ status: 'completed' }).update({ ever_completed: true });
   }
 
+  // Link de referencia (drive, footage crudo, brief, etc.) — es info de trabajo, no de plata, así
+  // que la ven todos los miembros del proyecto (no va en PROJECT_FINANCIAL_FIELDS).
+  const hasMaterialLink = await db.schema.hasColumn('projects', 'material_link');
+  if (!hasMaterialLink) {
+    await db.schema.table('projects', t => { t.string('material_link').nullable(); });
+  }
+
   // Clients table
   const hasClients = await db.schema.hasTable('clients');
   if (!hasClients) {
@@ -1147,13 +1154,14 @@ app.get('/api/projects/:id', auth, requireProjectAccess('id'), async (req, res) 
 app.post('/api/projects', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo el admin puede crear proyectos' });
-    const { name, description, color, payment_editor_id, payment_type, payment_amount, payment_hours, client_id, deadline, client_amount, upwork_status, upwork_fee_pct } = req.body;
+    const { name, description, color, payment_editor_id, payment_type, payment_amount, payment_hours, client_id, deadline, client_amount, upwork_status, upwork_fee_pct, material_link } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'El nombre del proyecto es obligatorio' });
     const id = uuidv4();
     await db('projects').insert({
       id, name, description, color: color || '#6366f1', created_by: req.user.id,
       client_id: client_id || null,
       deadline: deadline || null,
+      material_link: material_link?.trim() || null,
       payment_editor_id: payment_editor_id || null,
       payment_type: payment_type || 'fixed',
       payment_amount: parseFloat(payment_amount) || 0,
@@ -1175,7 +1183,7 @@ app.post('/api/projects', auth, async (req, res) => {
 app.put('/api/projects/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    const { name, description, color, status, payment_editor_id, payment_type, payment_amount, payment_hours, payment_status, upwork_status, upwork_fee_pct, client_id, deadline, client_amount } = req.body;
+    const { name, description, color, status, payment_editor_id, payment_type, payment_amount, payment_hours, payment_status, upwork_status, upwork_fee_pct, client_id, deadline, client_amount, material_link } = req.body;
     let existing;
     await db.transaction(async trx => {
       // forUpdate() bloquea la fila hasta que termine esta transacción — si en paralelo se está
@@ -1188,6 +1196,7 @@ app.put('/api/projects/:id', auth, async (req, res) => {
         name, description, color, status,
         client_id: client_id || null,
         deadline: deadline || null,
+        material_link: material_link?.trim() || null,
         payment_editor_id: payment_editor_id || null,
         payment_type, payment_status, upwork_status,
         upwork_fee_pct: upwork_status && upwork_status !== 'No' ? (parseFloat(upwork_fee_pct) || 15) : null

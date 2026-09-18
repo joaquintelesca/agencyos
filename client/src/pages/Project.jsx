@@ -227,7 +227,7 @@ export default function Project() {
         method: 'PUT',
         body: {
           name: project.name, description: project.description, color: project.color,
-          client_id: project.client_id, deadline: project.deadline,
+          client_id: project.client_id, deadline: project.deadline, material_link: project.material_link,
           payment_editor_id: priceForm.payment_editor_id,
           payment_type: priceForm.payment_type,
           payment_amount: isSelfEditorPrice ? 0 : priceFormAmount(),
@@ -287,6 +287,13 @@ export default function Project() {
             </div>
           )}
           <span style={{ fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8 }}>{tasks.length} tareas</span>
+          {project.material_link && (
+            <a href={/^https?:\/\//i.test(project.material_link) ? project.material_link : `https://${project.material_link}`}
+              target="_blank" rel="noopener noreferrer" title={project.material_link}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--accent2)', background: 'var(--accent-glow)', padding: '2px 8px', borderRadius: 8, textDecoration: 'none' }}>
+              🔗 Material
+            </a>
+          )}
           {project.payment_editor_name && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <div style={{ width: 20, height: 20, borderRadius: '50%', background: project.payment_editor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>{initials(project.payment_editor_name)}</div>

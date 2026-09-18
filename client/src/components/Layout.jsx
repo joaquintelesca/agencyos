@@ -22,7 +22,7 @@ export default function Layout() {
   const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [clientForm, setClientForm] = useState({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
   const [step, setStep] = useState(1);
-  const [projectForm, setProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' });
+  const [projectForm, setProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '', material_link: '' });
   const [paymentForm, setPaymentForm] = useState({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' });
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [chatUnread, setChatUnread] = useState({});
@@ -30,7 +30,7 @@ export default function Layout() {
   const [editClientForm, setEditClientForm] = useState({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
   const [editingProject, setEditingProject] = useState(null);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
-  const [editProjectForm, setEditProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '', payment_editor_id: '', payment_type: 'fixed', payment_amount: '', client_amount: '', payment_hours: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' });
+  const [editProjectForm, setEditProjectForm] = useState({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '', material_link: '', payment_editor_id: '', payment_type: 'fixed', payment_amount: '', client_amount: '', payment_hours: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' });
   const [storageWarning, setStorageWarning] = useState(null); // { gb, bytes } | null
   const [sidebarError, setSidebarError] = useState('');
   const [sidebarRetryCount, setSidebarRetryCount] = useState(0);
@@ -122,7 +122,7 @@ export default function Layout() {
     };
   }, [socket]);
 
-  const openNewProject = () => { setStep(1); setProjectForm({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '' }); setPaymentForm({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' }); setShowNewProject(true); };
+  const openNewProject = () => { setStep(1); setProjectForm({ name: '', description: '', color: '#6366f1', client_id: '', deadline: '', material_link: '' }); setPaymentForm({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' }); setShowNewProject(true); };
 
   const createClient = async () => {
     if (!clientForm.name.trim() || isCreatingClient) return;
@@ -276,7 +276,7 @@ export default function Layout() {
 
   const openEditProject = (p) => {
     setEditingProject(p);
-    setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '', payment_editor_id: p.payment_editor_id || '', payment_type: p.payment_type || 'fixed', payment_amount: p.payment_amount || '', client_amount: p.client_amount || '', payment_hours: p.payment_hours || '', upwork_status: (p.upwork_status === 'Pendiente de carga' || p.upwork_status === 'Cargado') ? p.upwork_status : 'No', upwork_fee_pct: p.upwork_fee_pct ?? '', client_paid: p.client_paid === 'cobrado' ? 'cobrado' : 'unpaid' });
+    setEditProjectForm({ name: p.name, description: p.description || '', color: p.color, client_id: p.client_id || '', deadline: p.deadline || '', material_link: p.material_link || '', payment_editor_id: p.payment_editor_id || '', payment_type: p.payment_type || 'fixed', payment_amount: p.payment_amount || '', client_amount: p.client_amount || '', payment_hours: p.payment_hours || '', upwork_status: (p.upwork_status === 'Pendiente de carga' || p.upwork_status === 'Cargado') ? p.upwork_status : 'No', upwork_fee_pct: p.upwork_fee_pct ?? '', client_paid: p.client_paid === 'cobrado' ? 'cobrado' : 'unpaid' });
   };
 
   const deleteClient = (c) => {
@@ -625,6 +625,10 @@ export default function Layout() {
                   </div>
                 </div>
                 <div className="form-group">
+                  <label>Link al material (opcional)</label>
+                  <input className="input" type="url" value={projectForm.material_link} onChange={e => setProjectForm(p => ({ ...p, material_link: e.target.value }))} placeholder="Ej: link a Drive con el material" />
+                </div>
+                <div className="form-group">
                   <label>Color</label>
                   <div style={{ display: 'flex', gap: 8 }}>
                     {COLORS.map(c => (
@@ -839,6 +843,10 @@ export default function Layout() {
                 <label>Deadline</label>
                 <input className="input" type="date" value={editProjectForm.deadline} onChange={e => setEditProjectForm(p => ({ ...p, deadline: e.target.value }))} />
               </div>
+            </div>
+            <div className="form-group">
+              <label>Link al material (opcional)</label>
+              <input className="input" type="url" value={editProjectForm.material_link} onChange={e => setEditProjectForm(p => ({ ...p, material_link: e.target.value }))} placeholder="Ej: link a Drive con el material" />
             </div>
             {user?.role === 'admin' && (
               <div className="form-group">
