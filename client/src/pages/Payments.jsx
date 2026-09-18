@@ -96,7 +96,12 @@ export default function Payments() {
 
   const totalEditorPending = activeProjects.filter(p => !editorSettled(p)).reduce((s, p) => s + p.computed_editor_total, 0);
   const totalClientPending = activeProjects.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + p.computed_client_net, 0);
-  const readyToCollect = activeProjects.filter(p => !editorSettled(p) || p.client_paid !== 'cobrado').length;
+  // Cuántos clientes distintos (no proyectos) tienen algo pendiente — para saber a cuánta gente
+  // hay que hacerle seguimiento, no solo cuántos proyectos. "activeProjects" ya es por definición
+  // "proyectos no saldados del todo" (!isCompleted), así que contar proyectos acá de nuevo con otro
+  // filtro (como se hacía antes) siempre da el mismo número que activeProjects.length — dos
+  // recuadros mostrando literalmente el mismo dato con nombres distintos.
+  const clientsPending = new Set(activeProjects.map(p => p.client_name || '__none__')).size;
 
   // Balance mensual: se basa en la fecha real en que se marcó pagado/cobrado cada lado (no en
   // el estado actual), así que un proyecto puede aportar al mes del cliente y al mes del editor
@@ -214,8 +219,8 @@ export default function Payments() {
               {[
                 { label: 'Por pagar a editores', val: `$${totalEditorPending.toFixed(0)}`, color: '#f472b6' },
                 { label: 'Por cobrar a clientes', val: `$${totalClientPending.toFixed(0)}`, color: '#a5b4fc' },
-                { label: 'Proyectos pendientes', val: readyToCollect, color: 'var(--yellow)' },
-                { label: 'Proyectos vinculados', val: activeProjects.length, color: 'var(--accent2)' },
+                { label: 'Proyectos con pago pendiente', val: activeProjects.length, color: 'var(--yellow)' },
+                { label: 'Clientes con pago pendiente', val: clientsPending, color: 'var(--accent2)' },
               ].map(m => (
                 <div key={m.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px' }}>
                   <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{m.label}</div>
