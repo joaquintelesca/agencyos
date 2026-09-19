@@ -41,6 +41,7 @@ export default function Layout() {
   const [sidebarError, setSidebarError] = useState('');
   const [sidebarRetryCount, setSidebarRetryCount] = useState(0);
   const [expandedClients, setExpandedClients] = useState([]); // string[] de client IDs
+  const [expandedCompletedFolders, setExpandedCompletedFolders] = useState([]); // string[] de client IDs con "Terminados" abierto
   const [draggedClientId, setDraggedClientId] = useState(null);
   const [draggedProjectId, setDraggedProjectId] = useState(null);
   const SIDEBAR_MIN = 180, SIDEBAR_MAX = 420;
@@ -413,6 +414,33 @@ export default function Layout() {
   const showEditorPaymentNew = !isSelfEditorNew;
   const isSelfEditorEdit = editProjectForm.payment_editor_id === user?.id;
 
+  // Fila de un proyecto dentro del sidebar — la usan tanto la lista de activos como la subcarpeta
+  // "Terminados" de cada cliente, con distinto indent para reflejar el anidado.
+  const renderSidebarProjectRow = (p, clientId, indent = 26) => (
+    <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s', opacity: draggedProjectId === p.id ? 0.4 : (p.status === 'completed' ? 0.55 : 1) }}
+      draggable={user?.role === 'admin'}
+      onDragStart={e => { e.stopPropagation(); setDraggedProjectId(p.id); }}
+      onDragOver={e => { if (user?.role === 'admin' && draggedProjectId) e.preventDefault(); }}
+      onDrop={e => { if (draggedProjectId) { e.preventDefault(); e.stopPropagation(); reorderProjects(clientId, draggedProjectId, p.id); } }}
+      onDragEnd={() => setDraggedProjectId(null)}>
+      <Link to={`/project/${p.id}`} style={{ textDecoration: 'none', flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: `4px 10px 4px ${indent}px`, cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 11.5 }}>
+          <div style={{ width: 5, height: 5, borderRadius: '50%', background: p.color, flexShrink: 0, opacity: 0.8 }} />
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+          {p.status === 'completed' && <span title="Terminado" style={{ fontSize: 10, flexShrink: 0 }}>✅</span>}
+          {user?.role === 'admin' && p.unread_review_count > 0 && (
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
+          )}
+        </div>
+      </Link>
+      {user?.role === 'admin' && (
+        <ProjectRowActions fontSize={12} padding="5px 4px"
+          onEdit={e => { e.preventDefault(); openEditProject(p); }}
+          onDelete={e => { e.preventDefault(); deleteProject(p.id); }} />
+      )}
+    </div>
+  );
+
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
       {/* Sidebar */}
@@ -457,7 +485,10 @@ export default function Layout() {
           {/* Projects grouped by client — click to expand */}
           {clients.map(c => {
             const clientProjects = projects.filter(p => p.client_id === c.id);
+            const activeProjects = clientProjects.filter(p => p.status !== 'completed');
+            const completedProjects = clientProjects.filter(p => p.status === 'completed');
             const isExpanded = expandedClients.includes(c.id);
+            const isCompletedExpanded = expandedCompletedFolders.includes(c.id);
             return (
               <div key={c.id} style={{ marginBottom: 2, opacity: draggedClientId === c.id ? 0.4 : 1 }}>
                 <div className="sidebar-row" style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', transition: 'background 0.1s' }}
@@ -476,37 +507,25 @@ export default function Layout() {
                   {user?.role === 'admin' && clientProjects.some(p => p.unread_review_count > 0) && (
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
                   )}
-                  {clientProjects.length > 0 && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{clientProjects.length}</span>}
+                  {activeProjects.length > 0 && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{activeProjects.length}</span>}
                   {user?.role === 'admin' && (
                     <ProjectRowActions fontSize={12} padding="1px 4px"
                       onEdit={e => { e.stopPropagation(); setEditingClient(c); setEditClientForm({ name: c.name, color: c.color, email: c.email || '', phone: c.phone || '', notes: c.notes || '' }); }}
                       onDelete={e => { e.stopPropagation(); deleteClient(c); }} />
                   )}
                 </div>
-                {isExpanded && clientProjects.map(p => (
-                  <div key={p.id} className="sidebar-row" style={{ display: 'flex', alignItems: 'center', borderRadius: 7, marginBottom: 1, background: isProjectActive(p.id) ? 'var(--bg3)' : 'transparent', transition: 'all 0.1s', opacity: draggedProjectId === p.id ? 0.4 : (p.status === 'completed' ? 0.55 : 1) }}
-                    draggable={user?.role === 'admin'}
-                    onDragStart={e => { e.stopPropagation(); setDraggedProjectId(p.id); }}
-                    onDragOver={e => { if (user?.role === 'admin' && draggedProjectId) e.preventDefault(); }}
-                    onDrop={e => { if (draggedProjectId) { e.preventDefault(); e.stopPropagation(); reorderProjects(c.id, draggedProjectId, p.id); } }}
-                    onDragEnd={() => setDraggedProjectId(null)}>
-                    <Link to={`/project/${p.id}`} style={{ textDecoration: 'none', flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 26px', cursor: 'pointer', color: isProjectActive(p.id) ? 'var(--text)' : 'var(--text2)', fontSize: 11.5 }}>
-                        <div style={{ width: 5, height: 5, borderRadius: '50%', background: p.color, flexShrink: 0, opacity: 0.8 }} />
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                        {p.status === 'completed' && <span title="Terminado" style={{ fontSize: 10, flexShrink: 0 }}>✅</span>}
-                        {user?.role === 'admin' && p.unread_review_count > 0 && (
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
-                        )}
-                      </div>
-                    </Link>
-                    {user?.role === 'admin' && (
-                      <ProjectRowActions fontSize={12} padding="5px 4px"
-                        onEdit={e => { e.preventDefault(); openEditProject(p); }}
-                        onDelete={e => { e.preventDefault(); deleteProject(p.id); }} />
-                    )}
-                  </div>
-                ))}
+                {isExpanded && activeProjects.map(p => renderSidebarProjectRow(p, c.id))}
+                {isExpanded && completedProjects.length > 0 && (
+                  <>
+                    <div className="sidebar-row" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px 4px 26px', borderRadius: 7, cursor: 'pointer', fontSize: 11.5, color: 'var(--text3)' }}
+                      onClick={() => setExpandedCompletedFolders(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}>
+                      <span style={{ fontSize: 9, transition: 'transform 0.15s', display: 'inline-block', transform: isCompletedExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
+                      <span style={{ flex: 1 }}>📁 Terminados</span>
+                      <span style={{ fontSize: 10 }}>{completedProjects.length}</span>
+                    </div>
+                    {isCompletedExpanded && completedProjects.map(p => renderSidebarProjectRow(p, c.id, 38))}
+                  </>
+                )}
                 {isExpanded && clientProjects.length === 0 && (
                   <div style={{ padding: '4px 10px 4px 26px', fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>Sin proyectos aún</div>
                 )}
