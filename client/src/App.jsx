@@ -13,6 +13,7 @@ import Chat from './pages/Chat';
 import Notifications from './pages/Notifications';
 import ClientDashboard from './pages/ClientDashboard';
 import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -30,27 +31,29 @@ function AdminRoute({ children }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AlertProvider>
-        <UndoProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-                <Route index element={<Dashboard />} />
-                <Route path="calendar" element={<CalendarPage />} />
-                <Route path="project/:id" element={<Project />} />
-                <Route path="client/:id" element={<ClientDashboard />} />
-                <Route path="team" element={<Team />} />
-                <Route path="chat" element={<Chat />} />
-                <Route path="notifications" element={<Notifications />} />
-                <Route path="payments" element={<AdminRoute><Payments /></AdminRoute>} />
-                <Route path="videos" element={<AdminRoute><VideosDashboard /></AdminRoute>} />
-              </Route>
-            </Routes>
-          </BrowserRouter>
-        </UndoProvider>
-      </AlertProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AlertProvider>
+          <UndoProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="calendar" element={<CalendarPage />} />
+                  <Route path="project/:id" element={<Project />} />
+                  <Route path="client/:id" element={<ClientDashboard />} />
+                  <Route path="team" element={<Team />} />
+                  <Route path="chat" element={<Chat />} />
+                  <Route path="notifications" element={<Notifications />} />
+                  <Route path="payments" element={<AdminRoute><Payments /></AdminRoute>} />
+                  <Route path="videos" element={<AdminRoute><VideosDashboard /></AdminRoute>} />
+                </Route>
+              </Routes>
+            </BrowserRouter>
+          </UndoProvider>
+        </AlertProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

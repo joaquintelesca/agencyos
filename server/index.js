@@ -843,6 +843,13 @@ app.get('/uploads/:filename', auth, async (req, res) => {
 // ─── CÁLCULO DE MONTOS DE PAGO ─────────────────────────────────────────────────
 // Misma lógica que replican Payments.jsx/Dashboard.jsx del lado del cliente — acá hace falta
 // para poder "congelar" el monto real en el momento exacto en que se marca pagado/cobrado.
+
+// El 15% es el default de Upwork, pero `parseFloat(x) || 15` convertía un 0% negociado (falsy)
+// en 15% y subestimaba el neto del cliente en ese 15% en cada guardado.
+function parseUpworkFeePct(value) {
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 15;
+}
 function computeEditorAmount(p) {
   if (p.payment_type === 'hourly') return (parseFloat(p.payment_amount) || 0) * (parseFloat(p.payment_hours) || 0);
   return parseFloat(p.payment_amount) || 0;
@@ -1216,7 +1223,7 @@ app.post('/api/projects', auth, async (req, res) => {
       client_amount: parseFloat(client_amount) || 0,
       payment_status: 'unpaid',
       upwork_status: upwork_status || 'pending',
-      upwork_fee_pct: upwork_status && upwork_status !== 'No' ? (parseFloat(upwork_fee_pct) || 15) : null
+      upwork_fee_pct: upwork_status && upwork_status !== 'No' ? parseUpworkFeePct(upwork_fee_pct) : null
     });
     await addProjectMember(id, req.user.id, 'owner');
     if (payment_editor_id) await addProjectMember(id, payment_editor_id);
@@ -1232,6 +1239,7 @@ app.put('/api/projects/:id', auth, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     const { name, description, color, status, payment_editor_id, payment_type, payment_amount, payment_hours, payment_status, upwork_status, upwork_fee_pct, client_id, deadline, client_amount, material_link } = req.body;
     let existing;
+    let editorLocked = false;
     await db.transaction(async trx => {
       // forUpdate() bloquea la fila hasta que termine esta transacción — si en paralelo se está
       // marcando "pagado"/"cobrado" en PATCH /api/payments/:projectId (que toma el mismo lock),
@@ -1239,6 +1247,14 @@ app.put('/api/projects/:id', auth, async (req, res) => {
       // cuando la otra está por congelar el monto pagado a partir de esos mismos campos.
       existing = await trx('projects').where({ id: req.params.id }).forUpdate().first();
       if (!existing) return;
+      // Cambiar de editor cuando el pago al editor ya está registrado dejaría el "pagado" y el
+      // monto congelado del editor anterior colgando del nuevo: el balance mensual listaría esa
+      // plata a nombre de alguien que nunca la cobró, y el registro del que sí cobró se pierde.
+      // Se frena acá y se pide desmarcar el pago primero, que es una decisión explícita del admin.
+      if ((payment_editor_id || null) !== (existing.payment_editor_id || null) && existing.editor_paid === 'paid') {
+        editorLocked = true;
+        return;
+      }
       const update = {
         name, description, color, status,
         client_id: client_id || null,
@@ -1246,7 +1262,7 @@ app.put('/api/projects/:id', auth, async (req, res) => {
         material_link: material_link?.trim() || null,
         payment_editor_id: payment_editor_id || null,
         payment_type, payment_status, upwork_status,
-        upwork_fee_pct: upwork_status && upwork_status !== 'No' ? (parseFloat(upwork_fee_pct) || 15) : null
+        upwork_fee_pct: upwork_status && upwork_status !== 'No' ? parseUpworkFeePct(upwork_fee_pct) : null
       };
       if (payment_amount !== undefined) update.payment_amount = Math.max(0, parseFloat(payment_amount) || 0);
       if (payment_hours !== undefined) update.payment_hours = Math.max(0, parseFloat(payment_hours) || 0);
@@ -1254,6 +1270,7 @@ app.put('/api/projects/:id', auth, async (req, res) => {
       await trx('projects').where({ id: req.params.id }).update(update);
     });
     if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    if (editorLocked) return res.status(409).json({ error: 'Este proyecto ya tiene registrado el pago al editor. Desmarcá "Pagado" en Pagos antes de cambiar de editor.' });
     if (payment_editor_id) await addProjectMember(req.params.id, payment_editor_id);
     if (payment_editor_id && payment_editor_id !== existing.payment_editor_id) {
       await createNotification({ userId: payment_editor_id, type: 'project_assigned', actorId: req.user.id, projectId: req.params.id, preview: name || existing.name });
@@ -1587,7 +1604,14 @@ app.get('/api/payments', auth, async (req, res) => {
     const projects = await db('projects as p')
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
-      .whereNotNull('p.payment_editor_id')
+      // Se exige editor asignado SALVO que ya haya plata registrada de un lado u otro: sin esta
+      // excepción, dejar un proyecto ya cobrado en "Sin asignar" lo borraba de Pagos y encogía
+      // retroactivamente el total de un mes ya cerrado, con las filas de plata todavía en la DB.
+      .where(function() {
+        this.whereNotNull('p.payment_editor_id')
+          .orWhere('p.client_paid', 'cobrado')
+          .orWhere('p.editor_paid', 'paid');
+      })
       .where(function() { this.where('p.status', 'completed').orWhere('p.ever_completed', true); })
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .orderBy('p.created_at', 'desc');
@@ -1654,6 +1678,10 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
       .where('p.id', req.params.projectId)
       .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .first(), 'editor_name');
+    // Sin withComputedTotals los campos computed_* vuelven undefined y Payments.jsx reemplaza la
+    // fila con esta respuesta: las tarjetas pasan a "$NaN" y el Balance mensual crashea al hacer
+    // .toFixed() sobre undefined. Todo el resto de los endpoints de proyecto ya lo aplican.
+    withComputedTotals(project);
     io.to('admins').emit('payment:updated', project);
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -2306,11 +2334,20 @@ app.post('/api/videos/:videoId/comments', auth, async (req, res, next) => {
     const video = await db('videos').where({ id: req.params.videoId }).first();
     if (video) await emitToProject(video.project_id, 'comment:created', full);
     if (video) {
+      // El editor que subió el video (y el asignado de su tarea) tienen que enterarse sí o sí:
+      // antes los destinatarios eran solo "admins + quien ya haya comentado este video", así que
+      // dejarle feedback con timestamps a un editor que todavía no había comentado no le generaba
+      // ninguna señal — el loop central de revisión dependía de que además le movieran la tarea.
+      const taskAssignee = video.task_id
+        ? (await db('tasks').where({ id: video.task_id }).select('assigned_to').first())?.assigned_to
+        : null;
+      const directIds = [video.uploaded_by, taskAssignee].filter(Boolean);
       const members = await db('users')
         .where('id', '!=', req.user.id)
         .where(function() {
           this.where({ role: 'admin' })
-            .orWhereIn('id', db('video_comments').where({ video_id: req.params.videoId }).select('user_id'));
+            .orWhereIn('id', db('video_comments').where({ video_id: req.params.videoId }).select('user_id'))
+            .orWhereIn('id', directIds);
         });
       for (const m of members) {
         await createNotification({ userId: m.id, type: 'comment', actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });

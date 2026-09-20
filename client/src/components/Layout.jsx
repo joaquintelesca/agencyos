@@ -4,8 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
+import ErrorBoundary from './ErrorBoundary';
 
-const COLORS = ['#6366f1','#10b981','#f59e0b','#ec4899','#3b82f6','#8b5cf6','#ef4444','#14b8a6'];
+const COLORS =['#6366f1','#10b981','#f59e0b','#ec4899','#3b82f6','#8b5cf6','#ef4444','#14b8a6'];
 
 export default function Layout() {
   const { user, logout, api, socket } = useAuth();
@@ -100,7 +101,10 @@ export default function Layout() {
     // solo al editor asignado) — otro admin no veía un proyecto/cliente nuevo hasta recargar la
     // página a mano. Ahora se actualiza el estado local directo con estos eventos.
     const onProjectCreated = (p) => setProjects(prev => prev.some(x => x.id === p.id) ? prev : [p, ...prev]);
-    const onProjectUpdated = (p) => setProjects(prev => prev.some(x => x.id === p.id) ? prev.map(x => x.id === p.id ? p : x) : [p, ...prev]);
+    // Mergeado, no reemplazado: el payload de project:updated no trae los campos que agrega
+    // GET /api/projects (unread_review_count, task_count), así que pisar la fila entera borraba
+    // el punto rojo de "revisión pendiente" con solo editar el proyecto o mover su deadline.
+    const onProjectUpdated = (p) => setProjects(prev => prev.some(x => x.id === p.id) ? prev.map(x => x.id === p.id ? { ...x, ...p } : x) : [p, ...prev]);
     const onProjectDeleted = ({ id }) => setProjects(prev => prev.filter(p => p.id !== id));
     const onClientCreated = (c) => setClients(prev => prev.some(x => x.id === c.id) ? prev : [...prev, c].sort((a, b) => a.name.localeCompare(b.name)));
     const onClientUpdated = (c) => setClients(prev => prev.map(x => x.id === c.id ? c : x));
@@ -603,7 +607,12 @@ export default function Layout() {
             <button onClick={() => setStorageWarning(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>✕</button>
           </div>
         )}
-        <Outlet context={{ projects, setProjects, unreadNotifs, setUnreadNotifs, openEditProject }} />
+        {/* Va acá adentro y no solo en App.jsx para que un error en una pantalla deje el sidebar
+            en pie y se pueda navegar a otra. La key por pathname lo resetea al cambiar de ruta:
+            si no, una vez que una pantalla rompe, el fallback queda pegado para todas. */}
+        <ErrorBoundary key={location.pathname}>
+          <Outlet context={{ projects, setProjects, unreadNotifs, setUnreadNotifs, openEditProject }} />
+        </ErrorBoundary>
       </main>
 
       {/* New Project Modal */}

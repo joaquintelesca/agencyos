@@ -5,6 +5,17 @@ import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
 import { uploadVideoChunked } from '../utils/upload';
 
+// Los colores del pincel tienen que ser hex literales: canvas no resuelve variables CSS, así que
+// asignarle 'var(--red)' a strokeStyle es un no-op silencioso y el trazo queda del color anterior
+// (negro por defecto, invisible sobre material oscuro). Estos son los mismos valores que los
+// tokens de index.css. El mapa cubre los dibujos ya guardados con el string var() adentro.
+const DRAW_COLORS = ['#f0a83a', '#7c6af7', '#f05c5c', '#10b981', '#ffffff'];
+const LEGACY_DRAW_COLORS = { 'var(--yellow)': '#f0a83a', 'var(--accent)': '#7c6af7', 'var(--red)': '#f05c5c', '#fff': '#ffffff' };
+function resolveDrawColor(color) {
+  if (!color) return DRAW_COLORS[0];
+  return LEGACY_DRAW_COLORS[color] || (color.startsWith('var(') ? DRAW_COLORS[0] : color);
+}
+
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
   const { api, user, socket, mediaUrl, token } = useAuth();
   const { scheduleDelete } = useUndo();
@@ -239,8 +250,9 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   }, [annotations, comments, currentTime, currentAnnotation, activeComment]);
 
   const drawAnnotation = (ctx, ann) => {
-    ctx.strokeStyle = ann.color || 'var(--yellow)';
-    ctx.fillStyle = ann.color || 'var(--yellow)';
+    const color = resolveDrawColor(ann.color);
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -712,7 +724,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
             ))}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
               <span style={{ fontSize: 11, color: 'var(--text3)' }}>Color:</span>
-              {['var(--yellow)', 'var(--accent)', 'var(--red)', '#10b981', '#fff'].map(c => (
+              {DRAW_COLORS.map(c => (
                 <div key={c} onClick={() => setDrawColor(c)}
                   style={{ width: 18, height: 18, borderRadius: '50%', background: c, cursor: 'pointer', border: drawColor === c ? '2px solid #fff' : '2px solid transparent', transition: 'all 0.1s' }} />
               ))}
