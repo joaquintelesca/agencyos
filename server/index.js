@@ -14,7 +14,7 @@ const { v4: uuidv4 } = require('uuid');
 // cálculo de "días restantes" del deadline (que espera YYYY-MM-DD) como el <input type="date"> del
 // cliente (que ignora un value que no matchee ese formato exacto).
 require('pg').types.setTypeParser(1082, val => val);
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const helmet = require('helmet');
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand,
   ListObjectsV2Command, ListMultipartUploadsCommand, CreateMultipartUploadCommand,
@@ -447,6 +447,33 @@ async function initDB() {
   if (!hasResolved) {
     await db.schema.table('video_comments', t => { t.boolean('resolved').defaultTo(false); });
   }
+  // Comentarios de un invitado externo (link de revisión para clientes, ver video_shares más
+  // abajo) — no tienen user_id porque quien comenta no tiene cuenta. user_id era NOT NULL desde
+  // que se creó la tabla, así que además de agregar guest_name hay que aflojar esa restricción en
+  // la columna existente. Se prueba en un try/catch propio (no en el catch general de initDB)
+  // porque un ALTER que ya se aplicó en un boot anterior no debería poder tumbar el arranque del
+  // servidor si algo en el motor de DB se comporta distinto a lo esperado.
+  const hasGuestName = await db.schema.hasColumn('video_comments', 'guest_name');
+  if (!hasGuestName) {
+    await db.schema.table('video_comments', t => { t.string('guest_name').nullable(); });
+  }
+  try {
+    await db.schema.alterTable('video_comments', t => { t.string('user_id').nullable().alter(); });
+  } catch (e) {
+    console.error('⚠️  No se pudo aflojar video_comments.user_id a nullable (¿ya lo está?):', e.message);
+  }
+  const hasShares = await db.schema.hasTable('video_shares');
+  if (!hasShares) {
+    await db.schema.createTable('video_shares', t => {
+      t.string('id').primary(); // el id ES el token público, va directo en la URL /review/:id
+      t.string('video_id').notNullable();
+      t.string('created_by').notNullable();
+      t.timestamp('expires_at'); // null = sin vencimiento (no se ofrece desde la UI, pero el
+                                  // campo lo soporta por si algún día se necesita)
+      t.boolean('revoked').defaultTo(false);
+      t.timestamp('created_at').defaultTo(db.fn.now());
+    });
+  }
   const hasReplies = await db.schema.hasTable('comment_replies');
   if (!hasReplies) {
     await db.schema.createTable('comment_replies', t => {
@@ -482,6 +509,19 @@ async function initDB() {
       t.boolean('read').defaultTo(false);
       t.timestamp('created_at').defaultTo(db.fn.now());
     });
+  }
+  // Un comentario de un invitado externo (link de revisión para clientes) dispara notificaciones
+  // sin un actor humano en `users` — actor_id era NOT NULL y todas las lecturas usaban INNER JOIN
+  // contra users, así que esas notificaciones directamente desaparecían de la lista (el INNER
+  // JOIN las filtra) en vez de solo faltarles el nombre. Mismo tratamiento que video_comments.user_id.
+  const hasNotifGuestName = await db.schema.hasColumn('notifications', 'guest_name');
+  if (!hasNotifGuestName) {
+    await db.schema.table('notifications', t => { t.string('guest_name').nullable(); });
+  }
+  try {
+    await db.schema.alterTable('notifications', t => { t.string('actor_id').nullable().alter(); });
+  } catch (e) {
+    console.error('⚠️  No se pudo aflojar notifications.actor_id a nullable (¿ya lo está?):', e.message);
   }
   const hasMsgRead = await db.schema.hasColumn('chat_messages', 'read_by');
   if (!hasMsgRead) {
@@ -1006,7 +1046,10 @@ const uploadLimiter = rateLimit({
   max: 40,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.id || req.ip,
+  // ipKeyGenerator normaliza IPv6 (agrupa por /64 en vez de por dirección exacta, que en IPv6
+  // cambia por request) — usar req.ip crudo como fallback dejaba esquivar el límite y además
+  // tiraba un warning de validación en cada arranque.
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
   message: { error: 'Demasiadas subidas seguidas. Esperá unos minutos.' }
 });
 
@@ -2438,9 +2481,12 @@ app.get('/api/videos/:videoId/comments', auth, async (req, res) => {
     if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
       return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
     }
-    const comments = await db('video_comments as vc').join('users as u', 'vc.user_id', 'u.id')
+    // leftJoin, no join: un comentario del link de revisión (cliente externo) no tiene user_id,
+    // y un INNER JOIN ahí los sacaba directo de la lista en vez de solo faltarles el nombre.
+    const comments = await db('video_comments as vc').leftJoin('users as u', 'vc.user_id', 'u.id')
       .where('vc.video_id', req.params.videoId)
-      .select('vc.*', 'u.name as user_name', 'u.avatar_color')
+      .select('vc.*', 'u.avatar_color')
+      .select(db.raw('COALESCE(u.name, vc.guest_name) as user_name'))
       .orderBy('vc.timestamp_sec', 'asc');
 
     // Antes se hacía una query de attachments + otra de replies (y otra de attachments) POR
@@ -2627,9 +2673,161 @@ app.post('/api/comments/:id/replies', auth, async (req, res, next) => {
     if (parentComment) {
       const video = await db('videos').where({ id: parentComment.video_id }).first();
       if (video) await emitToProject(video.project_id, 'comment:reply', full);
-      await createNotification({ userId: parentComment.user_id, type: 'reply', actorId: req.user.id, projectId: video?.project_id, videoId: parentComment.video_id, commentId: req.params.id, preview: content?.slice(0, 80) });
+      // parentComment.user_id es null cuando el comentario original es de un invitado externo
+      // (link de revisión) — no tiene cuenta ni in-app notifications, así que no hay a quién
+      // notificar acá (createNotification inserta con user_id NOT NULL, se rompería si se llamara).
+      if (parentComment.user_id) {
+        await createNotification({ userId: parentComment.user_id, type: 'reply', actorId: req.user.id, projectId: video?.project_id, videoId: parentComment.video_id, commentId: req.params.id, preview: content?.slice(0, 80) });
+      }
     }
     res.json(full);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// ─── VIDEO SHARES (link de revisión para clientes) ───────────────────────────
+// El cliente de la agencia no tiene cuenta ni membresía de proyecto — hasta ahora la única forma
+// de que viera el trabajo era exportarlo y mandarlo por WhatsApp/Drive, perdiendo la revisión con
+// timestamp exacto que ya existe en la app. Esto expone UN video puntual detrás de un token
+// random (mismo modelo que un link de Loom/Frame.io: sin contraseña, la seguridad es que el
+// token es imposible de adivinar), con vencimiento y revocación explícita porque es acceso sin
+// login a material del cliente.
+const reviewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req.ip),
+  message: { error: 'Demasiadas solicitudes. Probá de nuevo en unos minutos.' }
+});
+
+// Ni revocado ni vencido. Se centraliza acá porque las 4 rutas públicas necesitan exactamente el
+// mismo chequeo y el mismo par de códigos de error (404 vs 410 le sirve al front para distinguir
+// "este link nunca existió" de "existió pero ya no está disponible").
+async function getActiveShare(token) {
+  const share = await db('video_shares').where({ id: token }).first();
+  if (!share) return { error: 404 };
+  if (share.revoked) return { error: 410, reason: 'revoked' };
+  if (share.expires_at && new Date(share.expires_at) < new Date()) return { error: 410, reason: 'expired' };
+  return { share };
+}
+
+// Admin ve/crea/revoca el link desde el video — deliberadamente admin-only (no "admin o quien
+// subió", como el resto de las acciones sobre un video): decidir qué sale a un cliente externo es
+// una decisión de la agencia, no algo que un editor individual dispare sin que el admin se entere.
+app.get('/api/videos/:videoId/share', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const share = await db('video_shares')
+      .where({ video_id: req.params.videoId, revoked: false })
+      .where(function() { this.whereNull('expires_at').orWhere('expires_at', '>', new Date().toISOString()); })
+      .orderBy('created_at', 'desc')
+      .first();
+    res.json(share || null);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+app.post('/api/videos/:videoId/share', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const video = await db('videos').where({ id: req.params.videoId }).first();
+    if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+    const days = Math.min(365, Math.max(1, parseInt(req.body.expiresInDays, 10) || 30));
+    const id = uuidv4();
+    const expires_at = new Date(Date.now() + days * 86400000).toISOString();
+    await db('video_shares').insert({ id, video_id: req.params.videoId, created_by: req.user.id, expires_at });
+    const share = await db('video_shares').where({ id }).first();
+    res.json(share);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+app.patch('/api/video-shares/:id/revoke', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const updated = await db('video_shares').where({ id: req.params.id }).update({ revoked: true });
+    if (!updated) return res.status(404).json({ error: 'Link no encontrado' });
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// A partir de acá, rutas PÚBLICAS — sin el middleware `auth`, a propósito. El único guardián es
+// el token en la URL. Nunca deben devolver nada del proyecto más allá de este único video
+// (ni otros videos, ni tareas, ni plata, ni el resto del equipo).
+app.get('/api/review/:token', reviewLimiter, async (req, res) => {
+  try {
+    const { error, reason, share } = await getActiveShare(req.params.token);
+    if (error) return res.status(error).json({ error: reason === 'revoked' ? 'Este link fue desactivado' : 'Este link ya no está disponible' });
+    const video = await db('videos as v')
+      .join('projects as p', 'v.project_id', 'p.id')
+      .leftJoin('clients as c', 'p.client_id', 'c.id')
+      .where('v.id', share.video_id)
+      .select('v.id', 'v.title', 'v.version', 'p.name as project_name', 'p.color as project_color', 'c.name as client_name')
+      .first();
+    if (!video) return res.status(404).json({ error: 'El video ya no existe' });
+    res.json(video);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+app.get('/api/review/:token/file', reviewLimiter, async (req, res) => {
+  try {
+    const { error, share } = await getActiveShare(req.params.token);
+    if (error) return res.status(error).end();
+    const video = await db('videos').where({ id: share.video_id }).first();
+    if (!video) return res.status(404).end();
+    await serveFile(res, video.filename);
+  } catch (e) { console.error(e); res.status(500).end(); }
+});
+
+// Solo comentarios de invitados (guest_name IS NOT NULL) — la conversación interna admin↔editor
+// sobre este mismo video vive en la misma tabla pero nunca sale por esta ruta. Es la decisión de
+// "el cliente ve solo su propio hilo", no todo lo que se habló puertas adentro.
+app.get('/api/review/:token/comments', reviewLimiter, async (req, res) => {
+  try {
+    const { error, reason, share } = await getActiveShare(req.params.token);
+    if (error) return res.status(error).json({ error: reason === 'revoked' ? 'Este link fue desactivado' : 'Este link ya no está disponible' });
+    const comments = await db('video_comments')
+      .where({ video_id: share.video_id })
+      .whereNotNull('guest_name')
+      .select('id', 'content', 'timestamp_sec', 'guest_name', 'created_at')
+      .orderBy('timestamp_sec', 'asc');
+    res.json(comments);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+app.post('/api/review/:token/comments', reviewLimiter, async (req, res) => {
+  try {
+    const { error, reason, share } = await getActiveShare(req.params.token);
+    if (error) return res.status(error).json({ error: reason === 'revoked' ? 'Este link fue desactivado' : 'Este link ya no está disponible' });
+    const { content, timestamp_sec, guest_name } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
+    if (!guest_name?.trim()) return res.status(400).json({ error: 'Falta el nombre' });
+    const id = uuidv4();
+    await db('video_comments').insert({
+      id, video_id: share.video_id, user_id: null, guest_name: guest_name.trim().slice(0, 60),
+      content: content.trim(), timestamp_sec: parseFloat(timestamp_sec) || 0
+    });
+    const comment = await db('video_comments').where({ id }).select('id', 'content', 'timestamp_sec', 'guest_name', 'created_at').first();
+
+    const video = await db('videos').where({ id: share.video_id }).first();
+    if (video) {
+      await emitToProject(video.project_id, 'comment:created', { ...comment, video_id: share.video_id, attachments: [], replies: [], annotation: null });
+      // Mismo criterio de destinatarios que un comentario interno (ver POST
+      // /api/videos/:videoId/comments): admins + quien subió el video + el asignado de su tarea.
+      // No hace falta excluir a "quien comenta" porque el invitado no tiene cuenta que notificar.
+      const taskAssignee = video.task_id
+        ? (await db('tasks').where({ id: video.task_id }).select('assigned_to').first())?.assigned_to
+        : null;
+      const directIds = [video.uploaded_by, taskAssignee].filter(Boolean);
+      const members = await db('users')
+        .where(function() {
+          this.where({ role: 'admin' })
+            .orWhereIn('id', db('video_comments').where({ video_id: share.video_id }).select('user_id'))
+            .orWhereIn('id', directIds);
+        });
+      for (const m of members) {
+        await createNotification({ userId: m.id, type: 'comment', guestName: guest_name.trim(), projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });
+      }
+    }
+    res.json(comment);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
@@ -2648,8 +2846,8 @@ async function createNotification(args) {
     return null;
   }
 }
-async function createNotificationInner({ userId, type, actorId, projectId, videoId, commentId, chatMessageId, preview }) {
-  if (userId === actorId) return; // don't notify yourself
+async function createNotificationInner({ userId, type, actorId, guestName, projectId, videoId, commentId, chatMessageId, preview }) {
+  if (userId && userId === actorId) return; // don't notify yourself
 
   // Notificaciones de chat: agrupar las no leídas del mismo emisor en una sola.
   if (type === 'chat') {
@@ -2663,10 +2861,11 @@ async function createNotificationInner({ userId, type, actorId, projectId, video
         created_at: new Date().toISOString(),
       });
       const updated = await db('notifications as n')
-        .join('users as a', 'n.actor_id', 'a.id')
+        .leftJoin('users as a', 'n.actor_id', 'a.id')
         .leftJoin('projects as p', 'n.project_id', 'p.id')
         .where('n.id', existing.id)
-        .select('n.*', 'a.name as actor_name', 'a.avatar_color as actor_color', 'p.name as project_name')
+        .select('n.*', 'a.avatar_color as actor_color', 'p.name as project_name')
+        .select(db.raw("COALESCE(a.name, n.guest_name, 'Cliente') as actor_name"))
         .first();
       io.to(`user:${userId}`).emit('notification:new', updated);
       return updated;
@@ -2674,12 +2873,16 @@ async function createNotificationInner({ userId, type, actorId, projectId, video
   }
 
   const id = uuidv4();
-  await db('notifications').insert({ id, user_id: userId, type, actor_id: actorId, project_id: projectId || null, video_id: videoId || null, comment_id: commentId || null, chat_message_id: chatMessageId || null, preview: preview || null });
+  // Un comentario del link de revisión (link de cliente externo) llega sin actor_id — no hay
+  // cuenta de usuario detrás — así que se guarda guest_name en su lugar para poder mostrar de
+  // quién es el aviso. Ver el COALESCE de abajo.
+  await db('notifications').insert({ id, user_id: userId, type, actor_id: actorId || null, guest_name: guestName || null, project_id: projectId || null, video_id: videoId || null, comment_id: commentId || null, chat_message_id: chatMessageId || null, preview: preview || null });
   const notif = await db('notifications as n')
-    .join('users as a', 'n.actor_id', 'a.id')
+    .leftJoin('users as a', 'n.actor_id', 'a.id')
     .leftJoin('projects as p', 'n.project_id', 'p.id')
     .where('n.id', id)
-    .select('n.*', 'a.name as actor_name', 'a.avatar_color as actor_color', 'p.name as project_name')
+    .select('n.*', 'a.avatar_color as actor_color', 'p.name as project_name')
+    .select(db.raw("COALESCE(a.name, n.guest_name, 'Cliente') as actor_name"))
     .first();
   io.to(`user:${userId}`).emit('notification:new', notif);
   return notif;
@@ -2688,12 +2891,13 @@ async function createNotificationInner({ userId, type, actorId, projectId, video
 app.get('/api/notifications', auth, async (req, res) => {
   try {
     const notifs = await db('notifications as n')
-      .join('users as a', 'n.actor_id', 'a.id')
+      .leftJoin('users as a', 'n.actor_id', 'a.id')
       .leftJoin('projects as p', 'n.project_id', 'p.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .where('n.user_id', req.user.id)
-      .select('n.*', 'a.name as actor_name', 'a.avatar_color as actor_color', 'p.name as project_name',
+      .select('n.*', 'a.avatar_color as actor_color', 'p.name as project_name',
         'c.id as client_id', 'c.name as client_name', 'c.color as client_color')
+      .select(db.raw("COALESCE(a.name, n.guest_name, 'Cliente') as actor_name"))
       .orderBy('n.created_at', 'desc')
       .limit(50);
     res.json(notifs);

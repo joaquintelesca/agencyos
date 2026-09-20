@@ -26,6 +26,10 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const suppressPauseComposerRef = useRef(false);
   const [comments, setComments] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
+  const [shareModal, setShareModal] = useState(false);
+  const [share, setShare] = useState(undefined); // undefined = sin cargar, null = sin link activo
+  const [shareDays, setShareDays] = useState(30);
+  const [shareBusy, setShareBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadForm, setUploadForm] = useState({ title: '', version: '', task_id: '' });
@@ -477,6 +481,32 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     });
   };
 
+  const openShareModal = async () => {
+    setShareModal(true);
+    setShare(undefined);
+    try {
+      setShare(await api(`/api/videos/${selectedVideo.id}/share`));
+    } catch (e) { console.error(e); setShare(null); }
+  };
+
+  const createShare = async () => {
+    setShareBusy(true);
+    try {
+      setShare(await api(`/api/videos/${selectedVideo.id}/share`, { method: 'POST', body: { expiresInDays: shareDays } }));
+    } catch (e) { console.error(e); await alert('No se pudo generar el link: ' + e.message); }
+    finally { setShareBusy(false); }
+  };
+
+  const revokeShare = async () => {
+    if (!share || !await confirm('¿Desactivar este link? El cliente ya no va a poder abrirlo.', { confirmText: 'Desactivar', danger: true })) return;
+    setShareBusy(true);
+    try {
+      await api(`/api/video-shares/${share.id}/revoke`, { method: 'PATCH' });
+      setShare(null);
+    } catch (e) { console.error(e); await alert('No se pudo desactivar el link: ' + e.message); }
+    finally { setShareBusy(false); }
+  };
+
   const handleUnstack = async (videoId) => {
     try {
       await api(`/api/videos/${videoId}/unstack`, { method: 'PATCH' });
@@ -695,6 +725,14 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         </div>
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{selectedVideo.title}</span>
         <span style={{ fontSize: 11, color: 'var(--text3)' }}>{comments.length} comentarios</span>
+        {/* Admin-only a propósito, no "admin o quien subió" como Eliminar — decidir qué sale a
+            un cliente externo es una decisión de la agencia, no de un editor individual. */}
+        {user.role === 'admin' && (
+          <button onClick={openShareModal} title="Compartir con el cliente"
+            style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
+            🔗 Compartir
+          </button>
+        )}
         {(user.role === 'admin' || selectedVideo.uploaded_by === user.id) && (
           <button onClick={() => deleteVideo(selectedVideo)} title="Eliminar video"
             style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
@@ -939,7 +977,12 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                     {initials(c.user_name)}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 3 }}>{c.user_name}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text2)' }}>{c.user_name}</span>
+                      {/* Sin user_id es un comentario del link de revisión (cliente externo, sin
+                          cuenta) — se distingue del resto para no confundirlo con feedback interno. */}
+                      {!c.user_id && <span className="badge" style={{ fontSize: 9, padding: '1px 6px', background: 'var(--accent-glow)', color: 'var(--accent2)' }}>Cliente</span>}
+                    </div>
                     <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{c.content}</div>
                     {c.annotation && <div style={{ fontSize: 10, color: 'var(--yellow)', marginTop: 3 }}>✏️ Incluye dibujo</div>}
                     {c.attachments?.length > 0 && (
@@ -1082,6 +1125,53 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                 {uploading ? `⏳ Subiendo... ${uploadProgress}%` : '⬆ Subir'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share modal — link de revisión para el cliente */}
+      {shareModal && (
+        <div className="modal-overlay" onClick={() => setShareModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShareModal(false)} title="Cerrar">✕</button>
+            <h2>Compartir con el cliente</h2>
+            {share === undefined && <div style={{ padding: '20px 0', textAlign: 'center' }}><div className="spinner" /></div>}
+            {share === null && (
+              <>
+                <p style={{ fontSize: 'var(--fs-base)', color: 'var(--text2)', lineHeight: 'var(--lh-normal)', marginBottom: 16 }}>
+                  Se genera un link público para este video puntual — sin cuenta ni contraseña, el cliente puede verlo y dejar comentarios con timestamp igual que acá. No ve otros videos, tareas ni información de pago.
+                </p>
+                <div className="form-group">
+                  <label>Vence en</label>
+                  <select className="input" value={shareDays} onChange={e => setShareDays(Number(e.target.value))}>
+                    <option value={7}>7 días</option>
+                    <option value={30}>30 días</option>
+                    <option value={90}>90 días</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="btn btn-ghost" onClick={() => setShareModal(false)}>Cancelar</button>
+                  <button className="btn btn-primary" onClick={createShare} disabled={shareBusy}>{shareBusy ? 'Generando...' : 'Generar link'}</button>
+                </div>
+              </>
+            )}
+            {share && (
+              <>
+                <div className="form-group">
+                  <label>Link para el cliente</label>
+                  <input className="input" readOnly value={`${window.location.origin}/review/${share.id}`}
+                    onClick={e => e.target.select()} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <span className="badge" style={{ fontWeight: 500, background: 'rgba(34,201,122,0.12)', color: 'var(--green)' }}>✓ Activo</span>
+                  <span style={{ fontSize: 12, color: 'var(--text3)' }}>vence el {new Date(share.expires_at).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="btn btn-danger" onClick={revokeShare} disabled={shareBusy}>Desactivar</button>
+                  <button className="btn btn-primary" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/review/${share.id}`); }}>Copiar link</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

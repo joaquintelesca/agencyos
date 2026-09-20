@@ -13,6 +13,7 @@ import Chat from './pages/Chat';
 import Notifications from './pages/Notifications';
 import Earnings from './pages/Earnings';
 import ClientDashboard from './pages/ClientDashboard';
+import PublicReview from './pages/PublicReview';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -39,6 +40,9 @@ export default function App() {
             <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<Login />} />
+                {/* Pública a propósito, fuera de PrivateRoute — el cliente que abre esto no
+                    tiene cuenta ni la va a crear. */}
+                <Route path="/review/:token" element={<PublicReview />} />
                 <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
                   <Route index element={<Dashboard />} />
                   <Route path="calendar" element={<CalendarPage />} />
