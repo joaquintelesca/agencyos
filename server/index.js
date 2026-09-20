@@ -1620,6 +1620,28 @@ app.get('/api/payments', auth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
+// Libro de movimientos para el Balance mensual: TODO proyecto con plata efectivamente registrada
+// de algún lado, sin importar si está terminado. Va aparte de GET /api/payments a propósito —
+// esa lista es "trabajo cerrado para trackear" y deja afuera a los activos con anticipo (decisión
+// explícita), pero el balance de un mes tiene que contar la plata por la fecha en que se movió.
+// Calculándolo sobre la lista filtrada, un anticipo cobrado en julio sobre un proyecto todavía
+// activo no figuraba en julio y recién aparecía (agrandando un mes ya cerrado) al terminarlo.
+// Los montos vienen congelados por withComputedTotals cuando el lado está saldado, así que un
+// mes cerrado no se mueve aunque después se corrijan horas o tarifas.
+app.get('/api/payments/ledger', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const rows = await db('projects as p')
+      .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
+      .leftJoin('clients as c', 'p.client_id', 'c.id')
+      .where(function() { this.whereNotNull('p.client_paid_at').orWhereNotNull('p.editor_paid_at'); })
+      .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color')
+      .orderBy('p.created_at', 'desc');
+    rows.forEach(p => { withDeletedEditorFallback(p, 'editor_name'); withComputedTotals(p); });
+    res.json(rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
 app.patch('/api/payments/:projectId', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });

@@ -19,19 +19,25 @@ export default function Payments() {
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [pendingComplete, setPendingComplete] = useState(null); // { projectId, changes } | null
 
+  const [ledger, setLedger] = useState([]);
+
   useEffect(() => {
-    Promise.all([api('/api/payments'), api('/api/clients')])
-      .then(([p, c]) => { setProjects(p); setClients(c); setLoading(false); })
-      .catch(console.error);
+    Promise.all([api('/api/payments'), api('/api/clients'), api('/api/payments/ledger')])
+      .then(([p, c, l]) => { setProjects(p); setClients(c); setLedger(l); })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!socket) return;
-    const onUpdate = (p) => setProjects(prev => prev.map(x => x.id === p.id ? p : x));
+    // El ledger se recarga entero en vez de mergear: un proyecto puede entrar o salir de él según
+    // se marque/desmarque un lado, así que reemplazar la fila no alcanzaría.
+    const reloadLedger = () => api('/api/payments/ledger').then(setLedger).catch(console.error);
+    const onUpdate = (p) => { setProjects(prev => prev.map(x => x.id === p.id ? p : x)); reloadLedger(); };
     // El editor del sidebar (mismo modal que ahora abre el lápiz de acá) guarda vía PUT
     // /api/projects/:id, que trae otros nombres de campo (payment_editor_name, no editor_name) —
     // más simple recargar la lista entera que mergear formas distintas de la misma fila.
-    const onProjectUpdate = () => { api('/api/payments').then(setProjects).catch(console.error); };
+    const onProjectUpdate = () => { api('/api/payments').then(setProjects).catch(console.error); reloadLedger(); };
     socket.on('payment:updated', onUpdate);
     socket.on('project:updated', onProjectUpdate);
     return () => { socket.off('payment:updated', onUpdate); socket.off('project:updated', onProjectUpdate); };
@@ -41,6 +47,7 @@ export default function Payments() {
     try {
       const updated = await api(`/api/payments/${projectId}`, { method: 'PATCH', body: changes });
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
+      api('/api/payments/ledger').then(setLedger).catch(console.error);
     } catch (e) { console.error(e); await alert('Error al actualizar el pago: ' + e.message); }
   };
 
@@ -107,8 +114,11 @@ export default function Payments() {
   // el estado actual), así que un proyecto puede aportar al mes del cliente y al mes del editor
   // por separado si no se saldaron al mismo tiempo. Cuando el editor asignado sos vos mismo
   // (admin), ese "pago" no es un gasto real — no cuenta en "Pagado a editores".
-  const receivedThisMonth = projects.filter(p => p.client_paid_at && p.client_paid_at.slice(0, 7) === selectedMonth);
-  const paidToEditorsThisMonth = projects.filter(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id !== user.id);
+  // Se calcula sobre `ledger` (todo proyecto con plata registrada) y NO sobre `projects` (que
+  // solo trae trabajo ya terminado): si no, un anticipo cobrado en julio sobre un proyecto
+  // todavía activo no contaba en julio y aparecía después, agrandando un mes ya cerrado.
+  const receivedThisMonth = ledger.filter(p => p.client_paid_at && p.client_paid_at.slice(0, 7) === selectedMonth);
+  const paidToEditorsThisMonth = ledger.filter(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id !== user.id);
   const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + p.computed_client_net, 0);
   const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + p.computed_editor_total, 0);
   const totalUpworkFeeMonth = receivedThisMonth.reduce((s, p) => s + (p.computed_client_gross - p.computed_client_net), 0);
