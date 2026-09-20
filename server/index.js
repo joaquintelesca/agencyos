@@ -2787,9 +2787,11 @@ app.get('/api/review/:token/comments', reviewLimiter, async (req, res) => {
     const comments = await db('video_comments')
       .where({ video_id: share.video_id })
       .whereNotNull('guest_name')
-      .select('id', 'content', 'timestamp_sec', 'guest_name', 'created_at')
+      .select('id', 'content', 'timestamp_sec', 'timestamp_end', 'annotation', 'guest_name', 'created_at')
       .orderBy('timestamp_sec', 'asc');
-    res.json(comments);
+    // El reproductor público es el mismo componente que el interno (VideoPlayerAnnotator) y
+    // espera annotation ya parseado, igual que GET /api/videos/:videoId/comments.
+    res.json(comments.map(c => ({ ...c, annotation: safeJsonParse(c.annotation) })));
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
@@ -2797,19 +2799,25 @@ app.post('/api/review/:token/comments', reviewLimiter, async (req, res) => {
   try {
     const { error, reason, share } = await getActiveShare(req.params.token);
     if (error) return res.status(error).json({ error: reason === 'revoked' ? 'Este link fue desactivado' : 'Este link ya no está disponible' });
-    const { content, timestamp_sec, guest_name } = req.body;
+    const { content, timestamp_sec, timestamp_end, guest_name, annotation } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
     if (!guest_name?.trim()) return res.status(400).json({ error: 'Falta el nombre' });
+    if (annotation && safeJsonParse(annotation) === null) {
+      return res.status(400).json({ error: 'Anotación inválida' });
+    }
     const id = uuidv4();
     await db('video_comments').insert({
       id, video_id: share.video_id, user_id: null, guest_name: guest_name.trim().slice(0, 60),
-      content: content.trim(), timestamp_sec: parseFloat(timestamp_sec) || 0
+      content: content.trim(), timestamp_sec: parseFloat(timestamp_sec) || 0,
+      timestamp_end: timestamp_end ? parseFloat(timestamp_end) : null,
+      annotation: annotation || null
     });
-    const comment = await db('video_comments').where({ id }).select('id', 'content', 'timestamp_sec', 'guest_name', 'created_at').first();
+    const comment = await db('video_comments').where({ id }).select('id', 'content', 'timestamp_sec', 'timestamp_end', 'guest_name', 'created_at').first();
+    const full = { ...comment, annotation: safeJsonParse(annotation) };
 
     const video = await db('videos').where({ id: share.video_id }).first();
     if (video) {
-      await emitToProject(video.project_id, 'comment:created', { ...comment, video_id: share.video_id, attachments: [], replies: [], annotation: null });
+      await emitToProject(video.project_id, 'comment:created', { ...full, video_id: share.video_id, attachments: [], replies: [] });
       // Mismo criterio de destinatarios que un comentario interno (ver POST
       // /api/videos/:videoId/comments): admins + quien subió el video + el asignado de su tarea.
       // No hace falta excluir a "quien comenta" porque el invitado no tiene cuenta que notificar.
@@ -2827,7 +2835,7 @@ app.post('/api/review/:token/comments', reviewLimiter, async (req, res) => {
         await createNotification({ userId: m.id, type: 'comment', guestName: guest_name.trim(), projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });
       }
     }
-    res.json(comment);
+    res.json(full);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
