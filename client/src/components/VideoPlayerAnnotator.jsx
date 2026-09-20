@@ -53,6 +53,13 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   const [playing, setPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
+  // Antes no había forma de bajar/silenciar el audio del video DESDE la app — si el feedback era
+  // justo sobre el audio ("bajale la música acá"), no había con qué comparar sin salir a los
+  // controles del sistema operativo.
+  const [videoLoading, setVideoLoading] = useState(true);
+  const [videoError, setVideoError] = useState(false);
 
   const [tool, setTool] = useState('freehand'); // freehand | rect | arrow
   const [drawColor, setDrawColor] = useState(DRAW_COLORS[0]);
@@ -67,9 +74,15 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   const [capturedTs, setCapturedTs] = useState(null);
   const [commentText, setCommentText] = useState('');
   const [commentFiles, setCommentFiles] = useState([]);
+  // submittingRef (no solo este state) es lo que de verdad frena un doble click — un state puede
+  // quedar un tick atrás por el batching de React y dejar pasar un segundo submit antes de
+  // re-renderizar. Este state es solo para el "Enviando..." visual del botón.
+  const [submitting, setSubmitting] = useState(false);
   const [showCommentInput, setShowCommentInput] = useState(false);
 
   const formatT = formatTime;
+
+  const hasUnsavedDraft = () => commentText.trim().length > 0 || annotations.length > 0 || commentFiles.length > 0;
 
   const togglePlay = () => {
     if (!videoRef.current) return;
@@ -80,14 +93,64 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   const onVideoPause = () => {
     setPlaying(false);
     if (suppressPauseComposerRef.current) { suppressPauseComposerRef.current = false; return; }
-    if (!rangeMode) {
-      setCapturedTs({ type: 'single', ts: videoRef.current?.currentTime || 0 });
-      setShowCommentInput(true);
-    }
+    if (rangeMode) return;
+    // Si ya hay un comentario sin enviar (texto o dibujo), un segundo pause — play accidental
+    // y pausa de nuevo, por ejemplo — no le pisa el timestamp en silencio: antes recapturaba
+    // siempre, así que el feedback que ya habías escrito terminaba mandado con el momento
+    // equivocado sin ningún aviso.
+    if (hasUnsavedDraft()) { setShowCommentInput(true); return; }
+    setCapturedTs({ type: 'single', ts: videoRef.current?.currentTime || 0 });
+    setShowCommentInput(true);
   };
+
+  // Espacio y flechas son la convención de facto en cualquier reproductor (YouTube, Vimeo, el
+  // <video controls> nativo) — antes no existía ningún atajo. Se ignora si el foco está en un
+  // campo de texto (el textarea del comentario, el input de nombre del invitado en la pública)
+  // para no pisarle el tipeo normal a esa tecla.
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+      else if (e.key === 'ArrowRight') { if (videoRef.current) videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 5); }
+      else if (e.key === 'ArrowLeft') { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5); }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duration, playing]);
 
   const onTimeUpdate = () => { if (videoRef.current) setCurrentTime(videoRef.current.currentTime); };
   const onLoadedMetadata = () => { if (videoRef.current) setDuration(videoRef.current.duration); };
+  // canplay (no loadeddata) porque es el evento que garantiza que ya se puede arrancar a
+  // reproducir sin cortes — loadeddata puede disparar con apenas el primer frame decodificado.
+  const onCanPlay = () => setVideoLoading(false);
+  const onVideoError = () => { setVideoLoading(false); setVideoError(true); };
+
+  // Reintentar no alcanza con volver a poner el mismo `src` (React no vuelve a montar el <video>
+  // si la prop no cambia de valor) — hay que forzar la recarga real del elemento con .load().
+  const retryVideo = () => {
+    setVideoError(false);
+    setVideoLoading(true);
+    videoRef.current?.load();
+  };
+
+  useEffect(() => {
+    setVideoLoading(true);
+    setVideoError(false);
+  }, [src]);
+
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    if (videoRef.current) videoRef.current.muted = next;
+  };
+  const onVolumeChange = (e) => {
+    const v = parseFloat(e.target.value);
+    setVolume(v);
+    setMuted(v === 0);
+    if (videoRef.current) { videoRef.current.volume = v; videoRef.current.muted = v === 0; }
+  };
 
   const seek = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -129,13 +192,22 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
     setShowCommentInput(true);
   };
 
-  const getCanvasPos = (e) => {
+  const posFromClient = (clientX, clientY) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     return {
-      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((e.clientY - rect.top) / rect.height) * canvas.height
+      x: ((clientX - rect.left) / rect.width) * canvas.width,
+      y: ((clientY - rect.top) / rect.height) * canvas.height
     };
+  };
+  const getCanvasPos = (e) => posFromClient(e.clientX, e.clientY);
+  // El link público es justo donde más importa esto: un cliente casi siempre abre el link desde
+  // el celular, y sin esto podía ver el video y comentar pero NO dibujar — el touch no dispara los
+  // eventos de mouse en un <canvas>. touches[0] al mover/tocar, changedTouches[0] al soltar (en
+  // touchend ya no hay ningún touch activo en `touches`).
+  const getTouchCanvasPos = (e) => {
+    const t = e.touches[0] || e.changedTouches[0];
+    return posFromClient(t.clientX, t.clientY);
   };
 
   const drawAnnotation = (ctx, ann) => {
@@ -185,15 +257,15 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
 
   useEffect(() => { redrawCanvas(); }, [redrawCanvas]);
 
-  const onCanvasMouseDown = (e) => {
-    const pos = getCanvasPos(e);
+  // Un solo camino para mouse y touch: cada handler de touch solo resuelve la posición distinto
+  // y llama a estas mismas funciones, así el dibujo se comporta idéntico en los dos casos.
+  const startDrawAt = (pos) => {
     setIsDrawing(true);
     setDrawStart(pos);
     if (tool === 'freehand') setAnnotations(prev => [...prev, { type: 'freehand', color: drawColor, points: [pos] }]);
   };
-  const onCanvasMouseMove = (e) => {
+  const moveDrawTo = (pos) => {
     if (!isDrawing || !drawStart) return;
-    const pos = getCanvasPos(e);
     if (tool === 'freehand') {
       setAnnotations(prev => { const last = { ...prev[prev.length - 1], points: [...prev[prev.length - 1].points, pos] }; return [...prev.slice(0, -1), last]; });
     } else if (tool === 'rect') {
@@ -203,6 +275,11 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
     }
     redrawCanvas();
   };
+
+  const onCanvasMouseDown = (e) => startDrawAt(getCanvasPos(e));
+  const onCanvasMouseMove = (e) => moveDrawTo(getCanvasPos(e));
+  const onCanvasTouchStart = (e) => { e.preventDefault(); startDrawAt(getTouchCanvasPos(e)); };
+  const onCanvasTouchMove = (e) => { e.preventDefault(); moveDrawTo(getTouchCanvasPos(e)); };
   const onCanvasMouseUp = () => {
     if (currentAnnotation) { setAnnotations(prev => [...prev, currentAnnotation]); setCurrentAnnotation(null); }
     setIsDrawing(false);
@@ -224,7 +301,6 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
     }
   };
 
-  const hasUnsavedDraft = () => commentText.trim().length > 0 || annotations.length > 0 || commentFiles.length > 0;
   // jumpToComment se expone acá porque la lista de comentarios (afuera de este componente, en el
   // panel lateral de VideoReview.jsx) necesita poder seekear el video al hacer click en una tarjeta
   // — el <video>/canvas son internos, no hay otra forma de llegar a ellos desde el padre.
@@ -237,6 +313,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   const submitComment = async () => {
     if (!commentText.trim() || submittingRef.current) return;
     submittingRef.current = true;
+    setSubmitting(true);
     const ts = capturedTs || { type: 'single', ts: videoRef.current?.currentTime || 0 };
     try {
       await onSubmit({
@@ -256,7 +333,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
       setRangeEnd(null);
       clearAnnotations();
     } catch (e) { console.error(e); await alert('Error al enviar el comentario: ' + e.message); }
-    finally { submittingRef.current = false; }
+    finally { submittingRef.current = false; setSubmitting(false); }
   };
 
   const progressPct = duration ? (currentTime / duration) * 100 : 0;
@@ -272,16 +349,42 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           style={{ maxWidth: '100%', maxHeight: '100%', display: 'block' }}
           onTimeUpdate={onTimeUpdate}
           onLoadedMetadata={onLoadedMetadata}
+          onCanPlay={onCanPlay}
+          onError={onVideoError}
           onEnded={() => setPlaying(false)}
           onPause={onVideoPause}
           onPlay={() => { setPlaying(true); clearAnnotations(); onActiveCommentChange?.(null); }}
         />
+        {/* Antes un video roto (URL vencida, red cortada) quedaba en negro sin ningún aviso — ni
+            para el equipo ni, peor, para el cliente en el link público, que no tiene a quién
+            preguntarle "che, esto no carga". */}
+        {videoLoading && !videoError && (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+            <div className="spinner" />
+          </div>
+        )}
+        {videoError && (
+          // zIndex por encima del canvas: sin esto, el canvas (que se dibuja después en el DOM y
+          // cubre el mismo inset:0) le tapaba el click al botón — se detectó recién probando
+          // el estado de error en el navegador, no se veía leyendo el código.
+          <div style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', padding: 20 }}>
+            <span style={{ fontSize: 13, color: 'var(--text2)' }}>⚠️ No se pudo cargar el video</span>
+            <button className="btn-retry" onClick={retryVideo}>Reintentar</button>
+          </div>
+        )}
         <canvas ref={canvasRef} width={1280} height={720}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: 'crosshair' }}
+          // touchAction:'none' es lo que realmente evita que el navegador interprete el dedo
+          // dibujando como un gesto de scroll/zoom — el preventDefault() de los handlers de touch
+          // es respaldo, pero esta propiedad CSS es la forma confiable de lograrlo.
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: 'crosshair', touchAction: 'none' }}
           onMouseDown={onCanvasMouseDown}
           onMouseMove={onCanvasMouseMove}
           onMouseUp={onCanvasMouseUp}
           onMouseLeave={onCanvasMouseUp}
+          onTouchStart={onCanvasTouchStart}
+          onTouchMove={onCanvasTouchMove}
+          onTouchEnd={onCanvasMouseUp}
+          onTouchCancel={onCanvasMouseUp}
         />
       </div>
 
@@ -379,6 +482,11 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
               {r}×
             </button>
           ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button onClick={toggleMute} style={ctrlBtn}>{muted || volume === 0 ? '🔇' : '🔊'}</button>
+            <input type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} onChange={onVolumeChange}
+              style={{ width: 56, accentColor: 'var(--accent)', cursor: 'pointer' }} title="Volumen" />
+          </div>
           <button onClick={toggleFullscreen} style={{ ...ctrlBtn, fontSize: 14 }}>⛶</button>
           <button onClick={() => {
             if (videoRef.current) videoRef.current.pause();
@@ -434,9 +542,9 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
                 style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 12px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
                 Cancelar
               </button>
-              <button onClick={submitComment} disabled={!commentText.trim()}
-                style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '5px 14px', color: '#fff', fontSize: 12, fontWeight: 600, cursor: commentText.trim() ? 'pointer' : 'not-allowed', opacity: commentText.trim() ? 1 : 0.5 }}>
-                Comentar
+              <button onClick={submitComment} disabled={!commentText.trim() || submitting}
+                style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '5px 14px', color: '#fff', fontSize: 12, fontWeight: 600, cursor: (commentText.trim() && !submitting) ? 'pointer' : 'not-allowed', opacity: (commentText.trim() && !submitting) ? 1 : 0.5 }}>
+                {submitting ? 'Enviando...' : 'Comentar'}
               </button>
             </div>
           </div>
