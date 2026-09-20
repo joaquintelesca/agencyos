@@ -317,6 +317,21 @@ export default function Layout() {
     setShowPaymentSection(hasPaymentData);
   };
 
+  // Clona cliente/editor/config de pago y las tareas (título, descripción, prioridad, asignado —
+  // sin fechas ni nada de plata ya cobrada/pagada) para el caso recurrente de "otro proyecto
+  // igual al anterior". Mismo guard de dedupe contra el socket que createProject, y misma
+  // decisión de navegar directo al nuevo proyecto para que el admin lo revise/ajuste de una.
+  const duplicateProject = async (p) => {
+    try {
+      const created = await api(`/api/projects/${p.id}/duplicate`, { method: 'POST' });
+      setProjects(prev => prev.some(x => x.id === created.id) ? prev : [created, ...prev]);
+      navigate(`/project/${created.id}`);
+    } catch (e) {
+      console.error('Error duplicando proyecto:', e);
+      await alert('Error: ' + e.message);
+    }
+  };
+
   const deleteClient = (c) => {
     setClients(prev => prev.filter(x => x.id !== c.id));
     scheduleDelete(`Cliente "${c.name}" eliminado`, {
@@ -456,6 +471,7 @@ export default function Layout() {
       </Link>
       {user?.role === 'admin' && (
         <ProjectRowActions fontSize={12} padding="5px 4px"
+          onDuplicate={e => { e.preventDefault(); duplicateProject(p); }}
           onEdit={e => { e.preventDefault(); openEditProject(p); }}
           onDelete={e => { e.preventDefault(); deleteProject(p.id); }} />
       )}
@@ -593,6 +609,7 @@ export default function Layout() {
               </Link>
               {user?.role === 'admin' && (
                 <ProjectRowActions fontSize={13} padding="6px 4px"
+                  onDuplicate={e => { e.preventDefault(); duplicateProject(p); }}
                   onEdit={e => { e.preventDefault(); openEditProject(p); }}
                   onDelete={e => { e.preventDefault(); deleteProject(p.id); }} />
               )}
@@ -1147,9 +1164,11 @@ export default function Layout() {
 // Botones editar/borrar de una fila de proyecto en el sidebar — solo visibles al pasar el mouse
 // por la fila (clase .sidebar-row en el padre, ver index.css). Usado en las dos listas de
 // proyectos (agrupados por cliente y sin cliente), antes duplicado en cada una.
-function ProjectRowActions({ fontSize, padding, onEdit, onDelete }) {
+function ProjectRowActions({ fontSize, padding, onEdit, onDelete, onDuplicate }) {
   return (
     <div style={{ display: 'flex', gap: 0 }}>
+      {/* Solo las filas de proyecto pasan onDuplicate — no tiene sentido "duplicar" un cliente. */}
+      {onDuplicate && <button className="reveal-btn edit" title="Duplicar proyecto" onClick={onDuplicate} style={{ fontSize, padding }}>⧉</button>}
       <button className="reveal-btn edit" onClick={onEdit} style={{ fontSize, padding }}>✏️</button>
       <button className="reveal-btn delete" onClick={onDelete} style={{ fontSize, padding }}>🗑</button>
     </div>

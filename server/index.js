@@ -1292,6 +1292,45 @@ app.post('/api/projects', auth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
+// Clona la config de un proyecto (cliente, editor, tipo/tarifa de pago) y sus tareas (título,
+// descripción, prioridad, asignado) para el caso recurrente de "otro proyecto igual al anterior".
+// A propósito NO se copian: deadline (no tiene sentido heredar la fecha de otro trabajo), nada de
+// lo ya cobrado/pagado (es un proyecto nuevo, sin historial de plata todavía — status/ever_completed/
+// *_paid/*_paid_at/*_paid_amount/completed_at arrancan en blanco aunque la tarifa configurada sea
+// la misma), ni el estado de las tareas (todas arrancan en 'todo', sin due_date ni comentarios/videos).
+app.post('/api/projects/:id/duplicate', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo el admin puede duplicar proyectos' });
+    const source = await db('projects').where({ id: req.params.id }).first();
+    if (!source) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    const id = uuidv4();
+    await db('projects').insert({
+      id, name: `${source.name} (copia)`, description: source.description, color: source.color,
+      created_by: req.user.id, client_id: source.client_id, deadline: null, material_link: null,
+      payment_editor_id: source.payment_editor_id, payment_type: source.payment_type,
+      payment_amount: source.payment_amount, payment_hours: source.payment_hours,
+      client_amount: source.client_amount, payment_status: 'unpaid',
+      upwork_status: source.upwork_status, upwork_fee_pct: source.upwork_fee_pct
+    });
+    await addProjectMember(id, req.user.id, 'owner');
+    if (source.payment_editor_id) await addProjectMember(id, source.payment_editor_id);
+
+    const sourceTasks = await db('tasks').where({ project_id: source.id });
+    if (sourceTasks.length) {
+      await db('tasks').insert(sourceTasks.map(t => ({
+        id: uuidv4(), project_id: id, title: t.title, description: t.description,
+        status: 'todo', priority: t.priority, assigned_to: t.assigned_to, created_by: req.user.id,
+        due_date: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+      })));
+    }
+
+    const project = await db('projects').where({ id }).first();
+    await emitToProject(id, 'project:created', project);
+    if (source.payment_editor_id) await createNotification({ userId: source.payment_editor_id, type: 'project_assigned', actorId: req.user.id, projectId: id, preview: project.name });
+    res.json(project);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
 app.put('/api/projects/:id', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
