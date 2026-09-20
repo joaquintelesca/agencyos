@@ -995,6 +995,21 @@ const loginLimiter = rateLimit({
   message: { error: 'Demasiados intentos de inicio de sesión. Probá de nuevo más tarde.' }
 });
 
+// Los endpoints que abren una subida no tenían ningún límite: cada init reserva un multipart
+// real en R2 (facturable) y una entrada en uploadSessions que recién se barre a las 6h, así que
+// un token robado —o un bug de reintentos del cliente— podía inflar costo y memoria en un loop.
+// El límite es por usuario, no por IP: varios editores pueden compartir salida NAT, y el que
+// importa acá es quién sube, no desde dónde. Generoso a propósito: subir 40 videos en 15 minutos
+// no es un uso real, pero 10 sí podría serlo en un día de entrega.
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || req.ip,
+  message: { error: 'Demasiadas subidas seguidas. Esperá unos minutos.' }
+});
+
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
@@ -1394,7 +1409,23 @@ app.post('/api/projects/:projectId/members', auth, async (req, res) => {
 app.delete('/api/projects/:projectId/members/:userId', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    await db('project_members').where({ project_id: req.params.projectId, user_id: req.params.userId }).delete();
+    const { projectId, userId } = req.params;
+    // Sacar a alguien que todavía tiene trabajo asignado (o que es el editor que cobra) lo deja
+    // en un estado roto: sigue figurando como responsable pero sin poder ver el board ni el chat.
+    // Se pide resolver primero eso, que es una decisión del admin, no algo para inferir acá.
+    const project = await db('projects').where({ id: projectId }).first();
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    if (project.payment_editor_id === userId) {
+      return res.status(409).json({ error: 'Es el editor que cobra este proyecto. Cambiá el editor antes de sacarle el acceso.' });
+    }
+    const hasTask = await db('tasks').where({ project_id: projectId, assigned_to: userId }).first();
+    if (hasTask) {
+      return res.status(409).json({ error: 'Todavía tiene tareas asignadas en este proyecto. Reasignalas antes de sacarle el acceso.' });
+    }
+    await db('project_members').where({ project_id: projectId, user_id: userId }).delete();
+    // Sin esto el socket ya conectado sigue en la room del proyecto y recibe el chat en vivo
+    // hasta que recargue (mismo cierre que hace removeProjectMemberIfOrphaned).
+    io.in(`user:${userId}`).socketsLeave(`project:${projectId}`);
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -1646,6 +1677,7 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
     let found = false;
+    let badValue = false;
     await db.transaction(async trx => {
       // Mismo lock de fila que PUT /api/projects/:id (ver comentario ahí): todo lo que compone el
       // monto (horas, tarifa, tipo de pago) se lee DESPUÉS de tomar el lock y dentro de la misma
@@ -1656,6 +1688,17 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
       if (!existing) return;
       found = true;
       const { payment_hours, payment_status, upwork_status, payment_amount } = req.body;
+      // Sin whitelist, un valor como 'Paid' se guardaba igual pero fallaba el === 'paid' de
+      // withComputedTotals: el monto congelado se descartaba y el proyecto volvía a un total
+      // calculado en vivo, con editor_paid_at ya en null. Plata mal reportada en silencio.
+      // ('pending' queda aceptado porque es el default viejo que todavía existe en filas reales.)
+      const invalid = (v, allowed) => v !== undefined && !allowed.includes(v);
+      if (invalid(req.body.editor_paid, ['paid', 'unpaid'])
+        || invalid(req.body.client_paid, ['cobrado', 'unpaid'])
+        || invalid(upwork_status, ['No', 'Pendiente de carga', 'Cargado', 'pending'])) {
+        badValue = true;
+        return;
+      }
       const update = {};
       if (payment_hours !== undefined) update.payment_hours = Math.max(0, parseFloat(payment_hours) || 0);
       if (payment_status !== undefined) update.payment_status = payment_status;
@@ -1683,7 +1726,15 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
         followUp.client_paid_amount_gross = current.client_paid === 'cobrado' ? computeClientGrossAmount(current) : null;
         followUp.client_paid_amount_net = current.client_paid === 'cobrado' ? computeClientNetAmount(current) : null;
       }
-      const isCompleted = current.editor_paid === 'paid' && current.client_paid === 'cobrado';
+      // Cuando el editor asignado es un admin no hay pago real que registrar (no te pagás a vos
+      // mismo), así que ese lado cuenta como saldado — es la misma regla que ya aplica Payments.jsx
+      // para mover el proyecto a "Saldados". Sin espejarla acá, esos proyectos nunca sellaban
+      // completed_at: quedaban con "Saldado: —" y al fondo del historial ordenado por esa fecha.
+      const editorUser = current.payment_editor_id
+        ? await trx('users').where({ id: current.payment_editor_id }).select('role').first()
+        : null;
+      const editorSettled = current.editor_paid === 'paid' || editorUser?.role === 'admin';
+      const isCompleted = editorSettled && current.client_paid === 'cobrado';
       if (isCompleted && !current.completed_at) {
         followUp.completed_at = new Date().toISOString();
       } else if (!isCompleted && current.completed_at) {
@@ -1694,6 +1745,7 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
       }
     });
     if (!found) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    if (badValue) return res.status(400).json({ error: 'Valor de estado de pago inválido' });
     const project = withDeletedEditorFallback(await db('projects as p')
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
@@ -1839,6 +1891,10 @@ app.delete('/api/tasks/:id', auth, async (req, res) => {
     }
     await db('videos').where({ task_id: req.params.id }).update({ task_id: null });
     await db('tasks').where({ id: req.params.id }).delete();
+    // Borrar la última tarea de un editor lo deja sin motivo para seguir teniendo acceso al
+    // proyecto. Sin esto se quedaba con el board, el chat y los videos para siempre: la limpieza
+    // de huérfanos ya corría al reasignar tareas y al cambiar de editor, pero no al borrarlas.
+    if (existing.assigned_to) await removeProjectMemberIfOrphaned(existing.project_id, existing.assigned_to);
     await emitToProject(existing.project_id, 'task:deleted', { id: req.params.id });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -1913,7 +1969,7 @@ setInterval(() => {
 
 // Inicia una subida: valida tipo/tamaño y guarda los metadatos del video a crear
 // (se usan recién al completar, para no tener que volver a mandarlos en cada parte).
-app.post('/api/projects/:projectId/videos/upload/init', auth, requireProjectAccess(), async (req, res) => {
+app.post('/api/projects/:projectId/videos/upload/init', auth, uploadLimiter, requireProjectAccess(), async (req, res) => {
   try {
     const { originalName, mimetype, fileSize, title, version, task_id, stack_with } = req.body;
     const ext = VIDEO_MIME_EXT[mimetype];
@@ -2083,6 +2139,10 @@ app.delete('/api/videos/:id', auth, async (req, res) => {
       if (commentIds.length) await trx('comment_attachments').whereIn('comment_id', commentIds).delete();
       if (replyIds.length) await trx('comment_replies').whereIn('id', replyIds).delete();
       if (commentIds.length) await trx('video_comments').whereIn('id', commentIds).delete();
+      // Las notificaciones que apuntaban a este video (o a sus comentarios) quedaban colgadas:
+      // al clickearlas llevaban a un video que ya no existe.
+      await trx('notifications').where({ video_id: req.params.id }).delete();
+      if (commentIds.length) await trx('notifications').whereIn('comment_id', commentIds).delete();
       await trx('videos').where({ id: req.params.id }).delete();
     });
 
@@ -2609,8 +2669,17 @@ app.post('/api/chat/read', auth, async (req, res) => {
     let msgs;
     if (type === 'dm') {
       msgs = await db('chat_messages').where({ type: 'dm', sender_id: id, receiver_id: userId }).orWhere({ type: 'dm', sender_id: userId, receiver_id: id });
-    } else {
+    } else if (type === 'channel') {
+      // Antes cualquier `type` distinto de 'dm' caía acá sin verificar nada, así que se podía
+      // escribirse a sí mismo en el read_by de todos los mensajes de cualquier canal ajeno
+      // (GET /api/chat/messages sí valida la membresía; esto no).
+      if (req.user.role !== 'admin') {
+        const isMember = await db('chat_channel_members').where({ channel_id: String(id), user_id: userId }).first();
+        if (!isMember) return res.status(403).json({ error: 'No sos miembro de este canal' });
+      }
       msgs = await db('chat_messages').where({ type: 'channel', channel_id: id });
+    } else {
+      return res.status(400).json({ error: 'Tipo de conversación inválido' });
     }
     for (const m of msgs) {
       const readBy = parseReadBy(m.read_by);
@@ -2823,7 +2892,7 @@ app.post('/api/chat/messages', auth, async (req, res) => {
 });
 
 // POST upload file for chat — reusa el whitelist compartido de adjuntos seguros.
-app.post('/api/chat/upload', auth, (req, res) => {
+app.post('/api/chat/upload', auth, uploadLimiter, (req, res) => {
   attachmentUpload.single('file')(req, res, async (err) => {
     if (err && err.message === 'INVALID_FILE_TYPE') {
       return res.status(400).json({ error: 'Tipo de archivo no permitido. Se aceptan imágenes, videos, audios, PDFs y texto.' });
@@ -2999,6 +3068,18 @@ if (fs.existsSync(clientDist)) {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 }
+
+// Error handler final de Express (va después de todas las rutas). Sin esto, un error síncrono
+// que no atrapa ninguna ruta — por ejemplo un JSON malformado en el body, que revienta dentro de
+// express.json() antes de llegar al handler — cae en el manejador por defecto de Express, que
+// responde con el stack trace completo (rutas absolutas del server, estructura de módulos) salvo
+// que NODE_ENV=production. Esto lo cubre independientemente de cómo esté configurado el entorno.
+app.use((err, req, res, next) => {
+  console.error('Error no manejado:', err);
+  if (res.headersSent) return next(err);
+  if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON inválido' });
+  res.status(500).json({ error: 'Error interno del servidor' });
+});
 
 // Red de seguridad: sin esto, una sola promesa rechazada fuera de un try/catch (un corte de
 // conexión con la DB en medio de un request, un handler de socket con payload inesperado)

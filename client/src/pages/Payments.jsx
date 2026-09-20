@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
-import { initials } from '../utils/format';
+import { initials, monthKey } from '../utils/format';
 
 const UPWORK_OPTIONS = ['Pendiente de carga', 'Cargado', 'No'];
 
@@ -16,7 +16,12 @@ export default function Payments() {
   const [tab, setTab] = useState('active'); // active | completed | monthly
   const [filterClient, setFilterClient] = useState('');
   const [filterEditor, setFilterEditor] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    // toISOString() es UTC: en UTC-3, del 1 de mes a la madrugada abría el balance del mes
+    // anterior. Se arma en local.
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }); // YYYY-MM
   const [pendingComplete, setPendingComplete] = useState(null); // { projectId, changes } | null
 
   const [ledger, setLedger] = useState([]);
@@ -117,8 +122,8 @@ export default function Payments() {
   // Se calcula sobre `ledger` (todo proyecto con plata registrada) y NO sobre `projects` (que
   // solo trae trabajo ya terminado): si no, un anticipo cobrado en julio sobre un proyecto
   // todavía activo no contaba en julio y aparecía después, agrandando un mes ya cerrado.
-  const receivedThisMonth = ledger.filter(p => p.client_paid_at && p.client_paid_at.slice(0, 7) === selectedMonth);
-  const paidToEditorsThisMonth = ledger.filter(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id !== user.id);
+  const receivedThisMonth = ledger.filter(p => monthKey(p.client_paid_at) === selectedMonth);
+  const paidToEditorsThisMonth = ledger.filter(p => monthKey(p.editor_paid_at) === selectedMonth && p.payment_editor_id !== user.id);
   const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + p.computed_client_net, 0);
   const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + p.computed_editor_total, 0);
   const totalUpworkFeeMonth = receivedThisMonth.reduce((s, p) => s + (p.computed_client_gross - p.computed_client_net), 0);

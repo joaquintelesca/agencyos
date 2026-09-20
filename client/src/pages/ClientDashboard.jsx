@@ -3,8 +3,8 @@ import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { initials, deadlineLabel } from '../utils/format';
 
-const STATUS_LABELS = { todo: 'Por hacer', in_progress: 'En progreso', review: 'En revisión', done: 'Listo' };
-const STATUS_COLORS = { todo: 'var(--text3)', in_progress: 'var(--blue)', review: 'var(--yellow)', done: 'var(--green)' };
+const STATUS_LABELS = { todo: 'Por hacer', in_progress: 'En progreso', review: 'En revisión', feedback: 'Aplicar feedback', done: 'Listo' };
+const STATUS_COLORS = { todo: 'var(--text3)', in_progress: 'var(--blue)', review: 'var(--yellow)', feedback: 'var(--red)', done: 'var(--green)' };
 
 export default function ClientDashboard() {
   const { id } = useParams();

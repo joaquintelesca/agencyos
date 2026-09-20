@@ -48,10 +48,15 @@ export default function Notifications() {
 
   const handleClick = async (n) => {
     if (!n.read) {
-      await api(`/api/notifications/${n.id}/read`, { method: 'PATCH' });
-      setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
-      setUnreadNotifs(prev => Math.max(0, prev - 1));
-      if (n.type === 'task_review' || n.type === 'task_feedback' || n.type === 'video_uploaded') refreshProjectDots();
+      // Si el PATCH falla, igual se navega: marcar leído es secundario frente a abrir lo que el
+      // usuario quiso abrir. Sin este try/catch un 500 pasajero dejaba las notificaciones
+      // completamente inclickeables, sin ningún feedback.
+      try {
+        await api(`/api/notifications/${n.id}/read`, { method: 'PATCH' });
+        setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
+        setUnreadNotifs(prev => Math.max(0, prev - 1));
+        if (n.type === 'task_review' || n.type === 'task_feedback' || n.type === 'video_uploaded') refreshProjectDots();
+      } catch (e) { console.error(e); }
     }
     if (n.video_id && n.project_id) navigate(`/project/${n.project_id}?tab=videos&video=${n.video_id}`);
     else if (n.type === 'chat') navigate('/chat');

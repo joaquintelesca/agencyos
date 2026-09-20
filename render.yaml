@@ -7,6 +7,10 @@ services:
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
+      # Sin esto Express usa el modo de desarrollo y devuelve el stack trace completo al cliente
+      # ante un error sin manejar (rutas de archivos y estructura de módulos del servidor).
+      - key: NODE_ENV
+        value: production
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL

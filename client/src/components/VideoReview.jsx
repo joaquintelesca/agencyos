@@ -46,6 +46,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const [tool, setTool] = useState('freehand'); // freehand | rect | arrow
   const [drawColor, setDrawColor] = useState('#f0a83a');
   const [isDrawing, setIsDrawing] = useState(false);
+  const submittingCommentRef = useRef(false);
   const [drawStart, setDrawStart] = useState(null);
   const [annotations, setAnnotations] = useState([]);
   const [currentAnnotation, setCurrentAnnotation] = useState(null);
@@ -200,9 +201,18 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   };
 
   const toggleFullscreen = () => {
-    if (!isFullscreen) { playerContainerRef.current?.requestFullscreen?.(); setIsFullscreen(true); }
-    else { document.exitFullscreen?.(); setIsFullscreen(false); }
+    if (!isFullscreen) playerContainerRef.current?.requestFullscreen?.();
+    else document.exitFullscreen?.();
   };
+
+  // El estado lo dicta el navegador, no nuestro click: saliendo de pantalla completa con Esc
+  // (o con el gesto del sistema) el flag se quedaba en true, así que el botón hacía exitFullscreen
+  // sobre algo que ya estaba cerrado y había que clickearlo dos veces para volver a entrar.
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
 
   // Range selection
   const markRangeStart = () => {
@@ -321,6 +331,10 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
 
   const submitComment = async () => {
     if (!commentText.trim()) return;
+    // El botón queda habilitado durante el POST, así que un doble clic mandaba el comentario dos
+    // veces (y generaba dos notificaciones). El texto recién se limpia al volver la respuesta.
+    if (submittingCommentRef.current) return;
+    submittingCommentRef.current = true;
     // Use capturedTs or fall back to current video time
     const ts = capturedTs || { type: 'single', ts: videoRef.current?.currentTime || 0 };
     const fd = new FormData();
@@ -343,6 +357,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       setRangeEnd(null);
       clearAnnotations();
     } catch (e) { console.error(e); await alert('Error al enviar el comentario: ' + e.message); }
+    finally { submittingCommentRef.current = false; }
   };
 
   const jumpToComment = (c) => {

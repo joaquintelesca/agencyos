@@ -41,6 +41,8 @@ export default function Project() {
   const [members, setMembers] = useState(null);
   const [showMembers, setShowMembers] = useState(false);
   const [membersError, setMembersError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [savingTask, setSavingTask] = useState(false);
   const msgEndRef = useRef(null);
   const msgContainerRef = useRef(null);
 
@@ -51,13 +53,24 @@ export default function Project() {
     setMessages([]);
     setMembers(null);
     setMembersError('');
-    api(`/api/projects/${id}`).then(setProject).catch(e => {
+    setLoadError('');
+    // `cancelado` evita que la respuesta de un proyecto anterior pise la del actual: clickeando
+    // A y después B con conexión lenta, la de A podía llegar última y mostrar los datos de A
+    // en la URL de B. Los .catch faltantes dejaban el kanban vacío, como si el proyecto no
+    // tuviera tareas, cuando en realidad la request había fallado.
+    let cancelado = false;
+    api(`/api/projects/${id}`).then(p => { if (!cancelado) setProject(p); }).catch(e => {
       console.error(e);
-      setNotFound(true);
+      if (!cancelado) setNotFound(true);
     });
-    api(`/api/projects/${id}/tasks`).then(setTasks);
-    api(`/api/projects/${id}/messages`).then(msgs => { setMessages(msgs); setHasMore(msgs.length >= 50); });
-    api('/api/users').then(setUsers);
+    api(`/api/projects/${id}/tasks`)
+      .then(t => { if (!cancelado) setTasks(t); })
+      .catch(e => { console.error(e); if (!cancelado) setLoadError('No se pudieron cargar las tareas de este proyecto.'); });
+    api(`/api/projects/${id}/messages`)
+      .then(msgs => { if (!cancelado) { setMessages(msgs); setHasMore(msgs.length >= 50); } })
+      .catch(console.error);
+    api('/api/users').then(u => { if (!cancelado) setUsers(u); }).catch(console.error);
+    return () => { cancelado = true; };
   }, [id]);
 
   // Quién tiene acceso a este proyecto (project_members) es un cálculo implícito del lado del
@@ -159,13 +172,23 @@ export default function Project() {
   };
 
   const saveTask = async () => {
-    if (!taskForm.title.trim()) return;
-    if (editingTask) {
-      await api(`/api/tasks/${editingTask.id}`, { method: 'PUT', body: taskForm });
-    } else {
-      await api(`/api/projects/${id}/tasks`, { method: 'POST', body: taskForm });
+    if (!taskForm.title.trim() || savingTask) return;
+    // Sin el guard, un doble clic creaba dos tareas iguales; sin el catch, un error dejaba el
+    // modal abierto sin decir nada y parecía que el botón no hacía nada.
+    setSavingTask(true);
+    try {
+      if (editingTask) {
+        await api(`/api/tasks/${editingTask.id}`, { method: 'PUT', body: taskForm });
+      } else {
+        await api(`/api/projects/${id}/tasks`, { method: 'POST', body: taskForm });
+      }
+      setShowTaskModal(false);
+    } catch (e) {
+      console.error(e);
+      await alert('No se pudo guardar la tarea: ' + e.message);
+    } finally {
+      setSavingTask(false);
     }
-    setShowTaskModal(false);
   };
 
   const deleteTask = (taskId) => {
@@ -426,6 +449,12 @@ export default function Project() {
       </div>
 
       {/* Kanban */}
+      {tab === 'kanban' && loadError && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'rgba(240,92,92,0.08)', border: '1px solid rgba(240,92,92,0.3)', borderRadius: 8, padding: '10px 14px', margin: '14px 20px 0', fontSize: 13, color: 'var(--red)' }}>
+          <span>⚠️ {loadError}</span>
+          <button className="btn-retry" onClick={() => window.location.reload()}>Reintentar</button>
+        </div>
+      )}
       {tab === 'kanban' && (
         <div style={{ display: 'flex', gap: 12, padding: 20, overflowX: 'auto', flex: 1 }}>
           {STATUSES.map(col => (
@@ -581,7 +610,7 @@ export default function Project() {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               {editingTask && <button className="btn btn-danger" onClick={() => { deleteTask(editingTask.id); setShowTaskModal(false); }}>Eliminar</button>}
               <button className="btn btn-ghost" onClick={() => setShowTaskModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={saveTask}>{editingTask ? 'Guardar' : 'Crear'}</button>
+              <button className="btn btn-primary" onClick={saveTask} disabled={savingTask}>{savingTask ? 'Guardando...' : editingTask ? 'Guardar' : 'Crear'}</button>
             </div>
           </div>
         </div>

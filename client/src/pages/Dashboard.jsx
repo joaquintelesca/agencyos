@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { initials, deadlineLabel } from '../utils/format';
+import { initials, deadlineLabel, daysUntil } from '../utils/format';
 
 const VIDEOS_PREVIEW_LIMIT = 5;
 const PAYMENTS_PREVIEW_LIMIT = 5;
@@ -30,6 +30,11 @@ export default function Dashboard() {
     if (isAdmin) {
       api('/api/payments').then(setPayments).catch(e => { console.error(e); setError('No se pudo cargar toda la información del dashboard. Puede ser un problema de conexión.'); });
     }
+    // Se descartan las claves de proyectos que ya no existen: antes el mapa solo crecía, así que
+    // borrar un proyecto dejaba sus tareas contando en "Tareas pendientes" y sus tareas en
+    // revisión listadas sin proyecto, linkeando a un "Proyecto no encontrado".
+    const vigentes = new Set(projects.map(p => p.id));
+    setTasks(prev => Object.fromEntries(Object.entries(prev).filter(([id]) => vigentes.has(id))));
     projects.forEach(p => {
       api(`/api/projects/${p.id}/tasks`).then(t => setTasks(prev => ({ ...prev, [p.id]: t }))).catch(console.error);
     });
@@ -38,9 +43,11 @@ export default function Dashboard() {
   const allTasks = Object.values(tasks).flat();
   const pendingTasks = allTasks.filter(t => t.status !== 'done');
   const activeProjectsList = projects.filter(p => p.status !== 'completed');
+  // status !== 'completed' igual que deadlineSoon y el Calendario: sin ese filtro el contador
+  // rojo seguía contando deadlines de trabajo ya entregado.
   const deadlinesThisWeek = projects.filter(p => {
-    if (!p.deadline) return false;
-    const diff = Math.ceil((new Date(p.deadline) - new Date()) / 86400000);
+    if (!p.deadline || p.status === 'completed') return false;
+    const diff = daysUntil(p.deadline);
     return diff >= 0 && diff <= 7;
   });
   // Un proyecto ya marcado "Terminado" no necesita más recordatorios de deadline ni de

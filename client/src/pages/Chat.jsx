@@ -80,6 +80,12 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [recording, setRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
+  // Espejo en refs de lo que hay que soltar al desmontar: el cleanup corre con deps [] y no puede
+  // leer el state de la grabación en curso.
+  const mediaRecorderRef = useRef(null);
+  const micStreamRef = useRef(null);
+  const recordedAudioUrlRef = useRef(null);
+  const sendingMessageRef = useRef(false);
   const WAVE_BARS = 24;
   const [waveLevels, setWaveLevels] = useState(() => Array(WAVE_BARS).fill(0));
   const audioCtxRef = useRef(null);
@@ -121,15 +127,25 @@ export default function Chat() {
   const setConversationsRef = useRef(setConversations);
   const setChannelsRef = useRef(setChannels);
 
-  // Mantener refs siempre actualizados
-  // Si se navega fuera del chat a mitad de una grabación, cierra el AudioContext de la forma
-  // de onda igual — si no, queda vivo en segundo plano (el stream del micrófono ya se corta
-  // solo al desmontar por el cleanup de mediaRecorder, pero el AudioContext es independiente).
+  // Si se navega fuera del chat a mitad de una grabación hay que soltar TODO a mano. El comentario
+  // anterior acá daba por hecho que el stream del micrófono se cortaba solo al desmontar; no
+  // existía tal cleanup, así que el indicador de micrófono del navegador quedaba prendido y el
+  // MediaRecorder seguía acumulando chunks por el resto de la sesión.
   useEffect(() => () => {
     if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current);
     audioCtxRef.current?.close().catch(() => {});
     clearInterval(recordingTimerRef.current);
+    try {
+      if (mediaRecorderRef.current?.state && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+    } catch { /* el recorder ya podía estar muerto */ }
+    micStreamRef.current?.getTracks().forEach(t => t.stop());
+    // Una nota de voz grabada pero nunca enviada ni descartada deja su blob colgado en memoria.
+    if (recordedAudioUrlRef.current) URL.revokeObjectURL(recordedAudioUrlRef.current);
   }, []);
+
+  useEffect(() => { recordedAudioUrlRef.current = recordedAudio?.url || null; }, [recordedAudio]);
 
   useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
@@ -356,6 +372,11 @@ export default function Chat() {
     const conv = activeConvRef.current;
     if (!conv) return;
     if (!content?.trim() && !fileUrl) return;
+    // El input recién se limpia con la respuesta del POST, así que en una conexión lenta (o con
+    // el cold start de Render) el texto sigue ahí y un segundo Enter mandaba el mismo mensaje dos
+    // veces. El guard va en un ref y no en state porque tiene que valer ya en el mismo tick.
+    if (sendingMessageRef.current) return;
+    sendingMessageRef.current = true;
 
     const body = {
       type: conv.type,
@@ -374,6 +395,8 @@ export default function Chat() {
       setInput('');
     } catch (e) {
       await alert('No se pudo enviar: ' + e.message);
+    } finally {
+      sendingMessageRef.current = false;
     }
   };
 
@@ -467,12 +490,16 @@ export default function Chat() {
         MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
 
       const mr = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      mediaRecorderRef.current = mr;
+      micStreamRef.current = stream;
       const chunks = [];
 
       mr.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
 
       mr.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
+        mediaRecorderRef.current = null;
+        micStreamRef.current = null;
         // Se lee antes de stopWaveform (que resetea el state, aunque no esta ref) para tener
         // la duración real ya calculada — los .webm de MediaRecorder no siempre reportan su
         // propia duración de forma confiable, así que no dependemos del navegador para mostrarla.
@@ -488,6 +515,8 @@ export default function Chat() {
 
       mr.onerror = () => {
         stream.getTracks().forEach(t => t.stop());
+        mediaRecorderRef.current = null;
+        micStreamRef.current = null;
         stopWaveform();
         setRecording(false);
         setMediaRecorder(null);
