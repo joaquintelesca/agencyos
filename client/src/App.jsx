@@ -11,6 +11,7 @@ import VideosDashboard from './pages/VideosDashboard';
 import Team from './pages/Team';
 import Chat from './pages/Chat';
 import Notifications from './pages/Notifications';
+import Earnings from './pages/Earnings';
 import ClientDashboard from './pages/ClientDashboard';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -46,6 +47,7 @@ export default function App() {
                   <Route path="team" element={<Team />} />
                   <Route path="chat" element={<Chat />} />
                   <Route path="notifications" element={<Notifications />} />
+                  <Route path="earnings" element={<Earnings />} />
                   <Route path="payments" element={<AdminRoute><Payments /></AdminRoute>} />
                   <Route path="videos" element={<AdminRoute><VideosDashboard /></AdminRoute>} />
                 </Route>

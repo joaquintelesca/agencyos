@@ -463,6 +463,11 @@ export default function Layout() {
           <NavItem to="/chat" label="Chat" icon="💬" active={isActive('/chat')} badge={Object.values(chatUnread).reduce((a, b) => a + b, 0)} />
           <NavItem to="/team" label="Equipo" icon="👥" active={isActive('/team')} />
           <NavItem to="/notifications" label="Notificaciones" icon="🔔" active={isActive('/notifications')} badge={unreadNotifs} badgeRed />
+          {/* El admin ya ve todo esto (y más) en Pagos — este link self-scoped es para el
+              editor, que hoy no tiene ninguna forma de ver ni su propia tarifa. */}
+          {user?.role !== 'admin' && (
+            <NavItem to="/earnings" label="Mis ganancias" icon="💵" active={isActive('/earnings')} />
+          )}
           {user?.role === 'admin' && (
             <>
               <NavItem to="/videos" label="Videos" icon="🎬" active={isActive('/videos')} admin />
