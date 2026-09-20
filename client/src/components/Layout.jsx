@@ -5,6 +5,7 @@ import { useUndo } from '../context/UndoContext';
 import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
 import ErrorBoundary from './ErrorBoundary';
+import SearchPalette from './SearchPalette';
 
 const COLORS =['#6366f1','#10b981','#f59e0b','#ec4899','#3b82f6','#8b5cf6','#ef4444','#14b8a6'];
 
@@ -42,6 +43,7 @@ export default function Layout() {
   const [sidebarError, setSidebarError] = useState('');
   const [sidebarRetryCount, setSidebarRetryCount] = useState(0);
   const [expandedClients, setExpandedClients] = useState([]); // string[] de client IDs
+  const [searchOpen, setSearchOpen] = useState(false);
   const [expandedCompletedFolders, setExpandedCompletedFolders] = useState([]); // string[] de client IDs con "Terminados" abierto
   const [draggedClientId, setDraggedClientId] = useState(null);
   const [draggedProjectId, setDraggedProjectId] = useState(null);
@@ -52,6 +54,21 @@ export default function Layout() {
     return saved >= SIDEBAR_MIN && saved <= SIDEBAR_MAX ? saved : 220;
   });
   const [resizingSidebar, setResizingSidebar] = useState(false);
+
+  // Cmd/Ctrl+K siempre se intercepta, a diferencia del Cmd/Ctrl+Z de deshacer (ver UndoContext) —
+  // ahí no tocar el atajo mientras se escribe en un input importa porque pisaría el undo nativo
+  // del navegador; acá no hay undo nativo en conflicto, así que abrir la búsqueda con el foco en
+  // cualquier campo es justamente el caso de uso (no hay que ir al mouse primero).
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   useEffect(() => { localStorage.setItem('sidebarCollapsed', String(sidebarCollapsed)); }, [sidebarCollapsed]);
   useEffect(() => { localStorage.setItem('sidebarWidth', String(sidebarWidth)); }, [sidebarWidth]);
@@ -456,7 +473,21 @@ export default function Layout() {
           <button onClick={() => setSidebarCollapsed(true)} title="Ocultar sidebar" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 15, padding: 4, flexShrink: 0 }}>◀</button>
         </div>
 
-        <div style={{ padding: '12px 8px 6px' }}>
+        <div style={{ padding: '10px 8px 0' }}>
+          <button onClick={() => setSearchOpen(true)} style={{
+            display: 'flex', alignItems: 'center', gap: 7, width: '100%', padding: '7px 10px', marginBottom: 6,
+            background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer',
+            color: 'var(--text3)', fontSize: 12.5, fontFamily: 'var(--font)'
+          }}>
+            <span>🔍</span>
+            <span style={{ flex: 1, textAlign: 'left' }}>Buscar...</span>
+            <span style={{ fontSize: 10.5, border: '1px solid var(--border2)', borderRadius: 4, padding: '1px 5px' }}>
+              {navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl+K'}
+            </span>
+          </button>
+        </div>
+
+        <div style={{ padding: '6px 8px 6px' }}>
           <SideLabel>General</SideLabel>
           <NavItem to="/" label="Dashboard" icon="🏠" active={isActive('/')} />
           <NavItem to="/calendar" label="Calendario" icon="📅" active={isActive('/calendar')} />
@@ -619,6 +650,8 @@ export default function Layout() {
           <Outlet context={{ projects, setProjects, unreadNotifs, setUnreadNotifs, openEditProject }} />
         </ErrorBoundary>
       </main>
+
+      <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
 
       {/* New Project Modal */}
       {showNewProject && (
