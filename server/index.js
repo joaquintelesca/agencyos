@@ -763,71 +763,81 @@ app.use(express.json());
 const auth = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1] || req.query.token;
   if (!token) return res.status(401).json({ error: 'Sesión no iniciada' });
+  let decoded;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch { return res.status(401).json({ error: 'Token inválido' }); }
+  // El fallo de la query va aparte a propósito: si se devuelve 401 ante un corte transitorio de
+  // la DB, el cliente lo interpreta como sesión vencida y desloguea a todo el equipo de una.
+  try {
     const current = await db('users').where({ id: decoded.id }).select('id', 'email', 'role').first();
     if (!current) return res.status(401).json({ error: 'Usuario no encontrado' });
     req.user = current;
     next();
-  } catch { res.status(401).json({ error: 'Token inválido' }); }
+  } catch (e) {
+    console.error('auth:', e);
+    res.status(503).json({ error: 'Servicio no disponible, reintentá en unos segundos' });
+  }
 };
 
 // Sirve archivos subidos (videos, adjuntos de comentarios/chat) solo a usuarios autenticados
 // que tengan acceso real al proyecto o conversación dueña del archivo. Reemplaza el static()
 // público anterior, que permitía descargar cualquier archivo sabiendo su nombre.
 app.get('/uploads/:filename', auth, async (req, res) => {
-  const { filename } = req.params;
-  if (!filename || filename.includes('..') || filename.includes('/')) {
-    return res.status(400).json({ error: 'Nombre de archivo inválido' });
-  }
-  // Con disco local se puede chequear existencia antes de gastar queries; con R2 no vale la pena
-  // el viaje extra (HeadObject) — si no existe, el redirect a la signed URL simplemente 404ea.
-  if (!useR2 && !fs.existsSync(path.join(uploadsDir, filename))) {
-    return res.status(404).json({ error: 'Archivo no encontrado' });
-  }
-
-  if (req.user.role === 'admin') return serveFile(res, filename);
-
-  const video = await db('videos').where({ filename }).first();
-  if (video) {
-    if (await isProjectMember(req.user.id, req.user.role, video.project_id)) return serveFile(res, filename);
-    return res.status(403).json({ error: 'Sin acceso' });
-  }
-
-  const commentAttachment = await db('comment_attachments as ca')
-    .join('video_comments as vc', 'ca.comment_id', 'vc.id')
-    .join('videos as v', 'vc.video_id', 'v.id')
-    .where('ca.filename', filename)
-    .select('v.project_id')
-    .first();
-  if (commentAttachment) {
-    if (await isProjectMember(req.user.id, req.user.role, commentAttachment.project_id)) return serveFile(res, filename);
-    return res.status(403).json({ error: 'Sin acceso' });
-  }
-
-  const replyAttachment = await db('reply_attachments as ra')
-    .join('comment_replies as cr', 'ra.reply_id', 'cr.id')
-    .join('video_comments as vc', 'cr.comment_id', 'vc.id')
-    .join('videos as v', 'vc.video_id', 'v.id')
-    .where('ra.filename', filename)
-    .select('v.project_id')
-    .first();
-  if (replyAttachment) {
-    if (await isProjectMember(req.user.id, req.user.role, replyAttachment.project_id)) return serveFile(res, filename);
-    return res.status(403).json({ error: 'Sin acceso' });
-  }
-
-  const chatMsg = await db('chat_messages').where({ file_url: `/uploads/${filename}` }).first();
-  if (chatMsg) {
-    if (chatMsg.sender_id === req.user.id || chatMsg.receiver_id === req.user.id) return serveFile(res, filename);
-    if (chatMsg.channel_id) {
-      const member = await db('chat_channel_members').where({ channel_id: chatMsg.channel_id, user_id: req.user.id }).first();
-      if (member) return serveFile(res, filename);
+  try {
+    const { filename } = req.params;
+    if (!filename || filename.includes('..') || filename.includes('/')) {
+      return res.status(400).json({ error: 'Nombre de archivo inválido' });
     }
-    return res.status(403).json({ error: 'Sin acceso' });
-  }
+    // Con disco local se puede chequear existencia antes de gastar queries; con R2 no vale la pena
+    // el viaje extra (HeadObject) — si no existe, el redirect a la signed URL simplemente 404ea.
+    if (!useR2 && !fs.existsSync(path.join(uploadsDir, filename))) {
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
 
-  return res.status(404).json({ error: 'Archivo no encontrado' });
+    if (req.user.role === 'admin') return serveFile(res, filename);
+
+    const video = await db('videos').where({ filename }).first();
+    if (video) {
+      if (await isProjectMember(req.user.id, req.user.role, video.project_id)) return serveFile(res, filename);
+      return res.status(403).json({ error: 'Sin acceso' });
+    }
+
+    const commentAttachment = await db('comment_attachments as ca')
+      .join('video_comments as vc', 'ca.comment_id', 'vc.id')
+      .join('videos as v', 'vc.video_id', 'v.id')
+      .where('ca.filename', filename)
+      .select('v.project_id')
+      .first();
+    if (commentAttachment) {
+      if (await isProjectMember(req.user.id, req.user.role, commentAttachment.project_id)) return serveFile(res, filename);
+      return res.status(403).json({ error: 'Sin acceso' });
+    }
+
+    const replyAttachment = await db('reply_attachments as ra')
+      .join('comment_replies as cr', 'ra.reply_id', 'cr.id')
+      .join('video_comments as vc', 'cr.comment_id', 'vc.id')
+      .join('videos as v', 'vc.video_id', 'v.id')
+      .where('ra.filename', filename)
+      .select('v.project_id')
+      .first();
+    if (replyAttachment) {
+      if (await isProjectMember(req.user.id, req.user.role, replyAttachment.project_id)) return serveFile(res, filename);
+      return res.status(403).json({ error: 'Sin acceso' });
+    }
+
+    const chatMsg = await db('chat_messages').where({ file_url: `/uploads/${filename}` }).first();
+    if (chatMsg) {
+      if (chatMsg.sender_id === req.user.id || chatMsg.receiver_id === req.user.id) return serveFile(res, filename);
+      if (chatMsg.channel_id) {
+        const member = await db('chat_channel_members').where({ channel_id: chatMsg.channel_id, user_id: req.user.id }).first();
+        if (member) return serveFile(res, filename);
+      }
+      return res.status(403).json({ error: 'Sin acceso' });
+    }
+
+    return res.status(404).json({ error: 'Archivo no encontrado' });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // ─── CÁLCULO DE MONTOS DE PAGO ─────────────────────────────────────────────────
@@ -957,13 +967,15 @@ async function emitToProject(projectId, event, data, { skipSanitize } = {}) {
 // Middleware: requiere ser miembro del proyecto indicado por :projectId (o admin).
 function requireProjectAccess(paramName = 'projectId') {
   return async (req, res, next) => {
-    if (req.user.role === 'admin') return next();
-    const projectId = req.params[paramName];
-    if (!projectId) return res.status(400).json({ error: 'Proyecto no especificado' });
-    const membership = await db('project_members')
-      .where({ project_id: projectId, user_id: req.user.id }).first();
-    if (!membership) return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
-    next();
+    try {
+      if (req.user.role === 'admin') return next();
+      const projectId = req.params[paramName];
+      if (!projectId) return res.status(400).json({ error: 'Proyecto no especificado' });
+      const membership = await db('project_members')
+        .where({ project_id: projectId, user_id: req.user.id }).first();
+      if (!membership) return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+      next();
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   };
 }
 
@@ -1007,14 +1019,16 @@ app.post('/api/auth/register', auth, async (req, res) => {
 
 // GET /api/users — admins ven todo, editores solo ven admins + sí mismos (privacidad entre editores).
 app.get('/api/users', auth, async (req, res) => {
-  if (req.user.role === 'admin') {
-    const users = await db('users').select('id','name','email','role','avatar_color','created_at');
-    return res.json(users);
-  }
-  const users = await db('users')
-    .where(function() { this.where({ role: 'admin' }).orWhere({ id: req.user.id }); })
-    .select('id','name','email','role','avatar_color','created_at');
-  res.json(users);
+  try {
+    if (req.user.role === 'admin') {
+      const users = await db('users').select('id','name','email','role','avatar_color','created_at');
+      return res.json(users);
+    }
+    const users = await db('users')
+      .where(function() { this.where({ role: 'admin' }).orWhere({ id: req.user.id }); })
+      .select('id','name','email','role','avatar_color','created_at');
+    res.json(users);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.delete('/api/users/:id', auth, async (req, res) => {
@@ -1990,13 +2004,15 @@ app.post('/api/videos/upload/:uploadId/complete', auth, async (req, res) => {
 
 // Cancela una subida en curso (botón "Cancelar" del cliente, o limpieza al desmontar).
 app.delete('/api/videos/upload/:uploadId', auth, async (req, res) => {
-  const session = uploadSessions.get(req.params.uploadId);
-  if (session) {
-    if (session.userId !== req.user.id) return res.status(403).json({ error: 'Sin acceso' });
-    await discardUploadSession(session);
-    uploadSessions.delete(req.params.uploadId);
-  }
-  res.json({ success: true });
+  try {
+    const session = uploadSessions.get(req.params.uploadId);
+    if (session) {
+      if (session.userId !== req.user.id) return res.status(403).json({ error: 'Sin acceso' });
+      await discardUploadSession(session);
+      uploadSessions.delete(req.params.uploadId);
+    }
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.delete('/api/videos/:id', auth, async (req, res) => {
@@ -2204,9 +2220,11 @@ setInterval(pruneOldNotifications, 24 * 60 * 60 * 1000); // 1 vez por día
 pruneOldNotifications();
 
 app.get('/api/storage', auth, async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-  const bytes = await getUploadsSize();
-  res.json({ bytes, gb: (bytes / (1024 ** 3)).toFixed(2), warning: bytes >= STORAGE_WARN_BYTES });
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+    const bytes = await getUploadsSize();
+    res.json({ bytes, gb: (bytes / (1024 ** 3)).toFixed(2), warning: bytes >= STORAGE_WARN_BYTES });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // ─── VIDEO COMMENTS ──────────────────────────────────────────────────────────
@@ -2471,13 +2489,17 @@ app.get('/api/notifications', auth, async (req, res) => {
 });
 
 app.patch('/api/notifications/read-all', auth, async (req, res) => {
-  await db('notifications').where({ user_id: req.user.id }).update({ read: true });
-  res.json({ success: true });
+  try {
+    await db('notifications').where({ user_id: req.user.id }).update({ read: true });
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 app.patch('/api/notifications/:id/read', auth, async (req, res) => {
-  await db('notifications').where({ id: req.params.id, user_id: req.user.id }).update({ read: true });
-  res.json({ success: true });
+  try {
+    await db('notifications').where({ id: req.params.id, user_id: req.user.id }).update({ read: true });
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // GET unread counts for chat (per conversation)
@@ -2709,6 +2731,20 @@ app.post('/api/chat/messages', auth, async (req, res) => {
       return res.status(400).json({ error: 'Mensaje vacío' });
     }
 
+    // file_url solo puede ser una ruta interna de /uploads (la forma exacta que devuelve
+    // /api/chat/upload). Si se acepta cualquier string, un editor puede mandar una URL externa:
+    // el cliente la renderiza como <a href> / window.open pasándola por mediaUrl(), que le pega
+    // el token de sesión de quien la abra — un admin haciendo clic filtraría su JWT completo a
+    // un servidor ajeno.
+    if (file_url) {
+      if (typeof file_url !== 'string' || !/^\/uploads\/[A-Za-z0-9._-]+$/.test(file_url)) {
+        return res.status(400).json({ error: 'Archivo inválido' });
+      }
+      if (!['image', 'video', 'audio', 'file'].includes(file_type)) {
+        return res.status(400).json({ error: 'Tipo de archivo inválido' });
+      }
+    }
+
     const id = uuidv4();
     await db('chat_messages').insert({ id, sender_id: senderId, receiver_id: receiver_id || null, channel_id: channel_id || null, type, content: content || '', file_url: file_url || null, file_type: file_type || null, file_name: file_name || null, client_id: (type === 'dm' && client_id) ? client_id : null, file_duration: file_duration || null });
     const msg = await db('chat_messages as m').join('users as u', 'm.sender_id', 'u.id').where('m.id', id).select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color').first();
@@ -2830,22 +2866,26 @@ async function broadcastOnlineUsers() {
 
 io.on('connection', (socket) => {
   socket.on('user:online', async () => {
-    onlineUsers.set(socket.userId, { socketId: socket.id, role: socket.userRole });
-    socket.join(`user:${socket.userId}`);
-    if (socket.userRole === 'admin') socket.join('admins');
-    await broadcastOnlineUsers();
+    try {
+      onlineUsers.set(socket.userId, { socketId: socket.id, role: socket.userRole });
+      socket.join(`user:${socket.userId}`);
+      if (socket.userRole === 'admin') socket.join('admins');
+      await broadcastOnlineUsers();
+    } catch (e) { console.error('socket user:online:', e); }
   });
   socket.on('project:join', async (projectId) => {
-    if (!projectId) return;
-    const allowed = await isProjectMember(socket.userId, socket.userRole, projectId);
-    if (!allowed) return;
-    socket.join(`project:${projectId}`);
+    try {
+      if (!projectId || typeof projectId !== 'string') return;
+      const allowed = await isProjectMember(socket.userId, socket.userRole, projectId);
+      if (!allowed) return;
+      socket.join(`project:${projectId}`);
+    } catch (e) { console.error('socket project:join:', e); }
   });
   // Sin esto, un socket que navegó por muchos proyectos en una sesión larga se queda unido a
   // todas esas rooms para siempre (solo había join, nunca leave) — recibe eventos de proyectos
   // que ya no está mirando, acumulando tráfico innecesario.
   socket.on('project:leave', (projectId) => {
-    if (!projectId) return;
+    if (!projectId || typeof projectId !== 'string') return;
     socket.leave(`project:${projectId}`);
   });
   // Acepta un callback opcional de ack: antes esto era "fire and forget" — el input se
@@ -2853,32 +2893,39 @@ io.on('connection', (socket) => {
   // ese instante, el mensaje se perdía sin que el usuario se enterara. Con .timeout() del lado
   // del cliente, la ausencia de ack pasa a ser un error visible en vez de un silencio.
   socket.on('message:send', async (data, callback) => {
-    const { project_id, content, type } = data;
-    if (!project_id || !content?.trim()) return callback?.({ error: 'Mensaje inválido' });
-    const sender = await db('users').where({ id: socket.userId }).first();
-    if (!sender) return callback?.({ error: 'Usuario no válido' });
-    const allowed = await isProjectMember(socket.userId, socket.userRole, project_id);
-    if (!allowed) return callback?.({ error: 'No tenés acceso a este proyecto' });
-    const id = uuidv4();
-    await db('messages').insert({ id, project_id, sender_id: socket.userId, receiver_id: null, content, type: type || 'project' });
-    const msg = { id, project_id, sender_id: socket.userId, receiver_id: null, content, type, sender_name: sender.name, sender_color: sender.avatar_color, created_at: new Date().toISOString() };
-    io.to(`project:${project_id}`).emit('message:new', msg);
-    callback?.({ success: true, message: msg });
+    try {
+      const { project_id, content, type } = data || {};
+      if (!project_id || typeof project_id !== 'string' || !content?.trim()) return callback?.({ error: 'Mensaje inválido' });
+      const sender = await db('users').where({ id: socket.userId }).first();
+      if (!sender) return callback?.({ error: 'Usuario no válido' });
+      const allowed = await isProjectMember(socket.userId, socket.userRole, project_id);
+      if (!allowed) return callback?.({ error: 'No tenés acceso a este proyecto' });
+      const id = uuidv4();
+      await db('messages').insert({ id, project_id, sender_id: socket.userId, receiver_id: null, content, type: type || 'project' });
+      const msg = { id, project_id, sender_id: socket.userId, receiver_id: null, content, type, sender_name: sender.name, sender_color: sender.avatar_color, created_at: new Date().toISOString() };
+      io.to(`project:${project_id}`).emit('message:new', msg);
+      callback?.({ success: true, message: msg });
 
-    // Antes solo se emitía por socket — un usuario offline nunca se enteraba de mensajes perdidos.
-    const memberIds = await db('project_members').where({ project_id }).pluck('user_id');
-    const adminIds = await db('users').where({ role: 'admin' }).pluck('id');
-    const notifyIds = new Set([...memberIds, ...adminIds]);
-    notifyIds.delete(socket.userId);
-    for (const uid of notifyIds) {
-      await createNotification({ userId: uid, type: 'project_message', actorId: socket.userId, projectId: project_id, preview: content?.slice(0, 80) });
+      // Antes solo se emitía por socket — un usuario offline nunca se enteraba de mensajes perdidos.
+      const memberIds = await db('project_members').where({ project_id }).pluck('user_id');
+      const adminIds = await db('users').where({ role: 'admin' }).pluck('id');
+      const notifyIds = new Set([...memberIds, ...adminIds]);
+      notifyIds.delete(socket.userId);
+      for (const uid of notifyIds) {
+        await createNotification({ userId: uid, type: 'project_message', actorId: socket.userId, projectId: project_id, preview: content?.slice(0, 80) });
+      }
+    } catch (e) {
+      console.error('socket message:send:', e);
+      callback?.({ error: 'Error al enviar el mensaje' });
     }
   });
   socket.on('disconnect', async () => {
-    for (const [userId, info] of onlineUsers.entries()) {
-      if (info.socketId === socket.id) { onlineUsers.delete(userId); break; }
-    }
-    await broadcastOnlineUsers();
+    try {
+      for (const [userId, info] of onlineUsers.entries()) {
+        if (info.socketId === socket.id) { onlineUsers.delete(userId); break; }
+      }
+      await broadcastOnlineUsers();
+    } catch (e) { console.error('socket disconnect:', e); }
   });
 });
 
@@ -2893,6 +2940,19 @@ if (fs.existsSync(clientDist)) {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 }
+
+// Red de seguridad: sin esto, una sola promesa rechazada fuera de un try/catch (un corte de
+// conexión con la DB en medio de un request, un handler de socket con payload inesperado)
+// termina el proceso y tira la app para todos los usuarios hasta que Render la reinicie.
+// A propósito NO se hace process.exit() acá: el estado en memoria es descartable (onlineUsers,
+// uploadSessions) y todo lo importante vive en Postgres, así que seguir vivo y loguear fuerte
+// es estrictamente mejor que morirse y dejar a todo el equipo esperando un cold start.
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️  Promesa rechazada sin manejar:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('⚠️  Excepción no capturada:', err);
+});
 
 initDB().then(() => {
   server.listen(PORT, '0.0.0.0', () => {

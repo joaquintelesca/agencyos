@@ -154,6 +154,10 @@ export function AuthProvider({ children }) {
   // Authorization, así que el token viaja como query param en estas URLs.
   const mediaUrl = (path) => {
     if (!path) return path;
+    // El token solo puede viajar a nuestro propio /uploads. Sin este chequeo, cualquier campo
+    // que termine acá con una URL externa (p. ej. un file_url manipulado en un mensaje de chat)
+    // se lleva la sesión de quien lo abra a ese host.
+    if (typeof path !== 'string' || !path.startsWith('/uploads/')) return path;
     const currentToken = token || localStorage.getItem('token');
     return `${path}${path.includes('?') ? '&' : '?'}token=${currentToken}`;
   };
