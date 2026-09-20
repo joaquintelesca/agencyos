@@ -786,7 +786,19 @@ function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, 
     }}
     onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
     onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
-      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', lineHeight: 1.45, marginBottom: 10 }}>{task.title}</div>
+      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', lineHeight: 1.45, marginBottom: task.description ? 4 : 10 }}>{task.title}</div>
+      {/* El brief solo vivía en el modal de edición, que es admin-only (onEdit es null para un
+          editor) — la persona que hace el trabajo no tenía forma de leerlo. Se corta a 3 líneas
+          para no inflar la card; el texto completo sigue estando en el modal para quien puede
+          editar. */}
+      {task.description && (
+        <div style={{
+          fontSize: 12, color: 'var(--text3)', lineHeight: 1.4, marginBottom: 10,
+          display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden'
+        }}>
+          {task.description}
+        </div>
+      )}
       {task.latest_video_id && (
         <button
           onClick={e => { e.stopPropagation(); onOpenVideo(task.latest_video_id); }}
