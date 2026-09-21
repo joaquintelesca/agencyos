@@ -1,15 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useOutletContext } from 'react-router-dom';
+import { notificationIcon, notificationLabel, notificationTarget } from '../utils/notifications';
+
+const PAGE_SIZE = 50;
 
 export default function Notifications() {
-  const { api } = useAuth();
+  const { api, socket } = useAuth();
   const [notifs, setNotifs] = useState([]);
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
   const [view, setView] = useState('general'); // general | client
   const [selectedClient, setSelectedClient] = useState('all'); // 'all' o el id de un cliente ('__none__' = sin cliente)
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
+  // Antes el límite de 50 era fijo y sin forma de pedir más — cualquier notificación más vieja
+  // quedaba inalcanzable para siempre, aunque siguiera sin leer.
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const navigate = useNavigate();
   const { setUnreadNotifs, setProjects } = useOutletContext();
 
@@ -20,17 +27,58 @@ export default function Notifications() {
 
   useEffect(() => {
     setError('');
-    api('/api/notifications').then(setNotifs).catch(e => {
+    api(`/api/notifications?limit=${PAGE_SIZE}&offset=0`).then(n => {
+      setNotifs(n);
+      setHasMore(n.length === PAGE_SIZE);
+    }).catch(e => {
       console.error(e);
       setError('No se pudieron cargar las notificaciones. Puede ser un problema de conexión.');
     });
   }, [retryCount]);
+
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const more = await api(`/api/notifications?limit=${PAGE_SIZE}&offset=${notifs.length}`);
+      setNotifs(prev => [...prev, ...more]);
+      setHasMore(more.length === PAGE_SIZE);
+    } catch (e) { console.error(e); }
+    finally { setLoadingMore(false); }
+  };
+
+  // Si se borra una desde otra pestaña/dispositivo (o "Borrar leídas" allá), la saca de esta
+  // lista también sin esperar a un reload — mismo criterio que la sincronización de leídas.
+  useEffect(() => {
+    if (!socket) return;
+    const onDeleted = ({ id }) => setNotifs(prev => prev.filter(n => n.id !== id));
+    const onClearedRead = () => setNotifs(prev => prev.filter(n => !n.read));
+    socket.on('notification:deleted', onDeleted);
+    socket.on('notifications:cleared-read', onClearedRead);
+    return () => { socket.off('notification:deleted', onDeleted); socket.off('notifications:cleared-read', onClearedRead); };
+  }, [socket]);
 
   const markAll = async () => {
     await api('/api/notifications/read-all', { method: 'PATCH' });
     setNotifs(prev => prev.map(n => ({ ...n, read: true })));
     setUnreadNotifs(0);
     refreshProjectDots();
+  };
+
+  const deleteOne = async (e, n) => {
+    e.stopPropagation();
+    try {
+      await api(`/api/notifications/${n.id}`, { method: 'DELETE' });
+      setNotifs(prev => prev.filter(x => x.id !== n.id));
+      if (!n.read) setUnreadNotifs(prev => Math.max(0, prev - 1));
+    } catch (e) {
+      if (e.status === 404) { setNotifs(prev => prev.filter(x => x.id !== n.id)); return; }
+      console.error(e);
+    }
+  };
+
+  const deleteRead = async () => {
+    await api('/api/notifications/read', { method: 'DELETE' });
+    setNotifs(prev => prev.filter(n => !n.read));
   };
 
   // Marca una notificación como leída sin navegar a ningún lado — independiente de hacer
@@ -58,11 +106,8 @@ export default function Notifications() {
         if (n.type === 'task_review' || n.type === 'task_feedback' || n.type === 'video_uploaded') refreshProjectDots();
       } catch (e) { console.error(e); }
     }
-    if (n.video_id && n.project_id) navigate(`/project/${n.project_id}?tab=videos&video=${n.video_id}`);
-    // Antes esto llevaba a /project/:id a secas, que abre la pestaña Kanban por default — el
-    // mensaje que la notificación anuncia quedaba igual de escondido, había que ir a buscarlo.
-    else if (n.type === 'project_message' && n.project_id) navigate(`/project/${n.project_id}?tab=chat`);
-    else if (n.project_id) navigate(`/project/${n.project_id}`);
+    const target = notificationTarget(n);
+    if (target) navigate(target);
   };
 
   const timeAgo = (ts) => {
@@ -75,34 +120,8 @@ export default function Notifications() {
     return `hace ${Math.floor(h / 24)}d`;
   };
 
-  const icon = (type) => {
-    if (type === 'comment') return '💬';
-    if (type === 'reply') return '↩️';
-    if (type === 'comment_resolved') return '☑️';
-    if (type === 'task_review') return '📋';
-    if (type === 'task_feedback') return '📝';
-    if (type === 'task_done') return '🏁';
-    if (type === 'video_uploaded') return '🎬';
-    if (type === 'video_approved') return '✅';
-    if (type === 'project_assigned') return '📁';
-    if (type === 'task_assigned') return '✅';
-    if (type === 'project_message') return '💬';
-    return '✉️';
-  };
-  const label = (n) => {
-    if (n.type === 'comment') return <><strong>{n.actor_name}</strong> comentó en un video{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
-    if (n.type === 'reply') return <><strong>{n.actor_name}</strong> respondió tu comentario{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
-    if (n.type === 'comment_resolved') return <><strong>{n.actor_name}</strong> resolvió tu comentario{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
-    if (n.type === 'task_review') return <><strong>{n.actor_name}</strong> pasó una tarea a revisión{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
-    if (n.type === 'task_feedback') return <><strong>{n.actor_name}</strong> te dejó feedback para aplicar en una tarea{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
-    if (n.type === 'task_done') return <><strong>{n.actor_name}</strong> terminó una tarea{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
-    if (n.type === 'video_uploaded') return <><strong>{n.actor_name}</strong> subió un video{n.preview ? <>: "{n.preview}"</> : ''}{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
-    if (n.type === 'video_approved') return <><strong>{n.actor_name}</strong> aprobó un video{n.preview ? <>: "{n.preview}"</> : ''}{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
-    if (n.type === 'project_assigned') return <><strong>{n.actor_name}</strong> te asignó un proyecto{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
-    if (n.type === 'task_assigned') return <><strong>{n.actor_name}</strong> te asignó una tarea{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
-    if (n.type === 'project_message') return <><strong>{n.actor_name}</strong> escribió en el chat del proyecto{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
-    return <><strong>{n.actor_name}</strong> te envió un mensaje</>;
-  };
+  const icon = notificationIcon;
+  const label = notificationLabel;
 
   const unread = notifs.filter(n => !n.read).length;
 
@@ -119,12 +138,20 @@ export default function Notifications() {
         {n.preview && <div style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--bg3)', borderRadius: 6, padding: '3px 8px', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{n.preview}"</div>}
         <div style={{ fontSize: 11, color: 'var(--text3)' }}>{icon(n.type)} {timeAgo(n.created_at)}</div>
       </div>
-      {!n.read && (
-        <button onClick={e => markOne(e, n)} title="Marcar como leído"
-          style={{ alignSelf: 'flex-start', flexShrink: 0, background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', color: 'var(--accent2)', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-          Marcar como leído
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
+        {!n.read && (
+          <button onClick={e => markOne(e, n)} title="Marcar como leído"
+            style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', color: 'var(--accent2)', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            Marcar como leído
+          </button>
+        )}
+        <button onClick={e => deleteOne(e, n)} title="Borrar notificación"
+          style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 12, cursor: 'pointer', padding: '3px 6px' }}
+          onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+          onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
+          🗑
         </button>
-      )}
+      </div>
     </div>
   );
 
@@ -149,7 +176,10 @@ export default function Notifications() {
           <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'var(--fs-xl)' }}>Notificaciones</h1>
           {unread > 0 && <span className="badge badge-count">{unread}</span>}
         </div>
-        {unread > 0 && <button onClick={markAll} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 12px', color: 'var(--accent2)', fontSize: 12, cursor: 'pointer' }}>Marcar todo como leído</button>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {unread > 0 && <button onClick={markAll} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 12px', color: 'var(--accent2)', fontSize: 12, cursor: 'pointer' }}>Marcar todo como leído</button>}
+          {notifs.some(n => n.read) && <button onClick={deleteRead} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 12px', color: 'var(--text3)', fontSize: 12, cursor: 'pointer' }}>Borrar leídas</button>}
+        </div>
       </div>
 
       <div className="tab-switch" style={{ marginBottom: 20 }}>
@@ -172,6 +202,12 @@ export default function Notifications() {
       {view === 'general' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {notifs.map(renderNotif)}
+          {hasMore && notifs.length > 0 && (
+            <button onClick={loadMore} disabled={loadingMore}
+              style={{ alignSelf: 'center', marginTop: 10, background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '7px 16px', color: 'var(--text2)', fontSize: 12, cursor: loadingMore ? 'default' : 'pointer' }}>
+              {loadingMore ? 'Cargando...' : 'Cargar más'}
+            </button>
+          )}
         </div>
       ) : (
         <div>

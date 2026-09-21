@@ -1,11 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
+import { notificationLabel, notificationTarget } from '../utils/notifications';
 import ErrorBoundary from './ErrorBoundary';
 import SearchPalette from './SearchPalette';
+
+const TOAST_DURATION_MS = 6000;
 
 const COLORS =['#6366f1','#10b981','#f59e0b','#ec4899','#3b82f6','#8b5cf6','#ef4444','#14b8a6'];
 
@@ -28,6 +31,10 @@ export default function Layout() {
   const [paymentForm, setPaymentForm] = useState({ payment_editor_id: '', payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' });
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [chatUnread, setChatUnread] = useState({});
+  // Antes la única señal de que llegó algo nuevo era el numerito de la campanita cambiando solo
+  // — si no estabas mirando el sidebar en ese momento, no había ningún otro aviso.
+  const [toasts, setToasts] = useState([]);
+  const toastTimers = useRef({});
   const [editingClient, setEditingClient] = useState(null);
   const [editClientForm, setEditClientForm] = useState({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
   const [editingProject, setEditingProject] = useState(null);
@@ -108,13 +115,36 @@ export default function Layout() {
     api('/api/chat/unread').then(setChatUnread).catch(console.error);
   }, [user?.id, sidebarRetryCount]);
 
+  const dismissToast = (id) => {
+    clearTimeout(toastTimers.current[id]);
+    delete toastTimers.current[id];
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Los timers de toasts pendientes no se limpian solos si el usuario navega/desmonta el layout
+  // antes de que se cumplan los 6 segundos — quedarían disparando setState sobre un componente
+  // ya desmontado.
+  useEffect(() => () => { Object.values(toastTimers.current).forEach(clearTimeout); }, []);
+
+  const openToast = (t) => {
+    dismissToast(t.id);
+    if (!t.read) api(`/api/notifications/${t.id}/read`, { method: 'PATCH' }).catch(console.error);
+    const target = notificationTarget(t);
+    if (target) navigate(target);
+  };
+
   useEffect(() => {
     if (!socket) return;
     // Siempre se refresca contra el server (nunca sumando/restando a mano) — así el número
     // converge solo sin importar en cuántas pestañas/dispositivos se lea o llegue una notificación
     // nueva a la vez, en vez de ir arrastrando un contador local que se puede desalinear.
     const refreshUnreadNotifs = () => api('/api/notifications/unread-count').then(({ count }) => setUnreadNotifs(count)).catch(console.error);
-    const onNotif = () => { refreshUnreadNotifs(); api('/api/projects').then(setProjects).catch(console.error); };
+    const onNotif = (notif) => {
+      refreshUnreadNotifs();
+      api('/api/projects').then(setProjects).catch(console.error);
+      setToasts(prev => [...prev, notif]);
+      toastTimers.current[notif.id] = setTimeout(() => dismissToast(notif.id), TOAST_DURATION_MS);
+    };
     const onRead = () => { api('/api/chat/unread').then(setChatUnread).catch(console.error); };
     const onStorageWarn = (s) => setStorageWarning(s);
     const onChatMessage = () => { api('/api/chat/unread').then(setChatUnread).catch(console.error); };
@@ -1162,6 +1192,27 @@ export default function Layout() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {toasts.length > 0 && (
+        <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 340 }}>
+          {toasts.map(t => (
+            <div key={t.id} onClick={() => openToast(t)}
+              style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--bg2)', border: '1px solid var(--accent)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', background: t.actor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                {t.actor_name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.4 }}>{notificationLabel(t)}</div>
+                {t.preview && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{t.preview}"</div>}
+              </div>
+              <button onClick={e => { e.stopPropagation(); dismissToast(t.id); }} title="Cerrar"
+                style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 14, cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>
+                ✕
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>

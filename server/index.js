@@ -3141,8 +3141,13 @@ async function createNotificationInner({ userId, type, actorId, guestName, proje
   return notif;
 }
 
+// El límite fijo de 50 sin forma de pedir más hacía que cualquier notificación más vieja fuera
+// directamente inalcanzable para siempre, aunque siguiera sin leer. offset/limit por query string,
+// con tope de 100 por página para no dejar pedir la tabla entera de una.
 app.get('/api/notifications', auth, async (req, res) => {
   try {
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
     const notifs = await db('notifications as n')
       .leftJoin('users as a', 'n.actor_id', 'a.id')
       .leftJoin('projects as p', 'n.project_id', 'p.id')
@@ -3152,7 +3157,8 @@ app.get('/api/notifications', auth, async (req, res) => {
         'c.id as client_id', 'c.name as client_name', 'c.color as client_color')
       .select(db.raw("COALESCE(a.name, n.guest_name, 'Cliente') as actor_name"))
       .orderBy('n.created_at', 'desc')
-      .limit(50);
+      .limit(limit)
+      .offset(offset);
     res.json(notifs);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -3181,6 +3187,26 @@ app.patch('/api/notifications/:id/read', auth, async (req, res) => {
   try {
     await db('notifications').where({ id: req.params.id, user_id: req.user.id }).update({ read: true });
     io.to(`user:${req.user.id}`).emit('notification:read', { id: req.params.id });
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// Antes la única acción posible era marcar como leída — la lista solo podía crecer para siempre,
+// sin forma de sacar algo de encima. "Borrar leídas" es la limpieza rápida de todos los días;
+// borrar una puntual cubre el caso de "esto ya no me importa" aunque siga sin leer.
+app.delete('/api/notifications/read', auth, async (req, res) => {
+  try {
+    await db('notifications').where({ user_id: req.user.id, read: true }).delete();
+    io.to(`user:${req.user.id}`).emit('notifications:cleared-read');
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+app.delete('/api/notifications/:id', auth, async (req, res) => {
+  try {
+    const deleted = await db('notifications').where({ id: req.params.id, user_id: req.user.id }).delete();
+    if (!deleted) return res.status(404).json({ error: 'No encontrada' });
+    io.to(`user:${req.user.id}`).emit('notification:deleted', { id: req.params.id });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
