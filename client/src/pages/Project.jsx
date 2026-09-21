@@ -6,6 +6,7 @@ import { useAlert } from '../context/AlertContext';
 import VideoReview from '../components/VideoReview';
 import MentionInput, { renderMentions } from '../components/MentionInput';
 import { initials } from '../utils/format';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 
 const STATUSES = [
   { key: 'todo', label: 'Por hacer', color: 'var(--text2)', description: 'Todavía no se empezó.' },
@@ -22,6 +23,7 @@ export default function Project() {
   const { api, user, socket } = useAuth();
   const { scheduleDelete } = useUndo();
   const { alert } = useAlert();
+  const isNarrowViewport = useNarrowViewport();
   const [project, setProject] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [tasks, setTasks] = useState([]);
@@ -381,9 +383,14 @@ export default function Project() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{ padding: '0 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56, flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* Header — en angosto no entra todo en una sola fila (título+badges+botones+tabs), así
+          que se deja envolver a varias líneas en vez de recortarse fuera de la vista. */}
+      <div style={{
+        padding: isNarrowViewport ? '10px 16px' : '0 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', flexShrink: 0,
+        ...(isNarrowViewport ? { flexWrap: 'wrap', rowGap: 8 } : { height: 56 })
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: isNarrowViewport ? 'wrap' : 'nowrap', rowGap: 6 }}>
           <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color }} />
           <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--fs-lg)' }}>{project.name}</h2>
           {project.client_name && (

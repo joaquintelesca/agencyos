@@ -8,6 +8,7 @@ import { notificationLabel, notificationTarget } from '../utils/notifications';
 import { renderMentions } from './MentionInput';
 import ErrorBoundary from './ErrorBoundary';
 import SearchPalette from './SearchPalette';
+import useNarrowViewport, { MOBILE_BREAKPOINT } from '../hooks/useNarrowViewport';
 
 const TOAST_DURATION_MS = 6000;
 
@@ -73,14 +74,8 @@ export default function Layout() {
   // ningún @media query en toda la app, así que en un celular real quedaba menos de 100px para el
   // contenido. sidebarCollapsed (arriba) sigue siendo la preferencia MANUAL de escritorio,
   // persistida — esto es aparte: un estado de sesión, sin persistir, específico para angosto.
-  const MOBILE_BREAKPOINT = 860;
-  const [isNarrowViewport, setIsNarrowViewport] = useState(() => window.innerWidth < MOBILE_BREAKPOINT);
+  const isNarrowViewport = useNarrowViewport(MOBILE_BREAKPOINT);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  useEffect(() => {
-    const onResize = () => setIsNarrowViewport(window.innerWidth < MOBILE_BREAKPOINT);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
   // Navegar a otra pantalla con el drawer abierto en angosto tiene que cerrarlo solo — si no,
   // tapa la pantalla nueva y hay que ir a cerrarlo a mano cada vez.
   useEffect(() => { if (isNarrowViewport) setMobileSidebarOpen(false); }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps

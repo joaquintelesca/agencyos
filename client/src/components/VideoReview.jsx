@@ -7,11 +7,15 @@ import { uploadVideoChunked, captureVideoThumbnail } from '../utils/upload';
 import VideoPlayerAnnotator, { formatTime } from './VideoPlayerAnnotator';
 import VideoCompareModal from './VideoCompareModal';
 import MentionInput, { renderMentions } from './MentionInput';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
   const { api, user, socket, mediaUrl, token } = useAuth();
   const { scheduleDelete } = useUndo();
   const { alert, confirm } = useAlert();
+  // El panel de comentarios (320px fijo) al lado del video no entra en un celular — abajo de este
+  // ancho se apilan: video arriba, comentarios abajo con su propia altura y scroll.
+  const isNarrowViewport = useNarrowViewport();
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   // Para el autocompletado de @menciones en el composer de comentarios (ver MentionInput).
@@ -632,8 +636,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         <button className="btn btn-primary btn-sm" onClick={() => setShowUpload(true)}>⬆ Nueva versión</button>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* LEFT: player + tools + timeline (compartido con PublicReview.jsx) */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: isNarrowViewport ? 'column' : 'row', overflow: 'hidden' }}>
+        {/* LEFT (o arriba, en angosto): player + tools + timeline (compartido con PublicReview.jsx) */}
         <VideoPlayerAnnotator
           ref={playerRef}
           src={mediaUrl(`/uploads/${selectedVideo.filename}`)}
@@ -660,8 +664,12 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           }}
         />
 
-        {/* RIGHT: comments panel */}
-        <div style={{ width: 320, background: 'var(--bg2)', borderLeft: `1px solid var(--border)`, display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
+        {/* RIGHT (o abajo, en angosto): comments panel */}
+        <div style={{
+          width: isNarrowViewport ? '100%' : 320, height: isNarrowViewport ? '40vh' : 'auto',
+          background: 'var(--bg2)', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0,
+          ...(isNarrowViewport ? { borderTop: `1px solid var(--border)` } : { borderLeft: `1px solid var(--border)` })
+        }}>
           <div style={{ padding: '10px 14px', borderBottom: `1px solid var(--border)`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Comentarios</span>
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>{comments.length}</span>

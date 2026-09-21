@@ -3,6 +3,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { deadlineLabel } from '../utils/format';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 
 const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const MAX_VISIBLE_PER_DAY_MONTH = 3;
@@ -46,6 +47,7 @@ function getWeekGrid(date) {
 export default function CalendarPage() {
   const { api, user } = useAuth();
   const { alert, confirm } = useAlert();
+  const isNarrowViewport = useNarrowViewport();
   const { projects } = useOutletContext();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
@@ -303,7 +305,7 @@ export default function CalendarPage() {
   const maxVisible = viewMode === 'week' ? MAX_VISIBLE_PER_DAY_WEEK : MAX_VISIBLE_PER_DAY_MONTH;
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 24, display: 'flex', gap: 20 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: isNarrowViewport ? 12 : 24, display: 'flex', flexDirection: isNarrowViewport ? 'column' : 'row', gap: isNarrowViewport ? 16 : 20 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -348,12 +350,14 @@ export default function CalendarPage() {
 
         {/* Grilla */}
         <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: 'var(--bg3)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))', background: 'var(--bg3)' }}>
             {WEEKDAYS.map(w => (
-              <div key={w} style={{ padding: '8px 10px', fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{w}</div>
+              <div key={w} style={{ padding: isNarrowViewport ? '8px 2px' : '8px 10px', fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: isNarrowViewport ? 'center' : 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {isNarrowViewport ? w.slice(0, 3) : w}
+              </div>
             ))}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))' }}>
             {days.map(d => {
               const key = toDateKey(d);
               const isCurrentMonth = viewMode === 'week' || d.getMonth() === month;
@@ -402,7 +406,7 @@ export default function CalendarPage() {
         onDragLeave={() => setDragOverKey(k => k === 'undated' ? null : k)}
         onDrop={e => { if (isAdmin) { e.preventDefault(); onDropOnUndated(); } }}
         style={{
-          width: 260, flexShrink: 0, borderRadius: 12, padding: 10,
+          width: isNarrowViewport ? '100%' : 260, flexShrink: 0, borderRadius: 12, padding: 10,
           background: dragOverKey === 'undated' ? 'var(--accent-glow)' : 'transparent',
           boxShadow: dragOverKey === 'undated' ? 'inset 0 0 0 2px var(--accent)' : 'none', transition: 'background 0.1s'
         }}>
