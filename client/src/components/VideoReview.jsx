@@ -32,6 +32,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
 
   const [activeComment, setActiveComment] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [editingComment, setEditingComment] = useState(null); // comment id
+  const [editText, setEditText] = useState('');
   const [replyingTo, setReplyingTo] = useState(null); // comment id
   const [replyText, setReplyText] = useState('');
   const [replyFiles, setReplyFiles] = useState([]);
@@ -115,12 +117,14 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     };
     const onCommentDel = ({ id }) => setComments(prev => prev.filter(c => c.id !== id));
     const onCommentResolved = ({ id, resolved }) => setComments(prev => prev.map(c => c.id === id ? { ...c, resolved } : c));
+    const onCommentUpdated = ({ id, content }) => setComments(prev => prev.map(c => c.id === id ? { ...c, content } : c));
     const onReply = (reply) => setComments(prev => prev.map(c => c.id === reply.comment_id ? { ...c, replies: [...(c.replies || []), reply] } : c));
     socket.on('comment:created', onComment);
     socket.on('comment:deleted', onCommentDel);
     socket.on('comment:resolved', onCommentResolved);
+    socket.on('comment:updated', onCommentUpdated);
     socket.on('comment:reply', onReply);
-    return () => { socket.off('comment:created', onComment); socket.off('comment:deleted', onCommentDel); socket.off('comment:resolved', onCommentResolved); socket.off('comment:reply', onReply); };
+    return () => { socket.off('comment:created', onComment); socket.off('comment:deleted', onCommentDel); socket.off('comment:resolved', onCommentResolved); socket.off('comment:updated', onCommentUpdated); socket.off('comment:reply', onReply); };
   }, [socket, selectedVideo?.id]);
 
   useEffect(() => {
@@ -158,6 +162,19 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     } catch (e) {
       if (e.status === 404) { setComments(prev => prev.filter(c => c.id !== cid)); return; }
       console.error(e); await alert('Error al resolver el comentario: ' + e.message);
+    }
+  };
+
+  const startEditComment = (c) => { setEditingComment(c.id); setEditText(c.content); };
+  const saveEditComment = async (cid) => {
+    if (!editText.trim()) return;
+    try {
+      const updated = await api(`/api/comments/${cid}`, { method: 'PATCH', body: { content: editText } });
+      setComments(prev => prev.map(c => c.id === cid ? { ...c, content: updated.content } : c));
+      setEditingComment(null);
+    } catch (e) {
+      if (e.status === 404) { setComments(prev => prev.filter(c => c.id !== cid)); setEditingComment(null); return; }
+      console.error(e); await alert('Error al editar el comentario: ' + e.message);
     }
   };
 
@@ -587,7 +604,25 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                           cuenta) — se distingue del resto para no confundirlo con feedback interno. */}
                       {!c.user_id && <span className="badge" style={{ fontSize: 9, padding: '1px 6px', background: 'var(--accent-glow)', color: 'var(--accent2)' }}>Cliente</span>}
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{c.content}</div>
+                    {editingComment === c.id ? (
+                      <div onClick={e => e.stopPropagation()}>
+                        <textarea value={editText} onChange={e => setEditText(e.target.value)} autoFocus rows={2}
+                          style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--accent)', borderRadius: 7, padding: '6px 9px', color: 'var(--text)', fontSize: 12, fontFamily: 'inherit', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+                          onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) saveEditComment(c.id); if (e.key === 'Escape') setEditingComment(null); }} />
+                        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                          <button onClick={() => setEditingComment(null)}
+                            style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', color: 'var(--text2)', fontSize: 11, cursor: 'pointer' }}>
+                            Cancelar
+                          </button>
+                          <button onClick={() => saveEditComment(c.id)} disabled={!editText.trim()}
+                            style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '2px 10px', color: '#fff', fontSize: 11, fontWeight: 600, cursor: editText.trim() ? 'pointer' : 'not-allowed', opacity: editText.trim() ? 1 : 0.5 }}>
+                            Guardar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{c.content}</div>
+                    )}
                     {c.annotation && <div style={{ fontSize: 10, color: 'var(--yellow)', marginTop: 3 }}>✏️ Incluye dibujo</div>}
                     {c.attachments?.length > 0 && (
                       <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -601,22 +636,32 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                       </div>
                     )}
                     {/* Reply button */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                      <button onClick={e => { e.stopPropagation(); setReplyingTo(replyingTo === c.id ? null : c.id); setReplyText(''); setReplyFiles([]); }}
-                        style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 11, padding: 0, display: 'flex', alignItems: 'center', gap: 3 }}
-                        onMouseEnter={e => e.currentTarget.style.color = 'var(--text2)'}
-                        onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
-                        ↩ Responder
-                      </button>
-                      {(c.user_id === user.id || user.role === 'admin') && (
-                        <button onClick={e => { e.stopPropagation(); deleteComment(c.id); }}
-                          style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 11, padding: 0 }}
-                          onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                    {editingComment !== c.id && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                        <button onClick={e => { e.stopPropagation(); setReplyingTo(replyingTo === c.id ? null : c.id); setReplyText(''); setReplyFiles([]); }}
+                          style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 11, padding: 0, display: 'flex', alignItems: 'center', gap: 3 }}
+                          onMouseEnter={e => e.currentTarget.style.color = 'var(--text2)'}
                           onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
-                          🗑 Eliminar
+                          ↩ Responder
                         </button>
-                      )}
-                    </div>
+                        {(c.user_id === user.id || user.role === 'admin') && (
+                          <button onClick={e => { e.stopPropagation(); startEditComment(c); }}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 11, padding: 0 }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--text2)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
+                            ✏️ Editar
+                          </button>
+                        )}
+                        {(c.user_id === user.id || user.role === 'admin') && (
+                          <button onClick={e => { e.stopPropagation(); deleteComment(c.id); }}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 11, padding: 0 }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
+                            🗑 Eliminar
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {/* Reply thread */}
                     {c.replies?.length > 0 && (
                       <div style={{ marginTop: 8, borderTop: `1px solid var(--border)`, paddingTop: 8, display: 'flex', gap: 6 }}>

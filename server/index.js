@@ -2670,6 +2670,29 @@ app.post('/api/videos/:videoId/comments', auth, async (req, res, next) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
+// Un typo o una corrección chica obligaba a borrar el comentario entero y crearlo de nuevo
+// (perdiendo el hilo de respuestas si tenía). Solo el texto es editable — no timestamp ni
+// dibujo, que son "dónde/qué mirar" y cambiarlos en silencio confundiría a quien ya lo vio.
+// Mismo criterio de permiso que borrar: el autor o un admin.
+app.patch('/api/comments/:id', auth, async (req, res) => {
+  try {
+    const comment = await db('video_comments').where({ id: req.params.id }).first();
+    if (!comment) return res.status(404).json({ error: 'No encontrado' });
+    const video = await db('videos').where({ id: comment.video_id }).first();
+    if (!video || !await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+    }
+    if (comment.user_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Sin acceso' });
+    }
+    const content = req.body.content?.trim();
+    if (!content) return res.status(400).json({ error: 'El comentario no puede estar vacío' });
+    await db('video_comments').where({ id: req.params.id }).update({ content });
+    await emitToProject(video.project_id, 'comment:updated', { id: req.params.id, content });
+    res.json({ id: req.params.id, content });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
 app.patch('/api/comments/:id/resolve', auth, async (req, res) => {
   try {
     const comment = await db('video_comments').where({ id: req.params.id }).first();
