@@ -69,6 +69,22 @@ export default function Layout() {
     return saved >= SIDEBAR_MIN && saved <= SIDEBAR_MAX ? saved : 220;
   });
   const [resizingSidebar, setResizingSidebar] = useState(false);
+  // Debajo de este ancho, la sidebar fija empezaba a comerse casi toda la pantalla — no había
+  // ningún @media query en toda la app, así que en un celular real quedaba menos de 100px para el
+  // contenido. sidebarCollapsed (arriba) sigue siendo la preferencia MANUAL de escritorio,
+  // persistida — esto es aparte: un estado de sesión, sin persistir, específico para angosto.
+  const MOBILE_BREAKPOINT = 860;
+  const [isNarrowViewport, setIsNarrowViewport] = useState(() => window.innerWidth < MOBILE_BREAKPOINT);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  useEffect(() => {
+    const onResize = () => setIsNarrowViewport(window.innerWidth < MOBILE_BREAKPOINT);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  // Navegar a otra pantalla con el drawer abierto en angosto tiene que cerrarlo solo — si no,
+  // tapa la pantalla nueva y hay que ir a cerrarlo a mano cada vez.
+  useEffect(() => { if (isNarrowViewport) setMobileSidebarOpen(false); }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sidebarVisible = isNarrowViewport ? mobileSidebarOpen : !sidebarCollapsed;
 
   // Cmd/Ctrl+K siempre se intercepta, a diferencia del Cmd/Ctrl+Z de deshacer (ver UndoContext) —
   // ahí no tocar el atajo mientras se escribe en un input importa porque pisaría el undo nativo
@@ -536,13 +552,21 @@ export default function Layout() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
+      {/* En angosto la sidebar no empuja el contenido — flota encima con un backdrop atrás, como
+          un drawer, porque no queda ancho real para dividir la pantalla en dos columnas fijas. */}
+      {isNarrowViewport && mobileSidebarOpen && (
+        <div onClick={() => setMobileSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99 }} />
+      )}
       {/* Sidebar */}
-      {!sidebarCollapsed && (
-      <aside style={{ width: sidebarWidth, background: 'var(--bg2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      {sidebarVisible && (
+      <aside style={{
+        width: isNarrowViewport ? Math.min(sidebarWidth, 280) : sidebarWidth, background: 'var(--bg2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0,
+        ...(isNarrowViewport ? { position: 'fixed', insetBlock: 0, left: 0, zIndex: 100, boxShadow: '4px 0 24px rgba(0,0,0,0.4)' } : {})
+      }}>
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 30, height: 30, background: 'var(--accent)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🎬</div>
           <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>AgencyOS</span>
-          <button onClick={() => setSidebarCollapsed(true)} title="Ocultar sidebar" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 15, padding: 4, flexShrink: 0 }}>◀</button>
+          <button onClick={() => isNarrowViewport ? setMobileSidebarOpen(false) : setSidebarCollapsed(true)} title="Ocultar sidebar" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 15, padding: 4, flexShrink: 0 }}>◀</button>
         </div>
 
         <div style={{ padding: '10px 8px 0' }}>
@@ -689,7 +713,7 @@ export default function Layout() {
       </aside>
       )}
 
-      {!sidebarCollapsed && (
+      {!isNarrowViewport && !sidebarCollapsed && (
         <div
           onMouseDown={() => setResizingSidebar(true)}
           title="Arrastrar para cambiar el ancho"
@@ -697,9 +721,9 @@ export default function Layout() {
         />
       )}
 
-      {sidebarCollapsed && (
-        <button onClick={() => setSidebarCollapsed(false)} title="Mostrar sidebar" style={{
-          position: 'fixed', left: 10, top: 12, zIndex: 50, width: 32, height: 32, borderRadius: 8,
+      {!sidebarVisible && (
+        <button onClick={() => isNarrowViewport ? setMobileSidebarOpen(true) : setSidebarCollapsed(false)} title="Mostrar sidebar" style={{
+          position: 'fixed', left: 10, top: 12, zIndex: 101, width: 32, height: 32, borderRadius: 8,
           background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text2)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 14
         }}>▶</button>
