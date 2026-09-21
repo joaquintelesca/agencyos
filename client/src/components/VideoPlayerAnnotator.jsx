@@ -86,10 +86,16 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
 
   const hasUnsavedDraft = () => commentText.trim().length > 0 || annotations.length > 0 || commentFiles.length > 0;
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     if (!videoRef.current) return;
-    if (playing) { videoRef.current.pause(); setPlaying(false); }
-    else { videoRef.current.play(); setPlaying(true); clearAnnotations(); onActiveCommentChange?.(null); }
+    if (playing) { videoRef.current.pause(); setPlaying(false); return; }
+    // Dar play borra el dibujo del canvas (no tiene sentido superpuesto a un video en movimiento),
+    // pero antes lo hacía en silencio — un play accidental mientras se estaba dibujando un comentario
+    // te hacía perder la anotación sin ningún aviso, sin forma de recuperarla.
+    if (annotations.length > 0 && !await confirm('Tenés un dibujo sin enviar en el comentario. Si reproducís el video, se pierde. ¿Continuar?', { confirmText: 'Reproducir y descartar', danger: true })) {
+      return;
+    }
+    videoRef.current.play(); setPlaying(true); clearAnnotations(); onActiveCommentChange?.(null);
   };
 
   const onVideoPause = () => {
