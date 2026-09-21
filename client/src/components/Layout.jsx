@@ -104,13 +104,17 @@ export default function Layout() {
       api('/api/storage').then(s => { if (s.warning) setStorageWarning(s); }).catch(console.error);
     }
     api('/api/clients').then(setClients).catch(e => { console.error(e); setSidebarError(prev => prev || 'No se pudieron cargar los clientes.'); });
-    api('/api/notifications').then(n => setUnreadNotifs(n.filter(x => !x.read).length)).catch(console.error);
+    api('/api/notifications/unread-count').then(({ count }) => setUnreadNotifs(count)).catch(console.error);
     api('/api/chat/unread').then(setChatUnread).catch(console.error);
   }, [user?.id, sidebarRetryCount]);
 
   useEffect(() => {
     if (!socket) return;
-    const onNotif = () => { setUnreadNotifs(prev => prev + 1); api('/api/projects').then(setProjects).catch(console.error); };
+    // Siempre se refresca contra el server (nunca sumando/restando a mano) — así el número
+    // converge solo sin importar en cuántas pestañas/dispositivos se lea o llegue una notificación
+    // nueva a la vez, en vez de ir arrastrando un contador local que se puede desalinear.
+    const refreshUnreadNotifs = () => api('/api/notifications/unread-count').then(({ count }) => setUnreadNotifs(count)).catch(console.error);
+    const onNotif = () => { refreshUnreadNotifs(); api('/api/projects').then(setProjects).catch(console.error); };
     const onRead = () => { api('/api/chat/unread').then(setChatUnread).catch(console.error); };
     const onStorageWarn = (s) => setStorageWarning(s);
     const onChatMessage = () => { api('/api/chat/unread').then(setChatUnread).catch(console.error); };
@@ -131,6 +135,8 @@ export default function Layout() {
     const onClientsReordered = () => api('/api/clients').then(setClients).catch(console.error);
     const onProjectsReordered = () => api('/api/projects').then(setProjects).catch(console.error);
     socket.on('notification:new', onNotif);
+    socket.on('notification:read', refreshUnreadNotifs);
+    socket.on('notifications:read-all', refreshUnreadNotifs);
     socket.on('chat:read', onRead);
     socket.on('chat:message', onChatMessage);
     socket.on('storage:warning', onStorageWarn);
@@ -143,7 +149,8 @@ export default function Layout() {
     socket.on('clients:reordered', onClientsReordered);
     socket.on('projects:reordered', onProjectsReordered);
     return () => {
-      socket.off('notification:new', onNotif); socket.off('chat:read', onRead); socket.off('chat:message', onChatMessage); socket.off('storage:warning', onStorageWarn);
+      socket.off('notification:new', onNotif); socket.off('notification:read', refreshUnreadNotifs); socket.off('notifications:read-all', refreshUnreadNotifs);
+      socket.off('chat:read', onRead); socket.off('chat:message', onChatMessage); socket.off('storage:warning', onStorageWarn);
       socket.off('project:created', onProjectCreated); socket.off('project:updated', onProjectUpdated); socket.off('project:deleted', onProjectDeleted);
       socket.off('client:created', onClientCreated); socket.off('client:updated', onClientUpdated); socket.off('client:deleted', onClientDeleted);
       socket.off('clients:reordered', onClientsReordered); socket.off('projects:reordered', onProjectsReordered);

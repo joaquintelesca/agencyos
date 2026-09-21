@@ -2097,6 +2097,16 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
         await createNotification({ userId: targetUserId, type: 'task_feedback', actorId: req.user.id, projectId: existing.project_id, preview: `"${existing.title}" en ${project?.name || 'proyecto'}` });
       }
     }
+    // Antes ninguna transición a "done" avisaba a nadie — un editor podía terminar una tarea sin
+    // pasarla por "review" (el estado lo puede cambiar libremente a lo que sea, no solo a review)
+    // y el admin no se enteraba salvo que mirara el kanban a mano.
+    if (status === 'done' && existing.status !== 'done') {
+      const admins = await db('users').where({ role: 'admin' }).select('id');
+      const project = await db('projects').where({ id: existing.project_id }).first();
+      for (const admin of admins) {
+        await createNotification({ userId: admin.id, type: 'task_done', actorId: req.user.id, projectId: existing.project_id, preview: `"${existing.title}" en ${project?.name || 'proyecto'}` });
+      }
+    }
     res.json(task);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -2418,9 +2428,14 @@ app.patch('/api/videos/:id/approve', auth, async (req, res) => {
       approved_at: new Date().toISOString(), approved_by: req.user.id, approved_by_guest_name: null,
     });
     await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
-    const admins = await db('users').where({ role: 'admin' }).where('id', '!=', req.user.id);
-    for (const a of admins) {
-      await createNotification({ userId: a.id, type: 'video_approved', actorId: req.user.id, projectId: video.project_id, videoId: video.id, preview: video.title });
+    // Antes solo se avisaba a los admins — si un editor subió el video, nunca se enteraba de que
+    // se aprobó salvo que volviera a mirar el proyecto a mano. Mismo criterio de destinatarios
+    // que un comentario nuevo: admins + quien subió el video (sin duplicar si es la misma persona
+    // y sin notificarse a sí mismo, ya filtrado por createNotification).
+    const notifyIds = new Set((await db('users').where({ role: 'admin' }).pluck('id')));
+    if (video.uploaded_by) notifyIds.add(video.uploaded_by);
+    for (const uid of notifyIds) {
+      await createNotification({ userId: uid, type: 'video_approved', actorId: req.user.id, projectId: video.project_id, videoId: video.id, preview: video.title });
     }
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -2768,6 +2783,12 @@ app.patch('/api/comments/:id/resolve', auth, async (req, res) => {
     const resolved = !comment.resolved;
     await db('video_comments').where({ id: req.params.id }).update({ resolved });
     await emitToProject(video.project_id, 'comment:resolved', { id: req.params.id, resolved });
+    // Antes quien escribió el comentario (típicamente el cliente marcando algo a corregir) nunca
+    // se enteraba de que se resolvió salvo que volviera a abrir el video — solo al resolver, no
+    // al reabrir, y solo si tiene cuenta (un comentario de invitado no tiene a quién notificar acá).
+    if (resolved && comment.user_id) {
+      await createNotification({ userId: comment.user_id, type: 'comment_resolved', actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: req.params.id, preview: comment.content?.slice(0, 80) });
+    }
     res.json({ id: req.params.id, resolved });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -3038,9 +3059,10 @@ app.patch('/api/review/:token/approve', reviewLimiter, async (req, res) => {
       approved_at: new Date().toISOString(), approved_by: null, approved_by_guest_name: guest_name.trim().slice(0, 60),
     });
     await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
-    const admins = await db('users').where({ role: 'admin' });
-    for (const a of admins) {
-      await createNotification({ userId: a.id, type: 'video_approved', guestName: guest_name.trim(), projectId: video.project_id, videoId: video.id, preview: video.title });
+    const notifyIds = new Set((await db('users').where({ role: 'admin' }).pluck('id')));
+    if (video.uploaded_by) notifyIds.add(video.uploaded_by);
+    for (const uid of notifyIds) {
+      await createNotification({ userId: uid, type: 'video_approved', guestName: guest_name.trim(), projectId: video.project_id, videoId: video.id, preview: video.title });
     }
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -3076,10 +3098,14 @@ async function createNotification(args) {
 async function createNotificationInner({ userId, type, actorId, guestName, projectId, videoId, commentId, chatMessageId, preview }) {
   if (userId && userId === actorId) return; // don't notify yourself
 
-  // Notificaciones de chat: agrupar las no leídas del mismo emisor en una sola.
-  if (type === 'chat') {
+  // Notificaciones de chat de proyecto: agrupar las no leídas del mismo emisor en una sola, en vez
+  // de crear una fila nueva por cada mensaje — alguien escribiendo 10 mensajes seguidos generaba
+  // 10 notificaciones separadas. (Esto apuntaba a `type === 'chat'`, un tipo que nunca se llegó a
+  // usar en ningún lado — el chat de proyecto siempre mandó 'project_message', así que este bloque
+  // quedó de código muerto hasta ahora.)
+  if (type === 'project_message') {
     const existing = await db('notifications')
-      .where({ user_id: userId, actor_id: actorId, type: 'chat', read: false })
+      .where({ user_id: userId, actor_id: actorId, type: 'project_message', read: false })
       .first();
     if (existing) {
       await db('notifications').where({ id: existing.id }).update({
@@ -3131,9 +3157,22 @@ app.get('/api/notifications', auth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
+// El badge de la campanita (Layout.jsx) salía de contar sobre el mismo GET de arriba, que trae
+// como mucho 50 filas — con más de 50 notificaciones totales y alguna sin leer fuera de esa
+// ventana, el número quedaba mal. Este endpoint cuenta contra toda la tabla, sin el límite.
+app.get('/api/notifications/unread-count', auth, async (req, res) => {
+  try {
+    const [{ count }] = await db('notifications').where({ user_id: req.user.id, read: false }).count({ count: '*' });
+    res.json({ count: Number(count) });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
 app.patch('/api/notifications/read-all', auth, async (req, res) => {
   try {
     await db('notifications').where({ user_id: req.user.id }).update({ read: true });
+    // Sin esto, marcar todo leído en una pestaña/dispositivo dejaba el número de la campanita
+    // desactualizado (de más) en cualquier otra sesión abierta del mismo usuario hasta recargar.
+    io.to(`user:${req.user.id}`).emit('notifications:read-all');
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -3141,6 +3180,7 @@ app.patch('/api/notifications/read-all', auth, async (req, res) => {
 app.patch('/api/notifications/:id/read', auth, async (req, res) => {
   try {
     await db('notifications').where({ id: req.params.id, user_id: req.user.id }).update({ read: true });
+    io.to(`user:${req.user.id}`).emit('notification:read', { id: req.params.id });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });

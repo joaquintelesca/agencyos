@@ -59,7 +59,9 @@ export default function Notifications() {
       } catch (e) { console.error(e); }
     }
     if (n.video_id && n.project_id) navigate(`/project/${n.project_id}?tab=videos&video=${n.video_id}`);
-    else if (n.type === 'chat') navigate('/chat');
+    // Antes esto llevaba a /project/:id a secas, que abre la pestaña Kanban por default — el
+    // mensaje que la notificación anuncia quedaba igual de escondido, había que ir a buscarlo.
+    else if (n.type === 'project_message' && n.project_id) navigate(`/project/${n.project_id}?tab=chat`);
     else if (n.project_id) navigate(`/project/${n.project_id}`);
   };
 
@@ -76,8 +78,10 @@ export default function Notifications() {
   const icon = (type) => {
     if (type === 'comment') return '💬';
     if (type === 'reply') return '↩️';
+    if (type === 'comment_resolved') return '☑️';
     if (type === 'task_review') return '📋';
     if (type === 'task_feedback') return '📝';
+    if (type === 'task_done') return '🏁';
     if (type === 'video_uploaded') return '🎬';
     if (type === 'video_approved') return '✅';
     if (type === 'project_assigned') return '📁';
@@ -88,8 +92,10 @@ export default function Notifications() {
   const label = (n) => {
     if (n.type === 'comment') return <><strong>{n.actor_name}</strong> comentó en un video{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'reply') return <><strong>{n.actor_name}</strong> respondió tu comentario{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
+    if (n.type === 'comment_resolved') return <><strong>{n.actor_name}</strong> resolvió tu comentario{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'task_review') return <><strong>{n.actor_name}</strong> pasó una tarea a revisión{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'task_feedback') return <><strong>{n.actor_name}</strong> te dejó feedback para aplicar en una tarea{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
+    if (n.type === 'task_done') return <><strong>{n.actor_name}</strong> terminó una tarea{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'video_uploaded') return <><strong>{n.actor_name}</strong> subió un video{n.preview ? <>: "{n.preview}"</> : ''}{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'video_approved') return <><strong>{n.actor_name}</strong> aprobó un video{n.preview ? <>: "{n.preview}"</> : ''}{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'project_assigned') return <><strong>{n.actor_name}</strong> te asignó un proyecto{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
