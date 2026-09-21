@@ -22,7 +22,28 @@ function resolveDrawColor(color) {
   return LEGACY_DRAW_COLORS[color] || (color.startsWith('var(') ? DRAW_COLORS[0] : color);
 }
 
-const ctrlBtn = { background: 'transparent', border: 'none', cursor: 'pointer', color: '#9898a8', fontSize: 17, padding: '4px 6px', borderRadius: 6, lineHeight: 1 };
+// Set de íconos propio en vez de emoji: un emoji del mismo control (▶, 🔇, ⛶) se ve distinto en
+// cada sistema operativo/navegador, así que dos personas viendo el mismo reproductor ven pesos
+// visuales distintos. SVG de trazo fino da un look consistente sin depender de una fuente externa.
+const Icon = {
+  play: () => <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M8 5v14l11-7Z" /></svg>,
+  pause: () => <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>,
+  skipBack: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></svg>,
+  skipForward: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 4v5h-5" /></svg>,
+  volume: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H2v6h4l5 4Z" /><path d="M16 8a5 5 0 0 1 0 8" /></svg>,
+  mute: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H2v6h4l5 4Z" /><path d="M23 9l-6 6M17 9l6 6" /></svg>,
+  fullscreen: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" /></svg>,
+  pencil: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>,
+  arrow: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7M9 7h8v8" /></svg>,
+  rect: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="6" width="16" height="12" rx="1.5" /></svg>,
+  trash: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>,
+  comment: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.4 8.5 8.5 0 0 1-4-1L3 20l1.1-5.5A8.38 8.38 0 0 1 3.5 11 8.5 8.5 0 1 1 21 11.5Z" /></svg>,
+  range: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4v16M18 4v16M6 12h12" /></svg>,
+};
+
+const iconBtn = { background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text2)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 7, flexShrink: 0 };
+const STROKE_WIDTHS = [1.5, 2.5, 4.5];
+const RATES = [0.5, 1, 1.5, 2];
 
 // Exportado porque el panel de comentarios de VideoReview.jsx (afuera de este componente) también
 // necesita formatear timestamps — mejor un solo lugar que dos copias que se puedan desalinear.
@@ -65,6 +86,11 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
 
   const [tool, setTool] = useState('freehand'); // freehand | rect | arrow
   const [drawColor, setDrawColor] = useState(DRAW_COLORS[0]);
+  const [strokeWidth, setStrokeWidth] = useState(STROKE_WIDTHS[1]);
+  // La barra de dibujo arranca oculta: antes ocupaba una fila fija siempre, aunque la mayoría de
+  // las veces el feedback es solo texto. "Dibujar" la despliega como overlay sobre el video en
+  // vez de sumar un panel más a los que ya están apilados (timeline, controles, compositor).
+  const [drawToolbarOpen, setDrawToolbarOpen] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState(null);
   const [annotations, setAnnotations] = useState([]);
@@ -102,11 +128,13 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
     setPlaying(false);
     if (suppressPauseComposerRef.current) { suppressPauseComposerRef.current = false; return; }
     if (rangeMode) return;
-    // Si ya hay un comentario sin enviar (texto o dibujo), un segundo pause — play accidental
-    // y pausa de nuevo, por ejemplo — no le pisa el timestamp en silencio: antes recapturaba
-    // siempre, así que el feedback que ya habías escrito terminaba mandado con el momento
-    // equivocado sin ningún aviso.
-    if (hasUnsavedDraft()) { setShowCommentInput(true); return; }
+    // Si ya hay un comentario sin enviar (texto o dibujo) Y un timestamp ya capturado, un segundo
+    // pause — play accidental y pausa de nuevo, por ejemplo — no le pisa el timestamp en silencio:
+    // antes recapturaba siempre, así que el feedback que ya habías escrito terminaba mandado con
+    // el momento equivocado sin ningún aviso. Si no hay timestamp capturado todavía (por ejemplo,
+    // se acaba de cancelar una selección de rango), no hay nada que proteger — cae al caso normal
+    // de abajo, que sí lo captura (evita un `capturedTs` nulo que rompe el compositor al renderizar).
+    if (hasUnsavedDraft() && capturedTs) { setShowCommentInput(true); return; }
     setCapturedTs({ type: 'single', ts: videoRef.current?.currentTime || 0 });
     setShowCommentInput(true);
   };
@@ -222,7 +250,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
     const color = resolveDrawColor(ann.color);
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = ann.strokeWidth || 2.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     if (ann.type === 'freehand' && ann.points?.length > 1) {
@@ -270,16 +298,16 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   const startDrawAt = (pos) => {
     setIsDrawing(true);
     setDrawStart(pos);
-    if (tool === 'freehand') setAnnotations(prev => [...prev, { type: 'freehand', color: drawColor, points: [pos] }]);
+    if (tool === 'freehand') setAnnotations(prev => [...prev, { type: 'freehand', color: drawColor, strokeWidth, points: [pos] }]);
   };
   const moveDrawTo = (pos) => {
     if (!isDrawing || !drawStart) return;
     if (tool === 'freehand') {
       setAnnotations(prev => { const last = { ...prev[prev.length - 1], points: [...prev[prev.length - 1].points, pos] }; return [...prev.slice(0, -1), last]; });
     } else if (tool === 'rect') {
-      setCurrentAnnotation({ type: 'rect', x: drawStart.x, y: drawStart.y, w: pos.x - drawStart.x, h: pos.y - drawStart.y, color: drawColor });
+      setCurrentAnnotation({ type: 'rect', x: drawStart.x, y: drawStart.y, w: pos.x - drawStart.x, h: pos.y - drawStart.y, color: drawColor, strokeWidth });
     } else if (tool === 'arrow') {
-      setCurrentAnnotation({ type: 'arrow', x1: drawStart.x, y1: drawStart.y, x2: pos.x, y2: pos.y, color: drawColor });
+      setCurrentAnnotation({ type: 'arrow', x1: drawStart.x, y1: drawStart.y, x2: pos.x, y2: pos.y, color: drawColor, strokeWidth });
     }
     redrawCanvas();
   };
@@ -389,7 +417,10 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           // touchAction:'none' es lo que realmente evita que el navegador interprete el dedo
           // dibujando como un gesto de scroll/zoom — el preventDefault() de los handlers de touch
           // es respaldo, pero esta propiedad CSS es la forma confiable de lograrlo.
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: 'crosshair', touchAction: 'none' }}
+          // pointerEvents solo se activa con el modo "Dibujar" prendido: antes el canvas capturaba
+          // clicks/touches SIEMPRE (aun sin querer dibujar nada), tapando cualquier otra cosa que
+          // se pusiera encima del video (como el botón de comentar de acá abajo).
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: drawToolbarOpen ? 'crosshair' : 'default', touchAction: 'none', pointerEvents: drawToolbarOpen ? 'auto' : 'none' }}
           onMouseDown={onCanvasMouseDown}
           onMouseMove={onCanvasMouseMove}
           onMouseUp={onCanvasMouseUp}
@@ -399,31 +430,66 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           onTouchEnd={onCanvasMouseUp}
           onTouchCancel={onCanvasMouseUp}
         />
-      </div>
 
-      {/* Drawing toolbar */}
-      <div style={{ background: 'var(--bg2)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <span style={{ fontSize: 11, color: 'var(--text3)', marginRight: 4 }}>Dibujar:</span>
-        {[['freehand', '✏️', 'Libre'], ['arrow', '↗', 'Flecha'], ['rect', '⬜', 'Rectángulo']].map(([t, icon, label]) => (
-          <button key={t} onClick={() => setTool(t)}
-            style={{ background: tool === t ? 'var(--accent-glow)' : 'transparent', border: `1px solid ${tool === t ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 6, padding: '4px 10px', color: tool === t ? 'var(--accent2)' : 'var(--text2)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-            {icon} {label}
-          </button>
-        ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
-          <span style={{ fontSize: 11, color: 'var(--text3)' }}>Color:</span>
-          {DRAW_COLORS.map(c => (
-            <div key={c} onClick={() => setDrawColor(c)}
-              style={{ width: 18, height: 18, borderRadius: '50%', background: c, cursor: 'pointer', border: drawColor === c ? '2px solid #fff' : '2px solid transparent', transition: 'all 0.1s' }} />
-          ))}
-        </div>
-        <div style={{ flex: 1 }} />
-        {annotations.length > 0 && (
-          <button onClick={clearAnnotations}
-            style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', color: 'var(--red)', fontSize: 12, cursor: 'pointer' }}>
-            🗑 Limpiar dibujo
-          </button>
+        {/* Toggle de modo dibujo — reemplaza la barra de dibujo que antes estaba siempre visible
+            debajo del video ocupando una fila fija aunque casi nunca se usara. */}
+        <button onClick={() => setDrawToolbarOpen(o => !o)} title="Dibujar sobre el video"
+          style={{ position: 'absolute', top: 10, left: 10, zIndex: 3, display: 'flex', alignItems: 'center', gap: 6, background: drawToolbarOpen ? 'var(--accent)' : 'rgba(20,20,23,0.82)', border: `1px solid ${drawToolbarOpen ? 'var(--accent)' : 'var(--border2)'}`, color: drawToolbarOpen ? '#fff' : 'var(--text2)', fontSize: 11.5, fontWeight: 600, padding: '6px 11px', borderRadius: 999, cursor: 'pointer' }}>
+          <Icon.pencil /> Dibujar
+        </button>
+
+        {drawToolbarOpen && (
+          <div style={{ position: 'absolute', top: 46, left: 10, right: 10, zIndex: 3, background: 'rgba(20,20,23,0.92)', border: '1px solid var(--border2)', borderRadius: 12, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 3 }}>
+              {[['freehand', Icon.pencil, 'Libre'], ['arrow', Icon.arrow, 'Flecha'], ['rect', Icon.rect, 'Rectángulo']].map(([t, IconCmp, label]) => (
+                <button key={t} onClick={() => setTool(t)} title={label}
+                  style={{ ...iconBtn, background: tool === t ? 'var(--bg4)' : 'transparent', color: tool === t ? 'var(--text)' : 'var(--text2)', border: `1px solid ${tool === t ? 'var(--border2)' : 'transparent'}` }}>
+                  <IconCmp />
+                </button>
+              ))}
+            </div>
+            <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border2)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {DRAW_COLORS.map(c => (
+                <button key={c} onClick={() => setDrawColor(c)} title={c}
+                  style={{ width: 17, height: 17, borderRadius: '50%', background: c, cursor: 'pointer', padding: 0, border: drawColor === c ? '2px solid #fff' : '2px solid transparent', boxShadow: drawColor === c ? '0 0 0 2px rgba(0,0,0,0.4)' : 'none' }} />
+              ))}
+            </div>
+            <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border2)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              {STROKE_WIDTHS.map(w => (
+                <button key={w} onClick={() => setStrokeWidth(w)} title={w === STROKE_WIDTHS[0] ? 'Fino' : w === STROKE_WIDTHS[1] ? 'Medio' : 'Grueso'}
+                  style={{ ...iconBtn, width: 22, height: 22 }}>
+                  <span style={{ display: 'block', borderRadius: '50%', width: w + 2, height: w + 2, background: strokeWidth === w ? 'var(--text)' : 'var(--text3)' }} />
+                </button>
+              ))}
+            </div>
+            {annotations.length > 0 && (
+              <>
+                <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border2)' }} />
+                <button onClick={clearAnnotations} title="Limpiar dibujo" style={{ ...iconBtn, color: 'var(--red)' }}>
+                  <Icon.trash />
+                </button>
+              </>
+            )}
+          </div>
         )}
+
+        {/* "Comentar aquí" como acción flotante propia, separada de la barra de controles — antes
+            competía por espacio ahí al lado del volumen, sin ninguna jerarquía visual clara siendo
+            la acción principal de todo el reproductor. */}
+        <button onClick={() => {
+          if (videoRef.current) videoRef.current.pause();
+          // Mismo cuidado que onVideoPause: si ya hay un timestamp capturado, no lo pisa en
+          // silencio. Si no hay ninguno todavía, cae al caso normal de abajo.
+          if (hasUnsavedDraft() && capturedTs) { setShowCommentInput(true); return; }
+          const t = videoRef.current?.currentTime || 0;
+          setCapturedTs({ type: 'single', ts: t });
+          setShowCommentInput(true);
+        }}
+          style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 3, display: 'flex', alignItems: 'center', gap: 7, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 999, padding: '9px 15px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', boxShadow: '0 6px 20px rgba(124,106,247,0.45)' }}>
+          <Icon.comment /> Comentar aquí
+        </button>
       </div>
 
       {/* Timeline */}
@@ -454,26 +520,30 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           </div>
         </div>
 
-        {/* Controls row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 10 }}>
+        {/* Controls row — íconos en vez de emoji+texto y velocidad en un solo botón cíclico
+            (antes 4 botones separados) para que quepa en una fila también en mobile; flexWrap
+            como red de seguridad si aun así no entra todo, en vez de desbordar o aplastarse. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingBottom: 10, flexWrap: 'wrap', rowGap: 6 }}>
           <button onClick={() => { if (videoRef.current) { videoRef.current.currentTime = 0; setCurrentTime(0); } }}
-            style={ctrlBtn}>⏮</button>
-          <button onClick={togglePlay}
-            style={{ ...ctrlBtn, color: 'var(--text)', fontSize: 20 }}>{playing ? '⏸' : '▶'}</button>
+            title="Ir al inicio" style={iconBtn}><Icon.skipBack /></button>
+          <button onClick={togglePlay} title={playing ? 'Pausar' : 'Reproducir'}
+            style={{ ...iconBtn, width: 34, height: 34, background: 'var(--bg4)', color: 'var(--text)' }}>
+            {playing ? <Icon.pause /> : <Icon.play />}
+          </button>
           <button onClick={() => { if (videoRef.current) { videoRef.current.currentTime = Math.min(duration, currentTime + 5); } }}
-            style={ctrlBtn}>⏩</button>
-          <span style={{ fontSize: 12, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums', minWidth: 80 }}>
+            title="Adelantar 5s" style={iconBtn}><Icon.skipForward /></button>
+          <span style={{ fontSize: 11.5, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums', padding: '0 4px', whiteSpace: 'nowrap' }}>
             {formatT(currentTime)} / {formatT(duration)}
           </span>
           <div style={{ flex: 1 }} />
 
           {!rangeMode ? (
-            <button onClick={() => { setRangeMode(true); setRangeStart(null); setRangeEnd(null); }}
-              style={{ background: 'rgba(240,168,58,0.15)', border: '1px solid rgba(240,168,58,0.31)', borderRadius: 6, padding: '4px 10px', color: 'var(--yellow)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-              ⬌ Seleccionar rango
+            <button onClick={() => { setRangeMode(true); setRangeStart(null); setRangeEnd(null); }} title="Seleccionar rango"
+              style={{ ...iconBtn, width: 'auto', gap: 5, padding: '0 9px', color: 'var(--yellow)' }}>
+              <Icon.range /> <span style={{ fontSize: 11, fontWeight: 600 }}>Rango</span>
             </button>
           ) : (
-            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={markRangeStart}
                 style={{ background: rangeStart != null ? 'rgba(240,168,58,0.15)' : 'transparent', border: '1px solid var(--yellow)', borderRadius: 6, padding: '4px 10px', color: 'var(--yellow)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                 {rangeStart != null ? `▶ ${formatT(rangeStart)}` : '▶ Marcar inicio'}
@@ -489,29 +559,18 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             </div>
           )}
 
-          {[0.5, 1, 1.5, 2].map(r => (
-            <button key={r} onClick={() => setRate(r)}
-              style={{ background: playbackRate === r ? 'var(--accent-glow)' : 'transparent', border: `1px solid ${playbackRate === r ? 'var(--accent)' : 'transparent'}`, borderRadius: 5, padding: '3px 7px', color: playbackRate === r ? 'var(--accent2)' : 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>
-              {r}×
-            </button>
-          ))}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button onClick={toggleMute} style={ctrlBtn}>{muted || volume === 0 ? '🔇' : '🔊'}</button>
-            <input type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} onChange={onVolumeChange}
-              style={{ width: 56, accentColor: 'var(--accent)', cursor: 'pointer' }} title="Volumen" />
-          </div>
-          <button onClick={toggleFullscreen} style={{ ...ctrlBtn, fontSize: 14 }}>⛶</button>
-          <button onClick={() => {
-            if (videoRef.current) videoRef.current.pause();
-            // Mismo cuidado que onVideoPause: si ya hay texto o dibujo sin enviar, no le pisa el
-            // timestamp — solo abre/mantiene el compositor tal cual estaba.
-            if (hasUnsavedDraft()) { setShowCommentInput(true); return; }
-            const t = videoRef.current?.currentTime || 0;
-            setCapturedTs({ type: 'single', ts: t });
-            setShowCommentInput(true);
-          }} style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent)', borderRadius: 6, padding: '4px 10px', color: 'var(--accent2)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            💬 Comentar aquí
+          <button onClick={() => setRate(RATES[(RATES.indexOf(playbackRate) + 1) % RATES.length])} title="Velocidad de reproducción"
+            style={{ fontFamily: 'inherit', fontSize: 11, fontWeight: 600, color: playbackRate !== 1 ? 'var(--accent2)' : 'var(--text2)', background: playbackRate !== 1 ? 'var(--accent-glow)' : 'transparent', border: `1px solid ${playbackRate !== 1 ? 'var(--accent)' : 'var(--border2)'}`, borderRadius: 7, padding: '5px 8px', cursor: 'pointer', minWidth: 34 }}>
+            {playbackRate}×
           </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button onClick={toggleMute} title={muted || volume === 0 ? 'Activar sonido' : 'Silenciar'} style={iconBtn}>
+              {muted || volume === 0 ? <Icon.mute /> : <Icon.volume />}
+            </button>
+            <input type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} onChange={onVolumeChange}
+              style={{ width: 52, accentColor: 'var(--accent)', cursor: 'pointer' }} title="Volumen" />
+          </div>
+          <button onClick={toggleFullscreen} title="Pantalla completa" style={iconBtn}><Icon.fullscreen /></button>
         </div>
       </div>
 
@@ -526,7 +585,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             </div>
           ) : (
             <div style={{ background: 'var(--bg3)', border: '1px solid var(--accent)', borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>⏸ Pausado en {formatT(capturedTs.ts)}</span>
+              <span style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>⏸ Pausado en {formatT(capturedTs?.ts ?? currentTime)}</span>
               <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
                 style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>✕</button>
             </div>
