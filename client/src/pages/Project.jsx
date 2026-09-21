@@ -7,6 +7,7 @@ import VideoReview from '../components/VideoReview';
 import MentionInput, { renderMentions } from '../components/MentionInput';
 import { initials } from '../utils/format';
 import useNarrowViewport from '../hooks/useNarrowViewport';
+import useModalA11y from '../hooks/useModalA11y';
 
 const STATUSES = [
   { key: 'todo', label: 'Por hacer', color: 'var(--text2)', description: 'Todavía no se empezó.' },
@@ -381,6 +382,10 @@ export default function Project() {
     || !project.payment_editor_id
   );
 
+  const taskModalRef = useModalA11y(showTaskModal, () => setShowTaskModal(false));
+  const reviewReminderModalRef = useModalA11y(!!reviewReminderTask, () => setReviewReminderTask(null));
+  const priceModalRef = useModalA11y(showPriceModal, () => setShowPriceModal(false));
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Header — en angosto no entra todo en una sola fila (título+badges+botones+tabs), así
@@ -596,9 +601,9 @@ export default function Project() {
       {/* Task Modal */}
       {showTaskModal && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowTaskModal(false)} title="Cerrar">✕</button>
-            <h2>{editingTask ? 'Editar tarea' : 'Nueva tarea'}</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={taskModalRef} role="dialog" aria-modal="true" aria-labelledby="task-modal-title">
+            <button className="modal-close" onClick={() => setShowTaskModal(false)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="task-modal-title">{editingTask ? 'Editar tarea' : 'Nueva tarea'}</h2>
             <div className="form-group">
               <label>Título</label>
               <input className="input" value={taskForm.title} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} placeholder="¿Qué hay que hacer?" autoFocus />
@@ -645,9 +650,9 @@ export default function Project() {
 
       {reviewReminderTask && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setReviewReminderTask(null)} title="Cerrar">✕</button>
-            <h2>Tarea en revisión</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={reviewReminderModalRef} role="dialog" aria-modal="true" aria-labelledby="review-reminder-modal-title">
+            <button className="modal-close" onClick={() => setReviewReminderTask(null)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="review-reminder-modal-title">Tarea en revisión</h2>
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
               Moviste <strong>"{reviewReminderTask.title}"</strong> a revisión. ¿Querés subir la última versión del video para esta tarea?
             </p>
@@ -667,9 +672,9 @@ export default function Project() {
 
       {showPriceModal && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowPriceModal(false)} title="Cerrar">✕</button>
-            <h2>Faltan datos para terminar el proyecto</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={priceModalRef} role="dialog" aria-modal="true" aria-labelledby="price-modal-title">
+            <button className="modal-close" onClick={() => setShowPriceModal(false)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="price-modal-title">Faltan datos para terminar el proyecto</h2>
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
               Para marcarlo como terminado y que pase a Pagos, el proyecto necesita un editor asignado y un precio cargado.
             </p>

@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { initials, monthKey } from '../utils/format';
+import useModalA11y from '../hooks/useModalA11y';
 
 const UPWORK_OPTIONS = ['Pendiente de carga', 'Cargado', 'No'];
 
@@ -189,6 +190,8 @@ export default function Payments() {
     );
   };
 
+  const pendingCompleteModalRef = useModalA11y(!!pendingComplete, () => setPendingComplete(null));
+
   return (
     <div style={{ flex: 1, overflow: 'auto' }}>
       <div style={{ padding: '0 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56, flexShrink: 0 }}>
@@ -369,9 +372,9 @@ export default function Payments() {
 
       {pendingComplete && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setPendingComplete(null)} title="Cerrar">✕</button>
-            <h2>¿Marcar como saldado?</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={pendingCompleteModalRef} role="dialog" aria-modal="true" aria-labelledby="pending-complete-modal-title">
+            <button className="modal-close" onClick={() => setPendingComplete(null)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="pending-complete-modal-title">¿Marcar como saldado?</h2>
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
               Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Saldados".
             </p>

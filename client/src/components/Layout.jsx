@@ -9,6 +9,7 @@ import { renderMentions } from './MentionInput';
 import ErrorBoundary from './ErrorBoundary';
 import SearchPalette from './SearchPalette';
 import useNarrowViewport, { MOBILE_BREAKPOINT } from '../hooks/useNarrowViewport';
+import useModalA11y from '../hooks/useModalA11y';
 
 const TOAST_DURATION_MS = 6000;
 
@@ -545,6 +546,14 @@ export default function Layout() {
     </div>
   );
 
+  const newProjectModalRef = useModalA11y(showNewProject, () => setShowNewProject(false));
+  const newClientModalRef = useModalA11y(showNewClient, () => setShowNewClient(false));
+  const editProjectModalRef = useModalA11y(!!editingProject, () => setEditingProject(null));
+  const completeConfirmModalRef = useModalA11y(showCompleteConfirm, () => setShowCompleteConfirm(false));
+  const reassignReviewModalRef = useModalA11y(!!reassignReview, () => finishReassignReview(null));
+  const editClientModalRef = useModalA11y(!!editingClient, () => setEditingClient(null));
+  const changePasswordModalRef = useModalA11y(showChangePassword, () => setShowChangePassword(false));
+
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
       {/* En angosto la sidebar no empuja el contenido — flota encima con un backdrop atrás, como
@@ -748,8 +757,8 @@ export default function Layout() {
       {/* New Project Modal */}
       {showNewProject && (
         <div className="modal-overlay">
-          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowNewProject(false)} title="Cerrar">✕</button>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()} ref={newProjectModalRef} role="dialog" aria-modal="true" aria-labelledby="new-project-modal-title">
+            <button className="modal-close" onClick={() => setShowNewProject(false)} title="Cerrar" aria-label="Cerrar">✕</button>
 
             {/* Steps indicator — solo admin ve 2 pasos */}
             {user?.role === 'admin' && (
@@ -771,7 +780,7 @@ export default function Layout() {
             {/* Step 1 — datos del proyecto */}
             {step === 1 && (
               <>
-                <h2>{user?.role === 'admin' ? 'Nuevo proyecto — Paso 1' : 'Nuevo proyecto'}</h2>
+                <h2 id="new-project-modal-title">{user?.role === 'admin' ? 'Nuevo proyecto — Paso 1' : 'Nuevo proyecto'}</h2>
                 <div className="form-group">
                   <label>Nombre</label>
                   <input className="input" value={projectForm.name} onChange={e => setProjectForm(p => ({ ...p, name: e.target.value }))} placeholder="Ej: Campaña Nike 2024" autoFocus />
@@ -825,7 +834,7 @@ export default function Layout() {
             {step === 2 && user?.role === 'admin' && (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <h2>Paso 2 — Configuración de pago</h2>
+                  <h2 id="new-project-modal-title">Paso 2 — Configuración de pago</h2>
                   <button type="button" onClick={createProject} disabled={isCreatingProject}
                     style={{ background: 'transparent', border: 'none', color: 'var(--accent2)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}>
                     Omitir por ahora →
@@ -963,9 +972,9 @@ export default function Layout() {
 
       {showNewClient && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowNewClient(false)} title="Cerrar">✕</button>
-            <h2>Nuevo cliente</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={newClientModalRef} role="dialog" aria-modal="true" aria-labelledby="new-client-modal-title">
+            <button className="modal-close" onClick={() => setShowNewClient(false)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="new-client-modal-title">Nuevo cliente</h2>
             <div className="form-group">
               <label>Nombre</label>
               <input className="input" value={clientForm.name} onChange={e => setClientForm(p => ({ ...p, name: e.target.value }))} placeholder="Ej: Nike, Adidas..." autoFocus />
@@ -1001,9 +1010,9 @@ export default function Layout() {
       )}
       {editingProject && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setEditingProject(null)} title="Cerrar">✕</button>
-            <h2>Editar proyecto — {editingProject.name}</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={editProjectModalRef} role="dialog" aria-modal="true" aria-labelledby="edit-project-modal-title">
+            <button className="modal-close" onClick={() => setEditingProject(null)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="edit-project-modal-title">Editar proyecto — {editingProject.name}</h2>
             <div className="form-group">
               <label>Nombre</label>
               <input className="input" value={editProjectForm.name} onChange={e => setEditProjectForm(p => ({ ...p, name: e.target.value }))} autoFocus />
@@ -1143,9 +1152,9 @@ export default function Layout() {
 
       {showCompleteConfirm && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowCompleteConfirm(false)} title="Cerrar">✕</button>
-            <h2>¿Marcar como saldado?</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={completeConfirmModalRef} role="dialog" aria-modal="true" aria-labelledby="complete-confirm-modal-title">
+            <button className="modal-close" onClick={() => setShowCompleteConfirm(false)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="complete-confirm-modal-title">¿Marcar como saldado?</h2>
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
               Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Saldados" en Pagos.
             </p>
@@ -1159,9 +1168,9 @@ export default function Layout() {
 
       {reassignReview && (
         <div className="modal-overlay">
-          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => finishReassignReview(null)} title="Cerrar">✕</button>
-            <h2>Reasignar tareas</h2>
+          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()} ref={reassignReviewModalRef} role="dialog" aria-modal="true" aria-labelledby="reassign-review-modal-title">
+            <button className="modal-close" onClick={() => finishReassignReview(null)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="reassign-review-modal-title">Reasignar tareas</h2>
             <p style={{ fontSize: 12, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
               Tarea {reassignReview.index + 1} de {reassignReview.tasks.length}
             </p>
@@ -1183,9 +1192,9 @@ export default function Layout() {
 
       {editingClient && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setEditingClient(null)} title="Cerrar">✕</button>
-            <h2>Editar cliente — {editingClient.name}</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={editClientModalRef} role="dialog" aria-modal="true" aria-labelledby="edit-client-modal-title">
+            <button className="modal-close" onClick={() => setEditingClient(null)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="edit-client-modal-title">Editar cliente — {editingClient.name}</h2>
             <div className="form-group">
               <label>Nombre</label>
               <input className="input" value={editClientForm.name} onChange={e => setEditClientForm(p => ({ ...p, name: e.target.value }))} autoFocus />
@@ -1223,9 +1232,9 @@ export default function Layout() {
       {/* Modal: Cambiar contraseña */}
       {showChangePassword && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowChangePassword(false)} title="Cerrar">✕</button>
-            <h2>Cambiar contraseña</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={changePasswordModalRef} role="dialog" aria-modal="true" aria-labelledby="change-password-modal-title">
+            <button className="modal-close" onClick={() => setShowChangePassword(false)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="change-password-modal-title">Cambiar contraseña</h2>
             <div className="form-group">
               <label>Contraseña actual</label>
               <input className="input" type="password" value={passwordForm.current_password} onChange={e => setPasswordForm(p => ({ ...p, current_password: e.target.value }))} placeholder="••••••••" autoFocus />

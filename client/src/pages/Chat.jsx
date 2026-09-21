@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { initials as initialsBase } from '../utils/format';
 import { uploadWithProgress } from '../utils/upload';
+import useModalA11y from '../hooks/useModalA11y';
 
 const formatRecordingTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -587,6 +588,8 @@ export default function Chat() {
   const filteredDms = conversations.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
   const filteredChannels = channels.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
 
+  const newChannelModalRef = useModalA11y(showNewChannel, () => setShowNewChannel(false));
+
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
 
@@ -960,9 +963,9 @@ export default function Chat() {
       {/* Modal nuevo canal */}
       {showNewChannel && user?.role === 'admin' && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowNewChannel(false)} title="Cerrar">✕</button>
-            <h2>Nuevo canal</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={newChannelModalRef} role="dialog" aria-modal="true" aria-labelledby="new-channel-modal-title">
+            <button className="modal-close" onClick={() => setShowNewChannel(false)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="new-channel-modal-title">Nuevo canal</h2>
             <div className="form-group">
               <label>Nombre del canal</label>
               <input

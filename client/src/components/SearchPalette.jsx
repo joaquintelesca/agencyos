@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import useModalA11y from '../hooks/useModalA11y';
 
 // Antes la única forma de encontrar un proyecto/tarea/video era expandir cliente por cliente en
 // el sidebar a mano — insostenible pasados unos pocos proyectos. Debounce de 250ms para no
@@ -13,15 +14,11 @@ export default function SearchPalette({ open, onClose }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
-  const inputRef = useRef(null);
   const reqIdRef = useRef(0);
+  const modalRef = useModalA11y(open, onClose);
 
   useEffect(() => {
-    if (open) {
-      setQ('');
-      setResults(null);
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
+    if (open) { setQ(''); setResults(null); }
   }, [open]);
 
   useEffect(() => {
@@ -38,13 +35,6 @@ export default function SearchPalette({ open, onClose }) {
     }, 250);
     return () => clearTimeout(t);
   }, [q, open, api]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -68,11 +58,10 @@ export default function SearchPalette({ open, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose} style={{ alignItems: 'flex-start', paddingTop: '12vh' }}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560, padding: 0, overflow: 'hidden' }}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560, padding: 0, overflow: 'hidden' }} ref={modalRef} role="dialog" aria-modal="true" aria-label="Buscar">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
           <span style={{ fontSize: 15 }}>🔍</span>
           <input
-            ref={inputRef}
             value={q}
             onChange={e => setQ(e.target.value)}
             placeholder="Buscar proyectos, tareas, videos, comentarios..."

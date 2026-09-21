@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { formatTime } from './VideoPlayerAnnotator';
+import useModalA11y from '../hooks/useModalA11y';
 
 // Comparar dos versiones de un mismo video lado a lado, con play/pausa/seek sincronizados —
 // antes la única forma de comparar un cambio entre versiones era abrir cada una por separado y
@@ -17,15 +18,10 @@ export default function VideoCompareModal({ videos, initialLeftId, initialRightI
   const [audioSide, setAudioSide] = useState(null);
   const leftRef = useRef(null);
   const rightRef = useRef(null);
+  const modalRef = useModalA11y(true, onClose);
 
   const leftVideo = videos.find(v => v.id === leftId);
   const rightVideo = videos.find(v => v.id === rightId);
-
-  useEffect(() => {
-    const onKeyDown = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
 
   const togglePlay = () => {
     if (playing) {
@@ -78,6 +74,7 @@ export default function VideoCompareModal({ videos, initialLeftId, initialRightI
         )}
         <button onClick={() => setAudioSide(prev => prev === side ? null : side)}
           title={audioSide === side ? 'Silenciar' : 'Escuchar este audio'}
+          aria-label={audioSide === side ? 'Silenciar' : 'Escuchar este audio'}
           style={{ position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: '50%', border: 'none', cursor: 'pointer', background: audioSide === side ? 'var(--accent)' : 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
           {audioSide === side ? '🔊' : '🔇'}
         </button>
@@ -87,9 +84,9 @@ export default function VideoCompareModal({ videos, initialLeftId, initialRightI
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 1080, width: '95%' }} onClick={e => e.stopPropagation()}>
-        <button className="modal-close" onClick={onClose} title="Cerrar">✕</button>
-        <h2>Comparar versiones</h2>
+      <div className="modal" style={{ maxWidth: 1080, width: '95%' }} onClick={e => e.stopPropagation()} ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="compare-modal-title">
+        <button className="modal-close" onClick={onClose} title="Cerrar" aria-label="Cerrar">✕</button>
+        <h2 id="compare-modal-title">Comparar versiones</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
           {pane('left', leftVideo, leftRef, setLeftId)}
           {pane('right', rightVideo, rightRef, setRightId)}

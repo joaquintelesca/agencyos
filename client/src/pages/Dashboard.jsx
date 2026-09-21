@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { initials, deadlineLabel, daysUntil } from '../utils/format';
+import useModalA11y from '../hooks/useModalA11y';
 
 const VIDEOS_PREVIEW_LIMIT = 5;
 const PAYMENTS_PREVIEW_LIMIT = 5;
@@ -97,11 +98,13 @@ export default function Dashboard() {
 
   const goToProject = (id) => { setStatModal(null); navigate(`/project/${id}`); };
 
+  const statModalRef = useModalA11y(!!statModal, () => setStatModal(null));
+
   const statModalSection = statModal && (
     <div className="modal-overlay">
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <button className="modal-close" onClick={() => setStatModal(null)} title="Cerrar">✕</button>
-        <h2>{STAT_MODAL_TITLES[statModal]}</h2>
+      <div className="modal" onClick={e => e.stopPropagation()} ref={statModalRef} role="dialog" aria-modal="true" aria-labelledby="stat-modal-title">
+        <button className="modal-close" onClick={() => setStatModal(null)} title="Cerrar" aria-label="Cerrar">✕</button>
+        <h2 id="stat-modal-title">{STAT_MODAL_TITLES[statModal]}</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: '55vh', overflowY: 'auto', marginTop: 16 }}>
           {statModal === 'projects' && (activeProjectsList.length === 0
             ? <div className="empty"><div className="empty-icon">📁</div><p>Sin proyectos activos</p></div>

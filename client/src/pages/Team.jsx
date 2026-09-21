@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { initials } from '../utils/format';
+import useModalA11y from '../hooks/useModalA11y';
 
 const AVATAR_COLORS = ['#6366f1','#ec4899','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ef4444','#14b8a6','#f97316','#06b6d4'];
 
@@ -86,6 +87,10 @@ export default function Team() {
     });
   };
 
+  const newUserModalRef = useModalA11y(showNewUser, () => setShowNewUser(false));
+  const editUserModalRef = useModalA11y(!!editingUser, () => setEditingUser(null));
+  const detailModalRef = useModalA11y(!!detailUser, () => setDetailUser(null));
+
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -125,9 +130,9 @@ export default function Team() {
       {/* Modal: Crear usuario */}
       {showNewUser && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowNewUser(false)} title="Cerrar">✕</button>
-            <h2>Agregar integrante</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={newUserModalRef} role="dialog" aria-modal="true" aria-labelledby="new-user-modal-title">
+            <button className="modal-close" onClick={() => setShowNewUser(false)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="new-user-modal-title">Agregar integrante</h2>
             <form onSubmit={e => { e.preventDefault(); createUser(); }}>
               <div className="form-group"><label>Nombre completo</label>
                 <input className="input" value={userForm.name} onChange={e => setUserForm(p => ({ ...p, name: e.target.value }))} placeholder="Juan García" autoFocus required />
@@ -159,22 +164,23 @@ export default function Team() {
       {/* Modal: Editar usuario */}
       {editingUser && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setEditingUser(null)} title="Cerrar">✕</button>
-            <h2>Editar integrante</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={editUserModalRef} role="dialog" aria-modal="true" aria-labelledby="edit-user-modal-title">
+            <button className="modal-close" onClick={() => setEditingUser(null)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="edit-user-modal-title">Editar integrante</h2>
             <form onSubmit={e => { e.preventDefault(); saveUser(); }}>
               {/* Color avatar */}
               <div className="form-group">
                 <label>Color de avatar</label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                  {AVATAR_COLORS.map(c => (
-                    <div key={c} onClick={() => setEditForm(p => ({ ...p, avatar_color: c }))}
+                  {AVATAR_COLORS.map((c, i) => (
+                    <button key={c} type="button" onClick={() => setEditForm(p => ({ ...p, avatar_color: c }))}
+                      aria-label={`Color ${i + 1}`} aria-pressed={editForm.avatar_color === c}
                       style={{ width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer',
                         border: editForm.avatar_color === c ? '3px solid var(--text)' : '3px solid transparent',
                         transition: 'border 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 10, fontWeight: 700, color: '#fff' }}>
+                        fontSize: 10, fontWeight: 700, color: '#fff', padding: 0 }}>
                       {editForm.avatar_color === c ? '✓' : ''}
-                    </div>
+                    </button>
                   ))}
                 </div>
                 {/* Preview */}
@@ -220,19 +226,19 @@ export default function Team() {
       {/* Panel: Detalle de editor */}
       {detailUser && (
         <div className="modal-overlay">
-          <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 420, background: 'var(--bg1)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideIn 0.2s ease' }}>
+          <div onClick={e => e.stopPropagation()} ref={detailModalRef} role="dialog" aria-modal="true" aria-labelledby="detail-user-modal-title" style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 420, background: 'var(--bg1)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideIn 0.2s ease' }}>
             {/* Header */}
             <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
               <div className="avatar avatar-lg" style={{ background: detailUser.avatar_color }}>{initials(detailUser.name)}</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>{detailUser.name}</div>
+                <div id="detail-user-modal-title" style={{ fontWeight: 700, fontSize: 16 }}>{detailUser.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--text3)' }}>{detailUser.email}</div>
               </div>
               <button onClick={() => { openEdit(detailUser); setDetailUser(null); }}
                 style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
                 ✏️ Editar
               </button>
-              <button onClick={() => setDetailUser(null)}
+              <button onClick={() => setDetailUser(null)} title="Cerrar" aria-label="Cerrar"
                 style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 14, cursor: 'pointer', padding: '2px 6px' }}>✕</button>
             </div>
 

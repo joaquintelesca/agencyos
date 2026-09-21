@@ -1,4 +1,5 @@
 import { createContext, useContext, useCallback, useState, useRef } from 'react';
+import useModalA11y from '../hooks/useModalA11y';
 
 const AlertContext = createContext();
 export const useAlert = () => useContext(AlertContext);
@@ -32,14 +33,16 @@ export function AlertProvider({ children }) {
     });
   }, []);
 
+  const modalRef = useModalA11y(!!modal, () => close(false));
+
   return (
     <AlertContext.Provider value={{ alert: alertFn, confirm: confirmFn }}>
       {children}
       {modal && (
         <div className="modal-overlay">
-          <div className="modal" style={{ maxWidth: 420 }}>
-            <button className="modal-close" onClick={() => close(false)}>✕</button>
-            <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{modal.message}</p>
+          <div className="modal" style={{ maxWidth: 420 }} ref={modalRef} role="alertdialog" aria-modal="true" aria-labelledby="alert-modal-message">
+            <button className="modal-close" onClick={() => close(false)} aria-label="Cerrar">✕</button>
+            <p id="alert-modal-message" style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{modal.message}</p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
               {modal.isConfirm && <button className="btn btn-ghost" onClick={() => close(false)}>{modal.cancelText}</button>}
               <button className={`btn ${modal.danger ? 'btn-danger' : 'btn-primary'}`} onClick={() => close(true)}>

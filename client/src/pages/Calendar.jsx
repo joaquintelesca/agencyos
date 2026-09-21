@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { deadlineLabel } from '../utils/format';
 import useNarrowViewport from '../hooks/useNarrowViewport';
+import useModalA11y from '../hooks/useModalA11y';
 
 const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const MAX_VISIBLE_PER_DAY_MONTH = 3;
@@ -304,6 +305,11 @@ export default function CalendarPage() {
 
   const maxVisible = viewMode === 'week' ? MAX_VISIBLE_PER_DAY_WEEK : MAX_VISIBLE_PER_DAY_MONTH;
 
+  const dayModalRef = useModalA11y(!!dayModal, () => setDayModal(null));
+  const chipModalRef = useModalA11y(!!chipModal, () => setChipModal(null));
+  const newEventModalRef = useModalA11y(!!showNewEvent, () => setShowNewEvent(null));
+  const feedModalRef = useModalA11y(showFeedModal, () => setShowFeedModal(false));
+
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: isNarrowViewport ? 12 : 24, display: 'flex', flexDirection: isNarrowViewport ? 'column' : 'row', gap: isNarrowViewport ? 16 : 20 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -433,9 +439,9 @@ export default function CalendarPage() {
       {/* Modal con todos los eventos de un día (cuando hay más de los que entran en la celda) */}
       {dayModal && (
         <div className="modal-overlay" onClick={() => setDayModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
-            <button className="modal-close" onClick={() => setDayModal(null)} title="Cerrar">✕</button>
-            <h2 style={{ textTransform: 'capitalize' }}>{new Date(dayModal + 'T00:00:00').toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' })}</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }} ref={dayModalRef} role="dialog" aria-modal="true" aria-labelledby="day-modal-title">
+            <button className="modal-close" onClick={() => setDayModal(null)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="day-modal-title" style={{ textTransform: 'capitalize' }}>{new Date(dayModal + 'T00:00:00').toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' })}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14, maxHeight: '50vh', overflowY: 'auto' }}>
               {(eventsByDay[dayModal]?.events || []).map(ev => (
                 <div key={ev.id} onClick={() => { setDayModal(null); setChipModal({ type: 'event', data: ev }); }}
@@ -463,14 +469,14 @@ export default function CalendarPage() {
       {/* Modal de un chip individual: proyecto (reprogramar/quitar fecha/abrir) o evento (borrar) */}
       {chipModal && (
         <div className="modal-overlay" onClick={() => setChipModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 380 }}>
-            <button className="modal-close" onClick={() => setChipModal(null)} title="Cerrar">✕</button>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 380 }} ref={chipModalRef} role="dialog" aria-modal="true" aria-labelledby="chip-modal-title">
+            <button className="modal-close" onClick={() => setChipModal(null)} title="Cerrar" aria-label="Cerrar">✕</button>
             {chipModal.type === 'project' ? (() => {
               const p = chipModal.data;
               const dl = deadlineLabel(p.deadline);
               return (
                 <>
-                  <h2>{p.name}</h2>
+                  <h2 id="chip-modal-title">{p.name}</h2>
                   {p.client_name && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>{p.client_name}</div>}
                   {dl && <div style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, color: dl.color, background: dl.bg, padding: '3px 8px', borderRadius: 6, marginBottom: 14 }}>{dl.label}</div>}
                   {isAdmin && (
@@ -493,7 +499,7 @@ export default function CalendarPage() {
               const canDelete = isAdmin || ev.created_by === user.id;
               return (
                 <>
-                  <h2>📅 {ev.title}</h2>
+                  <h2 id="chip-modal-title">📅 {ev.title}</h2>
                   <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16 }}>
                     {new Date(ev.date + 'T00:00:00').toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' })}
                   </div>
@@ -512,9 +518,9 @@ export default function CalendarPage() {
       {/* Nuevo evento */}
       {showNewEvent && (
         <div className="modal-overlay" onClick={() => setShowNewEvent(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 380 }}>
-            <button className="modal-close" onClick={() => setShowNewEvent(null)} title="Cerrar">✕</button>
-            <h2>Nuevo evento</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 380 }} ref={newEventModalRef} role="dialog" aria-modal="true" aria-labelledby="new-event-modal-title">
+            <button className="modal-close" onClick={() => setShowNewEvent(null)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="new-event-modal-title">Nuevo evento</h2>
             <div className="form-group">
               <label>Título</label>
               <input className="input" autoFocus value={newEventForm.title}
@@ -529,8 +535,9 @@ export default function CalendarPage() {
             <div className="form-group">
               <label>Color</label>
               <div style={{ display: 'flex', gap: 6 }}>
-                {EVENT_COLORS.map(c => (
+                {EVENT_COLORS.map((c, i) => (
                   <button key={c} onClick={() => setNewEventForm(f => ({ ...f, color: c }))}
+                    aria-label={`Color ${i + 1}`} aria-pressed={newEventForm.color === c}
                     style={{ width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer', border: newEventForm.color === c ? '2px solid #fff' : '2px solid transparent', boxShadow: newEventForm.color === c ? '0 0 0 2px rgba(0,0,0,0.4)' : 'none' }} />
                 ))}
               </div>
@@ -546,9 +553,9 @@ export default function CalendarPage() {
       {/* Suscripción iCal */}
       {showFeedModal && (
         <div className="modal-overlay" onClick={() => setShowFeedModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
-            <button className="modal-close" onClick={() => setShowFeedModal(false)} title="Cerrar">✕</button>
-            <h2>Suscribirse al calendario</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }} ref={feedModalRef} role="dialog" aria-modal="true" aria-labelledby="feed-modal-title">
+            <button className="modal-close" onClick={() => setShowFeedModal(false)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="feed-modal-title">Suscribirse al calendario</h2>
             <p style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6, marginBottom: 14 }}>
               Pegá este link en Google Calendar ("Desde URL") o Apple Calendar ("Nueva suscripción de calendario") para ver tus deadlines y los eventos del equipo sin entrar a AgencyOS. Es personal — no lo compartas, cualquiera con el link ve tu calendario.
             </p>

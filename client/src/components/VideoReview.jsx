@@ -8,6 +8,7 @@ import VideoPlayerAnnotator, { formatTime } from './VideoPlayerAnnotator';
 import VideoCompareModal from './VideoCompareModal';
 import MentionInput, { renderMentions } from './MentionInput';
 import useNarrowViewport from '../hooks/useNarrowViewport';
+import useModalA11y from '../hooks/useModalA11y';
 
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
   const { api, user, socket, mediaUrl, token } = useAuth();
@@ -463,6 +464,9 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     </div>
   );
 
+  const uploadModalRef = useModalA11y(showUpload, () => { if (!uploading) setShowUpload(false); });
+  const shareModalRef = useModalA11y(shareModal, () => setShareModal(false));
+
   // ─── VIDEO LIST ──────────────────────────────────────────────────────────────
   if (!selectedVideo) {
     return (
@@ -540,9 +544,9 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         </div>
         {showUpload && (
           <div className="modal-overlay">
-            <div className="modal" onClick={e => e.stopPropagation()}>
-              {!uploading && <button className="modal-close" onClick={() => setShowUpload(false)} title="Cerrar">✕</button>}
-              <h2>Subir video</h2>
+            <div className="modal" onClick={e => e.stopPropagation()} ref={uploadModalRef} role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
+              {!uploading && <button className="modal-close" onClick={() => setShowUpload(false)} title="Cerrar" aria-label="Cerrar">✕</button>}
+              <h2 id="upload-modal-title">Subir video</h2>
               <div className="form-group">
                 <label>Archivo de video</label>
                 <input type="file" accept="video/*" onChange={e => setUploadFile(e.target.files[0])} style={{ color: 'var(--text)', fontSize: 13 }} />
@@ -855,9 +859,9 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       {/* Upload modal */}
       {showUpload && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            {!uploading && <button className="modal-close" onClick={() => setShowUpload(false)} title="Cerrar">✕</button>}
-            <h2>Subir nueva versión</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={uploadModalRef} role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
+            {!uploading && <button className="modal-close" onClick={() => setShowUpload(false)} title="Cerrar" aria-label="Cerrar">✕</button>}
+            <h2 id="upload-modal-title">Subir nueva versión</h2>
             <div className="form-group">
               <label>Archivo de video</label>
               <input type="file" accept="video/*" onChange={e => setUploadFile(e.target.files[0])} style={{ color: 'var(--text)', fontSize: 13 }} />
@@ -902,9 +906,9 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       {/* Share modal — link de revisión para el cliente */}
       {shareModal && (
         <div className="modal-overlay" onClick={() => setShareModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShareModal(false)} title="Cerrar">✕</button>
-            <h2>Compartir con el cliente</h2>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={shareModalRef} role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+            <button className="modal-close" onClick={() => setShareModal(false)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="share-modal-title">Compartir con el cliente</h2>
             {share === undefined && <div style={{ padding: '20px 0', textAlign: 'center' }}><div className="spinner" /></div>}
             {share === null && (
               <>
