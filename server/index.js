@@ -1713,8 +1713,8 @@ app.get('/api/dashboard/pending-videos', auth, async (req, res) => {
 });
 
 // Todos los videos de la plataforma con su categoría ya calculada (admin only) — misma
-// distinción review/comentarios-sin-resolver que /pending-videos de arriba, más "aprobado"
-// para todo lo que no está en ninguno de esos dos estados.
+// distinción review/comentarios-sin-resolver que /pending-videos de arriba, más "unreviewed"
+// (nadie dejó nunca un comentario) y "approved" (se revisó y quedó resuelto) para el resto.
 app.get('/api/dashboard/videos-overview', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
@@ -1722,12 +1722,21 @@ app.get('/api/dashboard/videos-overview', auth, async (req, res) => {
       .where({ resolved: false })
       .groupBy('video_id')
       .select('video_id', db.raw('count(*) as unresolved_count'));
+    // Antes "approved" era el catch-all de "no está trabado en ningún lado", así que un video
+    // recién subido sin tarea vinculada ni comentarios caía ahí por descarte — no porque alguien
+    // lo hubiera aprobado (no existe ninguna acción de "aprobar" en la app), sino porque nada lo
+    // frenaba. total_count (todos los comentarios, no solo los sin resolver) es lo que separa
+    // "nadie lo miró todavía" de "se revisó y quedó resuelto".
+    const totalSub = db('video_comments')
+      .groupBy('video_id')
+      .select('video_id', db.raw('count(*) as total_count'));
     const videos = await db('videos as v')
       .join('projects as p', 'v.project_id', 'p.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .leftJoin('users as u', 'v.uploaded_by', 'u.id')
       .leftJoin('tasks as tk', 'v.task_id', 'tk.id')
       .leftJoin(unresolvedSub.as('uc'), 'uc.video_id', 'v.id')
+      .leftJoin(totalSub.as('tc'), 'tc.video_id', 'v.id')
       .select(
         'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at', 'v.file_size',
         'p.name as project_name', 'p.color as project_color',
@@ -1735,7 +1744,10 @@ app.get('/api/dashboard/videos-overview', auth, async (req, res) => {
         'u.name as uploader_name',
         'tk.title as task_title', 'tk.status as task_status',
         db.raw('COALESCE(uc.unresolved_count, 0) as unresolved_count'),
-        db.raw(`CASE WHEN tk.status = 'review' THEN 'review' WHEN COALESCE(uc.unresolved_count, 0) > 0 THEN 'editing' ELSE 'approved' END as category`)
+        db.raw(`CASE WHEN tk.status = 'review' THEN 'review'
+                     WHEN COALESCE(uc.unresolved_count, 0) > 0 THEN 'editing'
+                     WHEN COALESCE(tc.total_count, 0) = 0 THEN 'unreviewed'
+                     ELSE 'approved' END as category`)
       )
       .orderBy('v.created_at', 'desc');
     res.json(videos);

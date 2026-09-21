@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { initials } from '../utils/format';
 
 const CATEGORIES = [
+  { key: 'unreviewed', label: 'Sin revisar', color: 'var(--blue)', bg: 'rgba(58,158,240,0.12)' },
   { key: 'review', label: 'Pendiente de revisión', color: 'var(--yellow)', bg: 'rgba(240,168,58,0.12)' },
   { key: 'editing', label: 'Pendiente de edición', color: 'var(--red)', bg: 'rgba(240,92,92,0.12)' },
   { key: 'approved', label: 'Aprobado', color: 'var(--green)', bg: 'rgba(34,201,122,0.12)' },
