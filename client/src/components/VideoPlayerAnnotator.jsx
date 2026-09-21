@@ -346,6 +346,11 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
       <div style={{ flex: 1, background: '#000', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         <video ref={videoRef}
           src={src}
+          // Sin esto, iOS Safari fuerza el video a fullscreen NATIVO del sistema apenas se le da
+          // play — no es opcional, es el comportamiento fijo de WebKit. Eso tapa el canvas, los
+          // controles y el compositor: justo lo que se acaba de arreglar para que se pueda dibujar
+          // con el dedo dejaba de verse en el momento exacto en que el cliente le da play.
+          playsInline
           style={{ maxWidth: '100%', maxHeight: '100%', display: 'block' }}
           onTimeUpdate={onTimeUpdate}
           onLoadedMetadata={onLoadedMetadata}
@@ -490,6 +495,9 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           <button onClick={toggleFullscreen} style={{ ...ctrlBtn, fontSize: 14 }}>⛶</button>
           <button onClick={() => {
             if (videoRef.current) videoRef.current.pause();
+            // Mismo cuidado que onVideoPause: si ya hay texto o dibujo sin enviar, no le pisa el
+            // timestamp — solo abre/mantiene el compositor tal cual estaba.
+            if (hasUnsavedDraft()) { setShowCommentInput(true); return; }
             const t = videoRef.current?.currentTime || 0;
             setCapturedTs({ type: 'single', ts: t });
             setShowCommentInput(true);

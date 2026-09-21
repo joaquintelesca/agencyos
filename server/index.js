@@ -229,6 +229,11 @@ async function verifyAndPersistFiles(files, mimeExtMap) {
   return true;
 }
 
+// Thumbnail de video: se genera en el navegador de quien sube (un frame capturado a canvas,
+// exportado como JPEG) — nunca hace falta procesar el video en el servidor.
+const THUMBNAIL_MIME_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+const thumbnailUpload = makeUploader(THUMBNAIL_MIME_EXT, { fileSize: 3 * 1024 * 1024 });
+
 const attachmentUpload = makeUploader(SAFE_ATTACHMENT_MIME_EXT);
 function attachmentUploadMiddleware(req, res, next) {
   attachmentUpload.array('attachments', 5)(req, res, async (err) => {
@@ -654,6 +659,13 @@ async function initDB() {
   if (!hasVideoGroupId) {
     await db.schema.table('videos', t => { t.string('group_id').nullable(); });
   }
+  // Antes toda card de video en la grilla mostraba el mismo emoji ▶️ sobre un cuadro gris —
+  // imposible distinguir un video de otro sin abrirlo. El frame se captura en el navegador de
+  // quien sube (ver POST /api/videos/:id/thumbnail), no hace falta ffmpeg en el servidor.
+  const hasVideoThumb = await db.schema.hasColumn('videos', 'thumbnail_filename');
+  if (!hasVideoThumb) {
+    await db.schema.table('videos', t => { t.string('thumbnail_filename').nullable(); });
+  }
 
   // Tabla de miembros de proyecto: controla qué usuarios tienen acceso a qué proyectos.
   const hasProjectMembers = await db.schema.hasTable('project_members');
@@ -837,7 +849,10 @@ app.get('/uploads/:filename', auth, async (req, res) => {
 
     if (req.user.role === 'admin') return serveFile(res, filename);
 
-    const video = await db('videos').where({ filename }).first();
+    // El thumbnail tiene su propio nombre de archivo (distinto al del video), así que el mismo
+    // chequeo de acceso por proyecto tiene que poder encontrar el video dueño buscando por
+    // cualquiera de las dos columnas.
+    const video = await db('videos').where({ filename }).orWhere({ thumbnail_filename: filename }).first();
     if (video) {
       if (await isProjectMember(req.user.id, req.user.role, video.project_id)) return serveFile(res, filename);
       return res.status(403).json({ error: 'Sin acceso' });
@@ -2116,6 +2131,28 @@ app.get('/api/projects/:projectId/videos', auth, requireProjectAccess(), async (
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
+app.post('/api/videos/:id/thumbnail', auth, (req, res, next) => {
+  thumbnailUpload.single('thumbnail')(req, res, async (err) => {
+    if (err && err.message === 'INVALID_FILE_TYPE') return res.status(400).json({ error: 'La miniatura tiene que ser una imagen' });
+    if (err && err.message === 'STORAGE_FULL') return res.status(507).json({ error: 'No hay espacio de almacenamiento disponible.' });
+    if (err) return res.status(400).json({ error: err.message || 'Error al subir la miniatura' });
+    if (!req.file) return res.status(400).json({ error: 'Falta el archivo de la miniatura' });
+    try {
+      const video = await db('videos').where({ id: req.params.id }).first();
+      if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+      if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+        return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+      }
+      if (!await verifyAndPersistFiles([req.file], THUMBNAIL_MIME_EXT)) {
+        return res.status(400).json({ error: 'El contenido del archivo no coincide con una imagen' });
+      }
+      await db('videos').where({ id: req.params.id }).update({ thumbnail_filename: req.file.filename });
+      await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
+      res.json({ success: true, thumbnail_filename: req.file.filename });
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+});
+
 // ─── SUBIDA DE VIDEO POR PARTES ──────────────────────────────────────────────
 // El video es el archivo más grande y más frecuente en esta app; una sola conexión
 // larga (multipart, un solo POST) no aguanta bien conexiones inestables — un corte
@@ -2334,6 +2371,7 @@ app.delete('/api/videos/:id', auth, async (req, res) => {
     });
 
     safeUnlink(video.filename);
+    if (video.thumbnail_filename) safeUnlink(video.thumbnail_filename);
     commentAttachments.forEach(a => safeUnlink(a.filename));
     replyAttachments.forEach(a => safeUnlink(a.filename));
 
@@ -2440,14 +2478,17 @@ async function getUploadsSize() {
 // estar subiéndose en este momento), se borra.
 async function cleanupOrphanedFiles() {
   try {
-    const [videoFiles, commentFiles, replyFiles, chatFiles] = await Promise.all([
+    const [videoFiles, thumbFiles, commentFiles, replyFiles, chatFiles] = await Promise.all([
       db('videos').pluck('filename'),
+      // Sin esto, cualquier thumbnail (POST /api/videos/:id/thumbnail) quedaba "no referenciado"
+      // para este barrido y se borraba solo unas horas después de subido.
+      db('videos').whereNotNull('thumbnail_filename').pluck('thumbnail_filename'),
       db('comment_attachments').pluck('filename'),
       db('reply_attachments').pluck('filename'),
       db('chat_messages').whereNotNull('file_url').pluck('file_url'),
     ]);
     const referenced = new Set([
-      ...videoFiles, ...commentFiles, ...replyFiles,
+      ...videoFiles, ...thumbFiles, ...commentFiles, ...replyFiles,
       ...chatFiles.map(u => u.split('/').pop()),
     ]);
     const ONE_HOUR = 60 * 60 * 1000;

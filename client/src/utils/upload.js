@@ -72,6 +72,36 @@ export async function uploadVideoChunked({ file, projectId, title, version, task
   }
 }
 
+// Captura un frame del video como miniatura, 100% en el navegador de quien sube — nunca hace
+// falta procesar el video en el servidor (no hay ffmpeg instalado). Se busca 1 segundo adentro
+// (o la mitad de la duración si el video dura menos) para evitar frames negros de fade-in típicos
+// del primer instante. Best-effort: si algo falla acá, la subida del video en sí no se ve afectada.
+export function captureVideoThumbnail(file) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    const url = URL.createObjectURL(file);
+    video.src = url;
+    const cleanup = () => URL.revokeObjectURL(url);
+    const fail = (e) => { cleanup(); reject(e instanceof Error ? e : new Error('No se pudo generar la miniatura')); };
+    video.onloadedmetadata = () => {
+      video.currentTime = Math.min(1, (video.duration || 1) / 2);
+    };
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 360;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => { cleanup(); blob ? resolve(blob) : reject(new Error('No se pudo generar la miniatura')); }, 'image/jpeg', 0.8);
+      } catch (e) { fail(e); }
+    };
+    video.onerror = fail;
+  });
+}
+
 // Subida simple (un solo request) con progreso y cancelación, para adjuntos de chat
 // que no necesitan reanudarse por partes (imágenes, audios, PDFs — normalmente chicos).
 export function uploadWithProgress(url, file, token, { onProgress, xhrRef, fieldName = 'file' } = {}) {

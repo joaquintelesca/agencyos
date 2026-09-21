@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
-import { uploadVideoChunked } from '../utils/upload';
+import { uploadVideoChunked, captureVideoThumbnail } from '../utils/upload';
 import VideoPlayerAnnotator, { formatTime } from './VideoPlayerAnnotator';
 
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
@@ -195,6 +195,15 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         onProgress: setUploadProgress,
         signal: controller.signal
       });
+      // Best-effort: si la miniatura falla (video corrupto, navegador raro), el video ya subió
+      // bien igual — no vale la pena hacer fallar toda la subida por esto.
+      try {
+        const thumb = await captureVideoThumbnail(uploadFile);
+        const fd = new FormData();
+        fd.append('thumbnail', thumb, 'thumb.jpg');
+        const { thumbnail_filename } = await api(`/api/videos/${v.id}/thumbnail`, { method: 'POST', body: fd });
+        v.thumbnail_filename = thumbnail_filename;
+      } catch (e) { console.error('No se pudo generar la miniatura:', e); }
       setVideos(prev => [v, ...prev]);
       setSelectedVideo(v);
       setShowUpload(false);
@@ -312,8 +321,10 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           🗑
         </button>
       )}
-      <div style={{ width: '100%', paddingBottom: '56%', background: 'var(--bg4)', borderRadius: 8, marginBottom: 10, position: 'relative' }}>
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>▶️</div>
+      <div style={{ width: '100%', paddingBottom: '56%', background: 'var(--bg4)', borderRadius: 8, marginBottom: 10, position: 'relative', overflow: 'hidden' }}>
+        {v.thumbnail_filename
+          ? <img src={mediaUrl(`/uploads/${v.thumbnail_filename}`)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>▶️</div>}
       </div>
       <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{v.title}</div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -382,8 +393,10 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                 }}
                 onMouseEnter={e => { if (!stackDragOver && !dragVideoId) e.currentTarget.style.borderColor = 'var(--accent)'; }}
                 onMouseLeave={e => { if (!stackDragOver) e.currentTarget.style.borderColor = 'var(--border)'; }}>
-                <div style={{ width: '100%', paddingBottom: '56%', background: 'var(--bg4)', borderRadius: 8, marginBottom: 10, position: 'relative' }}>
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>▶️</div>
+                <div style={{ width: '100%', paddingBottom: '56%', background: 'var(--bg4)', borderRadius: 8, marginBottom: 10, position: 'relative', overflow: 'hidden' }}>
+                  {item.latest.thumbnail_filename
+                    ? <img src={mediaUrl(`/uploads/${item.latest.thumbnail_filename}`)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>▶️</div>}
                 </div>
                 <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{item.latest.title}</div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
