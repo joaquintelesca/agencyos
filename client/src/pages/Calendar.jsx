@@ -310,7 +310,13 @@ export default function CalendarPage() {
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-xl)', fontWeight: 800, flex: 1, textTransform: 'capitalize' }}>{periodLabel}</h1>
           <div className="tab-switch">
             {[['month', 'Mes'], ['week', 'Semana']].map(([key, lbl]) => (
-              <button key={key} className={viewMode === key ? 'active' : ''} onClick={() => setViewMode(key)}>{lbl}</button>
+              <button key={key} className={viewMode === key ? 'active' : ''} onClick={() => {
+                // viewDate queda en "día 1 del mes que se estaba viendo" (para la grilla de Mes) —
+                // sin este reset, pasar a Semana mostraba la semana que contiene ese día 1, no la
+                // semana actual, salvo que justo estuvieras parado en el mes de hoy con día 1.
+                if (key === 'week' && viewMode !== 'week') setViewDate(new Date());
+                setViewMode(key);
+              }}>{lbl}</button>
             ))}
           </div>
           <button onClick={goToToday} className="btn btn-ghost btn-sm">Hoy</button>
