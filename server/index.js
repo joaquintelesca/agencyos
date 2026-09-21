@@ -950,6 +950,14 @@ app.get('/uploads/:filename', auth, async (req, res) => {
 // Misma lógica que replican Payments.jsx/Dashboard.jsx del lado del cliente — acá hace falta
 // para poder "congelar" el monto real en el momento exacto en que se marca pagado/cobrado.
 
+// El único cuyo auto-asignarse como editor de un proyecto NO representa un pago real es el dueño
+// de la agencia — decisión explícita del usuario, no "cualquier admin": antes se chequeaba
+// `role === 'admin'`, así que el día que exista un segundo admin (un socio, alguien que ayude a
+// gestionar pagos) y ESE admin sea el editor asignado, un cliente pagando marcaba el proyecto como
+// saldado solo, aunque a ese admin nunca se le hubiera pagado de verdad. Por email, no por id: el
+// id cambia entre entornos (dev/prod), el email de la cuenta real no.
+const OWNER_EMAIL = 'joaquintelesca@gmail.com';
+
 // El 15% es el default de Upwork, pero `parseFloat(x) || 15` convertía un 0% negociado (falsy)
 // en 15% y subestimaba el neto del cliente en ese 15% en cada guardado.
 function parseUpworkFeePct(value) {
@@ -978,8 +986,14 @@ function computeClientNetAmount(p) {
 // pago, así que el cliente solo los lee en vez de recalcularlos — "congelado si ya está saldado
 // (editor_paid/client_paid), en vivo si no" es exactamente lo que antes hacían displayEditorAmount/
 // displayClientGross/displayClientNet en Payments.jsx a mano.
+// `_editor_email` es un campo temporal que cada query mete con un .select() extra junto a
+// payment_editor_name/editor_name (mismo join, un campo más) — withComputedTotals lo consume acá
+// y lo borra, así el cliente nunca ve el email real, solo el booleano que le hace falta para
+// decidir si mostrar el toggle de "pagado al editor" o el "No aplica".
 function withComputedTotals(p) {
   if (!p) return p;
+  p.editor_is_owner = p._editor_email === OWNER_EMAIL;
+  delete p._editor_email;
   p.computed_editor_total = p.editor_paid === 'paid' && p.editor_paid_amount != null ? Number(p.editor_paid_amount) : computeEditorAmount(p);
   p.computed_client_gross = p.client_paid === 'cobrado' && p.client_paid_amount_gross != null ? Number(p.client_paid_amount_gross) : computeClientGrossAmount(p);
   p.computed_client_net = p.client_paid === 'cobrado' && p.client_paid_amount_net != null ? Number(p.client_paid_amount_net) : computeClientNetAmount(p);
@@ -1268,7 +1282,7 @@ app.get('/api/projects', auth, async (req, res) => {
     let query = db('projects as p')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .leftJoin('users as eu', 'p.payment_editor_id', 'eu.id')
-      .select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color')
+      .select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color', 'eu.email as _editor_email')
       .orderBy([{ column: 'p.sort_order', order: 'asc' }, { column: 'p.created_at', order: 'desc' }]);
 
     if (req.user.role !== 'admin') {
@@ -1322,7 +1336,7 @@ app.get('/api/projects/:id', auth, requireProjectAccess('id'), async (req, res) 
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .leftJoin('users as eu', 'p.payment_editor_id', 'eu.id')
       .where('p.id', req.params.id)
-      .select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color')
+      .select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color', 'eu.email as _editor_email')
       .first();
     if (!project) return res.status(404).json({ error: 'No encontrado' });
     withDeletedEditorFallback(project);
@@ -1464,7 +1478,12 @@ app.put('/api/projects/:id', auth, async (req, res) => {
     if (existing.payment_editor_id && existing.payment_editor_id !== payment_editor_id) {
       await removeProjectMemberIfOrphaned(req.params.id, existing.payment_editor_id);
     }
-    const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first());
+    const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color', 'eu.email as _editor_email').first());
+    // Sin esto, editor_is_owner/computed_* faltaban en la respuesta de este endpoint en
+    // particular (los demás sí lo aplicaban) — no rompía nada visible hoy porque Payments.jsx/
+    // Dashboard.jsx recargan de /api/payments en vez de confiar en este payload, pero quedaba
+    // como una inconsistencia latente esperando a que algo empezara a depender de ella.
+    withComputedTotals(project);
     await emitToProject(req.params.id, 'project:updated', project);
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -1480,9 +1499,14 @@ app.patch('/api/projects/:id/status', auth, async (req, res) => {
     if (!['active', 'completed'].includes(status)) return res.status(400).json({ error: 'Estado inválido' });
     const existing = await db('projects').where({ id: req.params.id }).first();
     if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
-    // Si el editor asignado es el propio admin, no hay "pago a editor" real — lo que importa
-    // ahí es el cobro al cliente, no payment_amount (que se guarda en 0 a propósito).
-    const isSelfEditor = existing.payment_editor_id === req.user.id;
+    // Si el editor asignado es el dueño de la agencia, no hay "pago a editor" real — lo que
+    // importa ahí es el cobro al cliente, no payment_amount (que se guarda en 0 a propósito). Por
+    // email (OWNER_EMAIL), no por quién está logueado ahora: un segundo admin marcando esto en
+    // nombre de otro editor no debería activar esta excepción.
+    const editorForStatus = existing.payment_editor_id
+      ? await db('users').where({ id: existing.payment_editor_id }).select('email').first()
+      : null;
+    const isSelfEditor = editorForStatus?.email === OWNER_EMAIL;
     const hasPrice = isSelfEditor ? Number(existing.client_amount) > 0 : Number(existing.payment_amount) > 0;
     if (status === 'completed' && (!existing.payment_editor_id || !hasPrice)) {
       return res.status(400).json({ error: 'Para marcar el proyecto como terminado necesita un editor asignado y un precio cargado' });
@@ -1490,7 +1514,12 @@ app.patch('/api/projects/:id/status', auth, async (req, res) => {
     const update = { status };
     if (status === 'completed') update.ever_completed = true; // nunca se vuelve a poner en false
     await db('projects').where({ id: req.params.id }).update(update);
-    const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color').first());
+    const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color', 'eu.email as _editor_email').first());
+    // Sin esto, editor_is_owner/computed_* faltaban en la respuesta de este endpoint en
+    // particular (los demás sí lo aplicaban) — no rompía nada visible hoy porque Payments.jsx/
+    // Dashboard.jsx recargan de /api/payments en vez de confiar en este payload, pero quedaba
+    // como una inconsistencia latente esperando a que algo empezara a depender de ella.
+    withComputedTotals(project);
     await emitToProject(req.params.id, 'project:updated', project);
     res.json(project);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -2031,7 +2060,7 @@ app.get('/api/payments', auth, async (req, res) => {
           .orWhere('p.editor_paid', 'paid');
       })
       .where(function() { this.where('p.status', 'completed').orWhere('p.ever_completed', true); })
-      .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
+      .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'u.email as _editor_email', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .orderBy('p.created_at', 'desc');
     projects.forEach(p => { withDeletedEditorFallback(p, 'editor_name'); withComputedTotals(p); });
     res.json(projects);
@@ -2053,7 +2082,7 @@ app.get('/api/payments/ledger', auth, async (req, res) => {
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .where(function() { this.whereNotNull('p.client_paid_at').orWhereNotNull('p.editor_paid_at'); })
-      .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color')
+      .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'u.email as _editor_email', 'c.name as client_name', 'c.color as client_color')
       .orderBy('p.created_at', 'desc');
     rows.forEach(p => { withDeletedEditorFallback(p, 'editor_name'); withComputedTotals(p); });
     res.json(rows);
@@ -2113,14 +2142,16 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
         followUp.client_paid_amount_gross = current.client_paid === 'cobrado' ? computeClientGrossAmount(current) : null;
         followUp.client_paid_amount_net = current.client_paid === 'cobrado' ? computeClientNetAmount(current) : null;
       }
-      // Cuando el editor asignado es un admin no hay pago real que registrar (no te pagás a vos
-      // mismo), así que ese lado cuenta como saldado — es la misma regla que ya aplica Payments.jsx
-      // para mover el proyecto a "Saldados". Sin espejarla acá, esos proyectos nunca sellaban
-      // completed_at: quedaban con "Saldado: —" y al fondo del historial ordenado por esa fecha.
+      // Cuando el editor asignado es el dueño de la agencia no hay pago real que registrar (no se
+      // paga a sí mismo), así que ese lado cuenta como saldado — es la misma regla que ya aplica
+      // Payments.jsx para mover el proyecto a "Saldados". Sin espejarla acá, esos proyectos nunca
+      // sellaban completed_at: quedaban con "Saldado: —" y al fondo del historial ordenado por esa
+      // fecha. Por email (OWNER_EMAIL), no por rol admin: un segundo admin asignado como editor sí
+      // tiene que cobrar de verdad, aunque también pueda gestionar pagos en la app.
       const editorUser = current.payment_editor_id
-        ? await trx('users').where({ id: current.payment_editor_id }).select('role').first()
+        ? await trx('users').where({ id: current.payment_editor_id }).select('email').first()
         : null;
-      const editorSettled = current.editor_paid === 'paid' || editorUser?.role === 'admin';
+      const editorSettled = current.editor_paid === 'paid' || editorUser?.email === OWNER_EMAIL;
       const isCompleted = editorSettled && current.client_paid === 'cobrado';
       if (isCompleted && !current.completed_at) {
         followUp.completed_at = new Date().toISOString();
@@ -2137,7 +2168,7 @@ app.patch('/api/payments/:projectId', auth, async (req, res) => {
       .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .where('p.id', req.params.projectId)
-      .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
+      .select('p.*', 'u.name as editor_name', 'u.avatar_color as editor_color', 'u.email as _editor_email', 'c.name as client_name', 'c.color as client_color', 'c.email as client_email')
       .first(), 'editor_name');
     // Sin withComputedTotals los campos computed_* vuelven undefined y Payments.jsx reemplaza la
     // fila con esta respuesta: las tarjetas pasan a "$NaN" y el Balance mensual crashea al hacer

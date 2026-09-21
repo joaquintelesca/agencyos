@@ -65,7 +65,10 @@ export default function Dashboard() {
   // por separado; si cambiaba una regla de negocio había que acordarse de tocar los 3 lugares.
   // Cuando el editor asignado sos vos mismo no hay pago real que marcar — se trata como
   // "resuelto" en ese lado en vez de quedar eternamente pendiente por un toggle que nunca aplica.
-  const editorSettled = p => p.payment_editor_id === user?.id || p.editor_paid === 'paid';
+  // editor_is_owner viene calculado del servidor (ver withComputedTotals/OWNER_EMAIL en
+  // server/index.js) — es específicamente el dueño de la agencia, no "cualquier admin" ni "quien
+  // esté logueado ahora".
+  const editorSettled = p => p.editor_is_owner || p.editor_paid === 'paid';
   const unpaidPayments = payments.filter(p => !editorSettled(p) || p.client_paid !== 'cobrado');
   const totalEditorPending = unpaidPayments.filter(p => !editorSettled(p)).reduce((s, p) => s + p.computed_editor_total, 0);
   const totalClientPending = unpaidPayments.filter(p => p.client_paid !== 'cobrado').reduce((s, p) => s + p.computed_client_net, 0);

@@ -7,7 +7,7 @@ import { initials, monthKey } from '../utils/format';
 const UPWORK_OPTIONS = ['Pendiente de carga', 'Cargado', 'No'];
 
 export default function Payments() {
-  const { api, socket, user } = useAuth();
+  const { api, socket } = useAuth();
   const { alert } = useAlert();
   const { openEditProject } = useOutletContext();
   const [projects, setProjects] = useState([]);
@@ -78,7 +78,11 @@ export default function Payments() {
 
   // Cuando el editor asignado sos vos mismo no hay pago real que marcar — se trata como
   // "resuelto" en ese lado en vez de quedar eternamente pendiente por un toggle que nunca aplica.
-  const editorSettled = (p) => p.payment_editor_id === user.id || p.editor_paid === 'paid';
+  // editor_is_owner viene calculado del servidor (ver withComputedTotals/OWNER_EMAIL en
+  // server/index.js) — es específicamente el dueño de la agencia, no "cualquier admin" ni "quien
+  // esté logueado ahora". Antes comparaba contra user.id, así que un segundo admin viendo el
+  // proyecto de OTRO admin editor lo veía como si fuera su propio pago exento.
+  const editorSettled = (p) => p.editor_is_owner || p.editor_paid === 'paid';
 
   const isCompleted = (p) => editorSettled(p) && p.client_paid === 'cobrado';
 
@@ -117,13 +121,13 @@ export default function Payments() {
 
   // Balance mensual: se basa en la fecha real en que se marcó pagado/cobrado cada lado (no en
   // el estado actual), así que un proyecto puede aportar al mes del cliente y al mes del editor
-  // por separado si no se saldaron al mismo tiempo. Cuando el editor asignado sos vos mismo
-  // (admin), ese "pago" no es un gasto real — no cuenta en "Pagado a editores".
+  // por separado si no se saldaron al mismo tiempo. Cuando el editor asignado es el dueño de la
+  // agencia, ese "pago" no es un gasto real — no cuenta en "Pagado a editores".
   // Se calcula sobre `ledger` (todo proyecto con plata registrada) y NO sobre `projects` (que
   // solo trae trabajo ya terminado): si no, un anticipo cobrado en julio sobre un proyecto
   // todavía activo no contaba en julio y aparecía después, agrandando un mes ya cerrado.
   const receivedThisMonth = ledger.filter(p => monthKey(p.client_paid_at) === selectedMonth);
-  const paidToEditorsThisMonth = ledger.filter(p => monthKey(p.editor_paid_at) === selectedMonth && p.payment_editor_id !== user.id);
+  const paidToEditorsThisMonth = ledger.filter(p => monthKey(p.editor_paid_at) === selectedMonth && !p.editor_is_owner);
   const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + p.computed_client_net, 0);
   const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + p.computed_editor_total, 0);
   const totalUpworkFeeMonth = receivedThisMonth.reduce((s, p) => s + (p.computed_client_gross - p.computed_client_net), 0);
@@ -168,7 +172,7 @@ export default function Payments() {
           </thead>
           <tbody>
             {sorted.map(p => (
-              <ProjectRow key={p.id} project={p} onUpdate={updatePayment} onRequestUpdate={requestUpdate} isHistory={isHistory} currentUserId={user.id} onEdit={openEditProject} />
+              <ProjectRow key={p.id} project={p} onUpdate={updatePayment} onRequestUpdate={requestUpdate} isHistory={isHistory} onEdit={openEditProject} />
             ))}
             {isHistory && sorted.length > 0 && (
               <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
@@ -310,7 +314,7 @@ export default function Payments() {
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Pagado a editores</div>
                 <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--pink)' }}>${totalPaidEditorsMonth.toFixed(0)}</div>
-                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{paidToEditorsThisMonth.length} proyecto{paidToEditorsThisMonth.length !== 1 ? 's' : ''}{projects.some(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.payment_editor_id === user.id) ? ' · no incluye tus proyectos propios' : ''}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{paidToEditorsThisMonth.length} proyecto{paidToEditorsThisMonth.length !== 1 ? 's' : ''}{projects.some(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.editor_is_owner) ? ' · no incluye tus proyectos propios' : ''}</div>
               </div>
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Ganancia del mes</div>
@@ -382,8 +386,14 @@ export default function Payments() {
   );
 }
 
-function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, currentUserId, onEdit }) {
-  const isSelfEditor = p.payment_editor_id === currentUserId;
+function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }) {
+  const { confirm } = useAlert();
+  const isSelfEditor = p.editor_is_owner;
+  // Las horas alimentan el cálculo de LOS DOS lados (editor y cliente) cuando es por hora — si se
+  // dejaran editar después de que cualquiera de los dos ya se congeló, no cambia el monto YA
+  // congelado, pero sí el que se recalcularía si algún día se desmarca y se vuelve a marcar ese
+  // lado como pagado — un monto distinto al original, sin ningún aviso de que pasó.
+  const hoursLocked = p.editor_paid === 'paid' || p.client_paid === 'cobrado';
   const [hours, setHours] = useState(p.payment_hours || 0);
   // Si otra sesión/socket actualiza payment_hours mientras esta fila está montada (misma key={p.id}),
   // hay que reflejarlo — si no, un blur posterior pisa ese cambio con el valor local desactualizado.
@@ -415,6 +425,23 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, currentU
     return editorOk && clientOk;
   };
 
+  // Desmarcar un pago no deja rastro de cuándo se había marcado la primera vez — client_paid_at/
+  // editor_paid_at se pisan al volver a marcarlo, así que puede terminar contando en un mes
+  // distinto (y con un monto distinto, si cambiaron las horas o la tarifa mientras tanto) sin
+  // ningún aviso. Se avisa acá, antes de que pase, en vez de dejarlo pasar en silencio.
+  const confirmUnmark = async (label) => confirm(
+    `Vas a desmarcar "${label}". Si lo volvés a marcar más adelante, va a contar en el mes en que lo vuelvas a marcar (no en el original), y el balance mensual de este mes va a bajar en consecuencia. ¿Continuar?`,
+    { confirmText: 'Desmarcar', danger: true }
+  );
+  const handleEditorPaidChange = async (val) => {
+    if (val === 'unpaid' && p.editor_paid === 'paid' && !await confirmUnmark('Pagado al editor')) return;
+    onRequestUpdate(p.id, { editor_paid: val }, wouldComplete(val, p.client_paid));
+  };
+  const handleClientPaidChange = async (val) => {
+    if (val === 'unpaid' && p.client_paid === 'cobrado' && !await confirmUnmark('Cobrado al cliente')) return;
+    onRequestUpdate(p.id, { client_paid: val }, wouldComplete(p.editor_paid, val));
+  };
+
   return (
     <tr style={{ borderBottom: '1px solid var(--border)' }}
       onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
@@ -430,10 +457,11 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, currentU
         {p.payment_type === 'hourly' && (
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
             ${p.payment_amount}/h ·{' '}
-            <input type="number" min="0" value={hours}
+            <input type="number" min="0" value={hours} disabled={hoursLocked}
+              title={hoursLocked ? 'Ya se congeló un monto con estas horas — desmarcá el pago para poder corregirlas' : undefined}
               onChange={e => { const v = e.target.value; setHours(v === '' ? '' : Math.max(0, parseFloat(v) || 0)); }}
               onBlur={() => { const h = hours === '' ? 0 : hours; setHours(h); onUpdate(p.id, { payment_hours: h }); }}
-              style={{ width: 40, background: 'var(--bg4)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '1px 4px', textAlign: 'center' }} />
+              style={{ width: 40, background: 'var(--bg4)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '1px 4px', textAlign: 'center', opacity: hoursLocked ? 0.5 : 1, cursor: hoursLocked ? 'not-allowed' : 'text' }} />
             {' '}h
           </div>
         )}
@@ -485,7 +513,7 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, currentU
           <span style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }} title="Sos vos el editor — no hay pago que registrar">No aplica</span>
         ) : (
           <select value={p.editor_paid || 'unpaid'}
-            onChange={e => { const val = e.target.value; onRequestUpdate(p.id, { editor_paid: val }, wouldComplete(val, p.client_paid)); }}
+            onChange={e => handleEditorPaidChange(e.target.value)}
             style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.editor_paid === 'paid' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.editor_paid === 'paid' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.editor_paid === 'paid' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
             <option value="unpaid">Sin pagar</option>
             <option value="paid">Pagado ✓</option>
@@ -508,7 +536,7 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, currentU
       {/* Cobrado al cliente */}
       <td style={{ padding: '9px 12px', background: 'rgba(99,102,241,0.03)' }}>
         <select value={p.client_paid || 'unpaid'}
-          onChange={e => { const val = e.target.value; onRequestUpdate(p.id, { client_paid: val }, wouldComplete(p.editor_paid, val)); }}
+          onChange={e => handleClientPaidChange(e.target.value)}
           style={{ fontSize: 11, padding: '3px 8px', borderRadius: 7, border: `1px solid ${p.client_paid === 'cobrado' ? 'rgba(34,201,122,0.4)' : 'rgba(240,92,92,0.4)'}`, background: p.client_paid === 'cobrado' ? 'rgba(34,201,122,0.1)' : 'rgba(240,92,92,0.1)', color: p.client_paid === 'cobrado' ? 'var(--green)' : 'var(--red)', cursor: 'pointer', fontFamily: 'var(--font)', fontWeight: 600 }}>
           <option value="unpaid">Sin cobrar</option>
           <option value="cobrado">Cobrado ✓</option>

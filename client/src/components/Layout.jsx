@@ -13,14 +13,21 @@ const TOAST_DURATION_MS = 6000;
 
 const COLORS =['#6366f1','#10b981','#f59e0b','#ec4899','#3b82f6','#8b5cf6','#ef4444','#14b8a6'];
 
+// Mismo email que OWNER_EMAIL en server/index.js — el único cuyo auto-asignarse como editor no
+// representa un pago real (decisión explícita del usuario, no "cualquier admin"). Acá hace falta
+// mientras se está editando el formulario (antes de guardar), donde no hay ninguna fila de
+// proyecto con editor_is_owner ya calculado por el servidor para lo que se está por elegir.
+const OWNER_EMAIL = 'joaquintelesca@gmail.com';
+
 export default function Layout() {
   const { user, logout, api, socket } = useAuth();
   const { scheduleDelete } = useUndo();
-  const { alert } = useAlert();
+  const { alert, confirm } = useAlert();
   const navigate = useNavigate();
   const location = useLocation();
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
+  const ownerUserId = users.find(u => u.email === OWNER_EMAIL)?.id;
   const [clients, setClients] = useState([]);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showNewClient, setShowNewClient] = useState(false);
@@ -212,7 +219,7 @@ export default function Layout() {
   const doSaveProject = async (taskIdsToReassign = []) => {
     const clientPaidChanged = editProjectForm.client_paid !== (editingProject.client_paid === 'cobrado' ? 'cobrado' : 'unpaid');
     try {
-      const isSelf = editProjectForm.payment_editor_id === user?.id;
+      const isSelf = editProjectForm.payment_editor_id === ownerUserId;
       const body = { ...editingProject, ...editProjectForm, payment_amount: isSelf ? 0 : editProjectForm.payment_amount };
       let updated = await api(`/api/projects/${editingProject.id}`, { method: 'PUT', body });
       // client_paid necesita pasar por el endpoint de Pagos para "congelar" el monto real en
@@ -281,7 +288,7 @@ export default function Layout() {
     if (!editProjectForm.name.trim()) return;
     const clientPaidChanged = editProjectForm.client_paid !== (editingProject.client_paid === 'cobrado' ? 'cobrado' : 'unpaid');
     if (clientPaidChanged && editProjectForm.client_paid === 'cobrado') {
-      const isSelf = editProjectForm.payment_editor_id === user?.id;
+      const isSelf = editProjectForm.payment_editor_id === ownerUserId;
       const editorSettled = isSelf || editingProject.editor_paid === 'paid';
       if (editingProject.status === 'completed' && editorSettled) {
         setShowCompleteConfirm(true);
@@ -421,11 +428,12 @@ export default function Layout() {
     try {
       const body = { ...projectForm };
       if (user?.role === 'admin') {
-        const isSelf = paymentForm.payment_editor_id === user.id;
+        const isSelf = paymentForm.payment_editor_id === ownerUserId;
         body.payment_editor_id = paymentForm.payment_editor_id || null;
         body.payment_type = paymentForm.payment_type;
         // El pago al editor se puede cargar aunque todavía no se haya asignado a nadie — solo se
-        // guarda en 0 cuando el editor sos vos mismo (ahí sí no hay pago real que registrar).
+        // guarda en 0 cuando el editor es el dueño de la agencia (ahí sí no hay pago real que
+        // registrar; no aplica a cualquier admin, solo a esa cuenta específica).
         body.payment_amount = isSelf ? 0 : (paymentForm.payment_type === 'fixed' ? paymentForm.payment_amount : paymentForm.payment_rate);
         body.payment_hours = paymentForm.payment_hours || 0;
         body.client_amount = paymentForm.payment_type === 'fixed' ? paymentForm.client_amount : paymentForm.client_rate;
@@ -479,14 +487,24 @@ export default function Layout() {
     if (paymentForm.upwork_status === 'No') return gross;
     return gross * (1 - (parseFloat(paymentForm.upwork_fee_pct) || 0) / 100);
   };
-  // Cuando el editor asignado sos vos mismo, "pago a editor" no es un gasto real (no te pagás a
-  // vos mismo) — se oculta ese campo y solo se pide el cobro al cliente.
-  const isSelfEditorNew = paymentForm.payment_editor_id === user?.id;
+  // Cuando el editor asignado es el dueño de la agencia, "pago a editor" no es un gasto real (no
+  // se paga a sí mismo) — se oculta ese campo y solo se pide el cobro al cliente. Por id fijo del
+  // dueño (ownerUserId), no por "quién está logueado ahora": un segundo admin asignando a otro
+  // admin como editor no debería ocultar el campo, ese sí es un pago real a trackear.
+  const isSelfEditorNew = paymentForm.payment_editor_id === ownerUserId;
   // El pago al editor se puede cargar de antemano aunque todavía no se haya elegido quién es
-  // (se asigna después) — solo se oculta cuando el editor elegido sos vos mismo, ahí sí no hay
-  // pago real que registrar.
+  // (se asigna después) — solo se oculta cuando el editor elegido es el dueño de la agencia, ahí
+  // sí no hay pago real que registrar.
   const showEditorPaymentNew = !isSelfEditorNew;
-  const isSelfEditorEdit = editProjectForm.payment_editor_id === user?.id;
+  const isSelfEditorEdit = editProjectForm.payment_editor_id === ownerUserId;
+  // Una vez que un lado ya se cobró/pagó, el monto queda congelado en su propia columna (ver
+  // PATCH /api/payments/:id) — pero el campo de origen (client_amount/payment_amount/
+  // payment_hours) seguía editable sin ningún aviso. No cambia el monto YA congelado, pero sí el
+  // que se recalcularía si algún día se desmarca y se vuelve a marcar ese lado — un valor distinto
+  // al original, sin ninguna señal de que pasó. Se bloquean para forzar a desmarcar primero si
+  // hace falta corregir algo, en vez de dejarlo drifting en silencio.
+  const clientAmountLocked = editProjectForm.client_paid === 'cobrado';
+  const editorAmountLocked = editingProject?.editor_paid === 'paid';
 
   // Fila de un proyecto dentro del sidebar — la usan tanto la lista de activos como la subcarpeta
   // "Terminados" de cada cliente, con distinto indent para reflejar el anidado.
@@ -1043,7 +1061,17 @@ export default function Layout() {
                 <div className="form-group">
                   <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
                     <input type="checkbox" checked={editProjectForm.client_paid === 'cobrado'}
-                      onChange={e => setEditProjectForm(p => ({ ...p, client_paid: e.target.checked ? 'cobrado' : 'unpaid' }))} />
+                      onChange={async e => {
+                        // Desmarcar no deja rastro de cuándo se había marcado la primera vez —
+                        // client_paid_at se pisa al volver a marcarlo, así que puede terminar
+                        // contando en un mes distinto (con un monto distinto si cambió algo
+                        // mientras tanto) sin ningún aviso.
+                        if (!e.target.checked && editingProject?.client_paid === 'cobrado') {
+                          const ok = await confirm('Vas a desmarcar "el cliente ya pagó". Si lo volvés a marcar más adelante, va a contar en el mes en que lo vuelvas a marcar (no en el original). ¿Continuar?', { confirmText: 'Desmarcar', danger: true });
+                          if (!ok) return;
+                        }
+                        setEditProjectForm(p => ({ ...p, client_paid: e.target.checked ? 'cobrado' : 'unpaid' }));
+                      }} />
                     El cliente ya pagó este proyecto
                   </label>
                 </div>
@@ -1055,18 +1083,24 @@ export default function Layout() {
                 <div style={{ display: 'grid', gridTemplateColumns: isSelfEditorEdit ? (editProjectForm.payment_type === 'hourly' ? '1fr 1fr' : '1fr') : (editProjectForm.payment_type === 'hourly' ? '1fr 1fr 1fr' : '1fr 1fr'), gap: 10 }}>
                   <div className="form-group">
                     <label>{editProjectForm.payment_type === 'hourly' ? 'Tarifa cliente ($/h)' : 'Cobro al cliente ($)'}</label>
-                    <input className="input" type="number" min="0" value={editProjectForm.client_amount} onChange={e => setEditProjectForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
+                    <input className="input" type="number" min="0" value={editProjectForm.client_amount} disabled={clientAmountLocked}
+                      title={clientAmountLocked ? 'Ya se cobró con este monto — desmarcá "el cliente ya pagó" para poder corregirlo' : undefined}
+                      onChange={e => setEditProjectForm(p => ({ ...p, client_amount: e.target.value }))} placeholder="Ej: 800" />
                   </div>
                   {!isSelfEditorEdit && (
                     <div className="form-group">
                       <label>{editProjectForm.payment_type === 'hourly' ? 'Tarifa editor ($/h)' : 'Pago al editor ($)'}</label>
-                      <input className="input" type="number" min="0" value={editProjectForm.payment_amount} onChange={e => setEditProjectForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" />
+                      <input className="input" type="number" min="0" value={editProjectForm.payment_amount} disabled={editorAmountLocked}
+                        title={editorAmountLocked ? 'Ya se le pagó al editor con este monto — desmarcá "Pagado" en Pagos para poder corregirlo' : undefined}
+                        onChange={e => setEditProjectForm(p => ({ ...p, payment_amount: e.target.value }))} placeholder="Ej: 500" />
                     </div>
                   )}
                   {editProjectForm.payment_type === 'hourly' && (
                     <div className="form-group">
                       <label>Horas estimadas</label>
-                      <input className="input" type="number" min="0" value={editProjectForm.payment_hours} onChange={e => setEditProjectForm(p => ({ ...p, payment_hours: e.target.value }))} placeholder="Ej: 20" />
+                      <input className="input" type="number" min="0" value={editProjectForm.payment_hours} disabled={clientAmountLocked || editorAmountLocked}
+                        title={(clientAmountLocked || editorAmountLocked) ? 'Ya se congeló un monto con estas horas — desmarcá el pago correspondiente para poder corregirlas' : undefined}
+                        onChange={e => setEditProjectForm(p => ({ ...p, payment_hours: e.target.value }))} placeholder="Ej: 20" />
                     </div>
                   )}
                 </div>
