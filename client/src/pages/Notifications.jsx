@@ -79,6 +79,7 @@ export default function Notifications() {
     if (type === 'task_review') return '📋';
     if (type === 'task_feedback') return '📝';
     if (type === 'video_uploaded') return '🎬';
+    if (type === 'video_approved') return '✅';
     if (type === 'project_assigned') return '📁';
     if (type === 'task_assigned') return '✅';
     if (type === 'project_message') return '💬';
@@ -90,6 +91,7 @@ export default function Notifications() {
     if (n.type === 'task_review') return <><strong>{n.actor_name}</strong> pasó una tarea a revisión{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'task_feedback') return <><strong>{n.actor_name}</strong> te dejó feedback para aplicar en una tarea{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'video_uploaded') return <><strong>{n.actor_name}</strong> subió un video{n.preview ? <>: "{n.preview}"</> : ''}{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
+    if (n.type === 'video_approved') return <><strong>{n.actor_name}</strong> aprobó un video{n.preview ? <>: "{n.preview}"</> : ''}{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'project_assigned') return <><strong>{n.actor_name}</strong> te asignó un proyecto{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'task_assigned') return <><strong>{n.actor_name}</strong> te asignó una tarea{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;
     if (n.type === 'project_message') return <><strong>{n.actor_name}</strong> escribió en el chat del proyecto{n.project_name ? <> · <span style={{ color: 'var(--text3)' }}>{n.project_name}</span></> : ''}</>;

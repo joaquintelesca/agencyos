@@ -39,6 +39,10 @@ const Icon = {
   trash: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>,
   comment: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.4 8.5 8.5 0 0 1-4-1L3 20l1.1-5.5A8.38 8.38 0 0 1 3.5 11 8.5 8.5 0 1 1 21 11.5Z" /></svg>,
   range: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4v16M18 4v16M6 12h12" /></svg>,
+  undo: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>,
+  text: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 6h14M12 6v13" /></svg>,
+  check: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>,
+  compare: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="8" height="14" rx="1.5" /><rect x="13" y="5" width="8" height="14" rx="1.5" /></svg>,
 };
 
 const iconBtn = { background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text2)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 7, flexShrink: 0 };
@@ -60,7 +64,7 @@ export function formatTime(s) {
 // navegar a otro video o a la lista — el compositor de comentario vive DENTRO de este componente,
 // así que el padre no tiene otra forma de saber si hay algo sin enviar.
 const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
-  { src, comments, currentUserId, activeComment, onActiveCommentChange, allowAttachments = true, onSubmit },
+  { src, comments, currentUserId, activeComment, onActiveCommentChange, allowAttachments = true, onSubmit, approvedAt, approvedByName, onApprove, onUnapprove },
   ref
 ) {
   const { alert, confirm } = useAlert();
@@ -95,6 +99,10 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   const [drawStart, setDrawStart] = useState(null);
   const [annotations, setAnnotations] = useState([]);
   const [currentAnnotation, setCurrentAnnotation] = useState(null);
+  // Posición (en espacio del canvas) de un texto en edición todavía no confirmado — la herramienta
+  // "Texto" no arrastra como las demás, solo necesita un punto y abre un input flotante ahí mismo.
+  const [textInputPos, setTextInputPos] = useState(null);
+  const [textInputValue, setTextInputValue] = useState('');
 
   const [rangeMode, setRangeMode] = useState(false);
   const [rangeStart, setRangeStart] = useState(null);
@@ -107,10 +115,20 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   // re-renderizar. Este state es solo para el "Enviando..." visual del botón.
   const [submitting, setSubmitting] = useState(false);
   const [showCommentInput, setShowCommentInput] = useState(false);
+  const [approving, setApproving] = useState(false);
 
   const formatT = formatTime;
 
   const hasUnsavedDraft = () => commentText.trim().length > 0 || annotations.length > 0 || commentFiles.length > 0;
+
+  const handleApproveClick = async () => {
+    if (approving) return;
+    setApproving(true);
+    try {
+      await (approvedAt ? onUnapprove?.() : onApprove?.());
+    } catch (e) { await alert(e.message || 'Error al actualizar la aprobación'); }
+    finally { setApproving(false); }
+  };
 
   const togglePlay = async () => {
     if (!videoRef.current) return;
@@ -150,6 +168,9 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
       if (e.key === ' ') { e.preventDefault(); togglePlay(); }
       else if (e.key === 'ArrowRight') { if (videoRef.current) videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 5); }
       else if (e.key === 'ArrowLeft') { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5); }
+      // Ctrl/Cmd+Z deshace el último trazo — antes la única forma de corregir un dibujo era
+      // "Limpiar dibujo", que borra TODO, aunque el error fuera solo el último trazo.
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); setAnnotations(prev => prev.slice(0, -1)); }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -275,6 +296,12 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
       ctx.lineTo(ann.x2 - hl * (ux - uy * 0.5), ann.y2 - hl * (uy + ux * 0.5));
       ctx.closePath();
       ctx.fill();
+    } else if (ann.type === 'text' && ann.text) {
+      // Familia de fuente literal (no var()) por la misma razón que el color: canvas no resuelve
+      // variables CSS, así que 'var(--font)' quedaría en la tipografía por default del navegador.
+      ctx.font = `700 ${ann.fontSize || 28}px 'DM Sans', sans-serif`;
+      ctx.textBaseline = 'top';
+      ctx.fillText(ann.text, ann.x, ann.y);
     }
   };
 
@@ -296,9 +323,19 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   // Un solo camino para mouse y touch: cada handler de touch solo resuelve la posición distinto
   // y llama a estas mismas funciones, así el dibujo se comporta idéntico en los dos casos.
   const startDrawAt = (pos) => {
+    // "Texto" no arrastra: un solo click/tap abre un input flotante en ese punto en vez de
+    // empezar un trazo — por eso no toca isDrawing/drawStart, que son solo para las otras 3.
+    if (tool === 'text') { setTextInputPos(pos); setTextInputValue(''); return; }
     setIsDrawing(true);
     setDrawStart(pos);
     if (tool === 'freehand') setAnnotations(prev => [...prev, { type: 'freehand', color: drawColor, strokeWidth, points: [pos] }]);
+  };
+  const commitTextAnnotation = () => {
+    if (textInputValue.trim()) {
+      setAnnotations(prev => [...prev, { type: 'text', x: textInputPos.x, y: textInputPos.y, text: textInputValue.trim(), color: drawColor, fontSize: 28 }]);
+    }
+    setTextInputPos(null);
+    setTextInputValue('');
   };
   const moveDrawTo = (pos) => {
     if (!isDrawing || !drawStart) return;
@@ -312,7 +349,11 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
     redrawCanvas();
   };
 
-  const onCanvasMouseDown = (e) => startDrawAt(getCanvasPos(e));
+  // preventDefault: sin esto, un click en el canvas (que no es focusable) puede terminar
+  // corriéndole el foco al <body> apenas después del mousedown — invisible normalmente, pero le
+  // robaba el foco al input flotante de la herramienta "Texto" apenas se montaba con autoFocus,
+  // así que el onBlur lo cerraba solo antes de que se llegara a escribir nada.
+  const onCanvasMouseDown = (e) => { e.preventDefault(); startDrawAt(getCanvasPos(e)); };
   const onCanvasMouseMove = (e) => moveDrawTo(getCanvasPos(e));
   const onCanvasTouchStart = (e) => { e.preventDefault(); startDrawAt(getTouchCanvasPos(e)); };
   const onCanvasTouchMove = (e) => { e.preventDefault(); moveDrawTo(getTouchCanvasPos(e)); };
@@ -420,7 +461,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           // pointerEvents solo se activa con el modo "Dibujar" prendido: antes el canvas capturaba
           // clicks/touches SIEMPRE (aun sin querer dibujar nada), tapando cualquier otra cosa que
           // se pusiera encima del video (como el botón de comentar de acá abajo).
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: drawToolbarOpen ? 'crosshair' : 'default', touchAction: 'none', pointerEvents: drawToolbarOpen ? 'auto' : 'none' }}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: drawToolbarOpen ? (tool === 'text' ? 'text' : 'crosshair') : 'default', touchAction: 'none', pointerEvents: drawToolbarOpen ? 'auto' : 'none' }}
           onMouseDown={onCanvasMouseDown}
           onMouseMove={onCanvasMouseMove}
           onMouseUp={onCanvasMouseUp}
@@ -431,6 +472,29 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           onTouchCancel={onCanvasMouseUp}
         />
 
+        {/* Input flotante de la herramienta "Texto" — posicionado en % sobre el mismo contenedor
+            que el canvas (inset:0), así que las coordenadas van directo en espacio del canvas
+            (0-1280 / 0-720) sin necesitar otro ref ni cuentas de bounding rect aparte. */}
+        {textInputPos && (
+          <input
+            autoFocus
+            value={textInputValue}
+            onChange={e => setTextInputValue(e.target.value)}
+            onBlur={commitTextAnnotation}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commitTextAnnotation(); }
+              else if (e.key === 'Escape') { setTextInputPos(null); setTextInputValue(''); }
+            }}
+            style={{
+              position: 'absolute', zIndex: 4,
+              left: `${(textInputPos.x / 1280) * 100}%`, top: `${(textInputPos.y / 720) * 100}%`,
+              transform: 'translateY(-2px)', minWidth: 140, background: 'rgba(20,20,23,0.9)',
+              border: `1.5px dashed ${resolveDrawColor(drawColor)}`, borderRadius: 6, padding: '3px 6px',
+              color: resolveDrawColor(drawColor), fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 16, outline: 'none',
+            }}
+          />
+        )}
+
         {/* Toggle de modo dibujo — reemplaza la barra de dibujo que antes estaba siempre visible
             debajo del video ocupando una fila fija aunque casi nunca se usara. */}
         <button onClick={() => setDrawToolbarOpen(o => !o)} title="Dibujar sobre el video"
@@ -438,10 +502,22 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           <Icon.pencil /> Dibujar
         </button>
 
+        {/* "Aprobado" antes era solo un estado inferido de la ausencia de comentarios sin resolver
+            — esto le da una acción real y explícita, tanto al equipo como al cliente sin cuenta
+            desde el link público (mismo componente, mismo botón, cada lado delega a su propio
+            endpoint vía onApprove/onUnapprove). Un comentario nuevo la invalida (ver servidor). */}
+        {(onApprove || onUnapprove) && (
+          <button onClick={handleApproveClick} disabled={approving}
+            title={approvedAt ? `Aprobado por ${approvedByName || 'alguien'} — click para quitar la aprobación` : 'Marcar como aprobado'}
+            style={{ position: 'absolute', top: 10, right: 10, zIndex: 3, display: 'flex', alignItems: 'center', gap: 6, background: approvedAt ? 'var(--green)' : 'rgba(20,20,23,0.82)', border: `1px solid ${approvedAt ? 'var(--green)' : 'var(--border2)'}`, color: approvedAt ? '#fff' : 'var(--text2)', fontSize: 11.5, fontWeight: 600, padding: '6px 11px', borderRadius: 999, cursor: approving ? 'default' : 'pointer', opacity: approving ? 0.7 : 1 }}>
+            <Icon.check /> {approvedAt ? `Aprobado${approvedByName ? ` por ${approvedByName}` : ''}` : 'Aprobar'}
+          </button>
+        )}
+
         {drawToolbarOpen && (
           <div style={{ position: 'absolute', top: 46, left: 10, right: 10, zIndex: 3, background: 'rgba(20,20,23,0.92)', border: '1px solid var(--border2)', borderRadius: 12, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: 3 }}>
-              {[['freehand', Icon.pencil, 'Libre'], ['arrow', Icon.arrow, 'Flecha'], ['rect', Icon.rect, 'Rectángulo']].map(([t, IconCmp, label]) => (
+              {[['freehand', Icon.pencil, 'Libre'], ['arrow', Icon.arrow, 'Flecha'], ['rect', Icon.rect, 'Rectángulo'], ['text', Icon.text, 'Texto']].map(([t, IconCmp, label]) => (
                 <button key={t} onClick={() => setTool(t)} title={label}
                   style={{ ...iconBtn, background: tool === t ? 'var(--bg4)' : 'transparent', color: tool === t ? 'var(--text)' : 'var(--text2)', border: `1px solid ${tool === t ? 'var(--border2)' : 'transparent'}` }}>
                   <IconCmp />
@@ -467,6 +543,9 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             {annotations.length > 0 && (
               <>
                 <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border2)' }} />
+                <button onClick={() => setAnnotations(prev => prev.slice(0, -1))} title="Deshacer último trazo (Ctrl+Z)" style={iconBtn}>
+                  <Icon.undo />
+                </button>
                 <button onClick={clearAnnotations} title="Limpiar dibujo" style={{ ...iconBtn, color: 'var(--red)' }}>
                   <Icon.trash />
                 </button>

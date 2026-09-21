@@ -54,6 +54,27 @@ export default function PublicReview() {
     const comment = await res.json();
     localStorage.setItem(GUEST_NAME_KEY, guestName.trim());
     setComments(prev => [...prev, comment].sort((a, b) => a.timestamp_sec - b.timestamp_sec));
+    // Mismo criterio que el servidor: un comentario nuevo invalida una aprobación previa —
+    // se refleja al toque acá para no mostrar "Aprobado" mientras el comentario recién se envió.
+    setVideo(prev => ({ ...prev, approved_at: null, approved_by_name: null }));
+  };
+
+  const handleApprove = async () => {
+    if (!guestName.trim()) throw new Error('Escribí tu nombre arriba del video antes de aprobar');
+    const res = await fetch(`/api/review/${token}/approve`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guest_name: guestName })
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Error al aprobar');
+    localStorage.setItem(GUEST_NAME_KEY, guestName.trim());
+    setVideo(prev => ({ ...prev, approved_at: new Date().toISOString(), approved_by_name: guestName.trim() }));
+  };
+
+  const handleUnapprove = async () => {
+    const res = await fetch(`/api/review/${token}/approve`, { method: 'DELETE' });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Error al quitar la aprobación');
+    setVideo(prev => ({ ...prev, approved_at: null, approved_by_name: null }));
   };
 
   if (status === 'loading') {
@@ -103,6 +124,10 @@ export default function PublicReview() {
             activeComment={activeComment}
             onActiveCommentChange={setActiveComment}
             allowAttachments={false}
+            approvedAt={video.approved_at}
+            approvedByName={video.approved_by_name}
+            onApprove={handleApprove}
+            onUnapprove={handleUnapprove}
             onSubmit={handleSubmit}
           />
         </div>

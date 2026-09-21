@@ -666,6 +666,19 @@ async function initDB() {
   if (!hasVideoThumb) {
     await db.schema.table('videos', t => { t.string('thumbnail_filename').nullable(); });
   }
+  // "Aprobado" era solo un estado inferido (sin comentarios sin resolver) — no había ninguna
+  // acción real de aprobar, así que un video se mostraba aprobado por descarte, no porque alguien
+  // lo hubiera decidido. approved_by es nullable porque lo puede aprobar un usuario interno O un
+  // cliente sin cuenta desde el link público (approved_by_guest_name, mismo patrón que guest_name
+  // en video_comments) — nunca los dos a la vez.
+  const hasVideoApproved = await db.schema.hasColumn('videos', 'approved_at');
+  if (!hasVideoApproved) {
+    await db.schema.table('videos', t => {
+      t.datetime('approved_at').nullable();
+      t.string('approved_by').nullable();
+      t.string('approved_by_guest_name').nullable();
+    });
+  }
 
   // Tabla de miembros de proyecto: controla qué usuarios tienen acceso a qué proyectos.
   const hasProjectMembers = await db.schema.hasTable('project_members');
@@ -1749,6 +1762,7 @@ app.get('/api/dashboard/videos-overview', auth, async (req, res) => {
       .join('projects as p', 'v.project_id', 'p.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .leftJoin('users as u', 'v.uploaded_by', 'u.id')
+      .leftJoin('users as av', 'v.approved_by', 'av.id')
       .leftJoin('tasks as tk', 'v.task_id', 'tk.id')
       .leftJoin(unresolvedSub.as('uc'), 'uc.video_id', 'v.id')
       .leftJoin(totalSub.as('tc'), 'tc.video_id', 'v.id')
@@ -1758,8 +1772,14 @@ app.get('/api/dashboard/videos-overview', auth, async (req, res) => {
         'c.id as client_id', 'c.name as client_name', 'c.color as client_color',
         'u.name as uploader_name',
         'tk.title as task_title', 'tk.status as task_status',
+        'v.approved_at', 'v.approved_by_guest_name',
+        db.raw('COALESCE(av.name, v.approved_by_guest_name) as approved_by_name'),
         db.raw('COALESCE(uc.unresolved_count, 0) as unresolved_count'),
-        db.raw(`CASE WHEN tk.status = 'review' THEN 'review'
+        // La aprobación explícita gana siempre — si un humano ya lo decidió, eso pesa más que
+        // el estado inferido de la tarea o los comentarios (por ejemplo, un comentario nuevo
+        // menor después de aprobar no debería tapar la aprobación en el resumen).
+        db.raw(`CASE WHEN v.approved_at IS NOT NULL THEN 'approved'
+                     WHEN tk.status = 'review' THEN 'review'
                      WHEN COALESCE(uc.unresolved_count, 0) > 0 THEN 'editing'
                      WHEN COALESCE(tc.total_count, 0) = 0 THEN 'unreviewed'
                      ELSE 'approved' END as category`)
@@ -2123,9 +2143,11 @@ app.get('/api/projects/:projectId/videos', auth, requireProjectAccess(), async (
   try {
     const videos = await db('videos as v')
       .leftJoin('users as u', 'v.uploaded_by', 'u.id')
+      .leftJoin('users as av', 'v.approved_by', 'av.id')
       .leftJoin('tasks as tk', 'v.task_id', 'tk.id')
       .where('v.project_id', req.params.projectId)
-      .select('v.*', 'u.name as uploader_name', 'tk.title as task_title')
+      .select('v.*', 'u.name as uploader_name', 'tk.title as task_title',
+        db.raw('COALESCE(av.name, v.approved_by_guest_name) as approved_by_name'))
       .orderBy('v.created_at', 'desc');
     res.json(videos);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -2376,6 +2398,43 @@ app.delete('/api/videos/:id', auth, async (req, res) => {
     replyAttachments.forEach(a => safeUnlink(a.filename));
 
     await emitToProject(video.project_id, 'video:deleted', { id: req.params.id, projectId: video.project_id });
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// "Aprobado" antes era solo un estado inferido (sin comentarios sin resolver, sin tarea en
+// revisión) — no había ninguna acción real de aprobar, así que un video sin ningún comentario
+// caía ahí por descarte. Esto le da al equipo/cliente un cierre explícito. Cualquier miembro del
+// proyecto puede aprobar (no admin-only): normalmente es quien está revisando, no necesariamente
+// el admin. Un comentario nuevo después invalida la aprobación (ver POST .../comments).
+app.patch('/api/videos/:id/approve', auth, async (req, res) => {
+  try {
+    const video = await db('videos').where({ id: req.params.id }).first();
+    if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+    if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+    }
+    await db('videos').where({ id: req.params.id }).update({
+      approved_at: new Date().toISOString(), approved_by: req.user.id, approved_by_guest_name: null,
+    });
+    await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
+    const admins = await db('users').where({ role: 'admin' }).where('id', '!=', req.user.id);
+    for (const a of admins) {
+      await createNotification({ userId: a.id, type: 'video_approved', actorId: req.user.id, projectId: video.project_id, videoId: video.id, preview: video.title });
+    }
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+app.delete('/api/videos/:id/approve', auth, async (req, res) => {
+  try {
+    const video = await db('videos').where({ id: req.params.id }).first();
+    if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+    if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+      return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+    }
+    await db('videos').where({ id: req.params.id }).update({ approved_at: null, approved_by: null, approved_by_guest_name: null });
+    await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
@@ -2641,11 +2700,16 @@ app.post('/api/videos/:videoId/comments', auth, async (req, res, next) => {
     if (req.files?.length) {
       await db('comment_attachments').insert(req.files.map(f => ({ id: uuidv4(), comment_id: id, filename: f.filename, original_name: f.originalname })));
     }
+    // Un comentario nuevo sobre un video ya aprobado invalida esa aprobación — quedó feedback
+    // pendiente de mirar, así que seguir mostrándolo como "aprobado" sería engañoso. Mismo criterio
+    // que GitHub descartando aprobaciones de PR ante un commit nuevo.
+    await db('videos').where({ id: req.params.videoId }).update({ approved_at: null, approved_by: null, approved_by_guest_name: null });
     const comment = await db('video_comments as vc').join('users as u', 'vc.user_id', 'u.id').where('vc.id', id).select('vc.*', 'u.name as user_name', 'u.avatar_color').first();
     const attachments = await db('comment_attachments').where({ comment_id: id });
     const full = { ...comment, attachments, annotation: safeJsonParse(annotation) };
     const video = await db('videos').where({ id: req.params.videoId }).first();
     if (video) await emitToProject(video.project_id, 'comment:created', full);
+    if (video) await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
     if (video) {
       // El editor que subió el video (y el asignado de su tarea) tienen que enterarse sí o sí:
       // antes los destinatarios eran solo "admins + quien ya haya comentado este video", así que
@@ -2874,8 +2938,10 @@ app.get('/api/review/:token', reviewLimiter, async (req, res) => {
     const video = await db('videos as v')
       .join('projects as p', 'v.project_id', 'p.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
+      .leftJoin('users as av', 'v.approved_by', 'av.id')
       .where('v.id', share.video_id)
-      .select('v.id', 'v.title', 'v.version', 'p.name as project_name', 'p.color as project_color', 'c.name as client_name')
+      .select('v.id', 'v.title', 'v.version', 'p.name as project_name', 'p.color as project_color', 'c.name as client_name',
+        'v.approved_at', db.raw('COALESCE(av.name, v.approved_by_guest_name) as approved_by_name'))
       .first();
     if (!video) return res.status(404).json({ error: 'El video ya no existe' });
     res.json(video);
@@ -2930,9 +2996,13 @@ app.post('/api/review/:token/comments', reviewLimiter, async (req, res) => {
     const comment = await db('video_comments').where({ id }).select('id', 'content', 'timestamp_sec', 'timestamp_end', 'guest_name', 'created_at').first();
     const full = { ...comment, annotation: safeJsonParse(annotation) };
 
+    // Mismo criterio que el comentario interno: un comentario nuevo (incluido el del cliente
+    // desde el link público) invalida una aprobación previa.
+    await db('videos').where({ id: share.video_id }).update({ approved_at: null, approved_by: null, approved_by_guest_name: null });
     const video = await db('videos').where({ id: share.video_id }).first();
     if (video) {
       await emitToProject(video.project_id, 'comment:created', { ...full, video_id: share.video_id, attachments: [], replies: [] });
+      await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
       // Mismo criterio de destinatarios que un comentario interno (ver POST
       // /api/videos/:videoId/comments): admins + quien subió el video + el asignado de su tarea.
       // No hace falta excluir a "quien comenta" porque el invitado no tiene cuenta que notificar.
@@ -2951,6 +3021,40 @@ app.post('/api/review/:token/comments', reviewLimiter, async (req, res) => {
       }
     }
     res.json(full);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// El cliente también puede aprobar desde el link público, sin cuenta — mismo patrón que un
+// comentario de invitado: se guarda el nombre como texto (approved_by_guest_name), no un user_id.
+app.patch('/api/review/:token/approve', reviewLimiter, async (req, res) => {
+  try {
+    const { error, reason, share } = await getActiveShare(req.params.token);
+    if (error) return res.status(error).json({ error: reason === 'revoked' ? 'Este link fue desactivado' : 'Este link ya no está disponible' });
+    const { guest_name } = req.body;
+    if (!guest_name?.trim()) return res.status(400).json({ error: 'Falta el nombre' });
+    const video = await db('videos').where({ id: share.video_id }).first();
+    if (!video) return res.status(404).json({ error: 'El video ya no existe' });
+    await db('videos').where({ id: share.video_id }).update({
+      approved_at: new Date().toISOString(), approved_by: null, approved_by_guest_name: guest_name.trim().slice(0, 60),
+    });
+    await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
+    const admins = await db('users').where({ role: 'admin' });
+    for (const a of admins) {
+      await createNotification({ userId: a.id, type: 'video_approved', guestName: guest_name.trim(), projectId: video.project_id, videoId: video.id, preview: video.title });
+    }
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+app.delete('/api/review/:token/approve', reviewLimiter, async (req, res) => {
+  try {
+    const { error, reason, share } = await getActiveShare(req.params.token);
+    if (error) return res.status(error).json({ error: reason === 'revoked' ? 'Este link fue desactivado' : 'Este link ya no está disponible' });
+    const video = await db('videos').where({ id: share.video_id }).first();
+    if (!video) return res.status(404).json({ error: 'El video ya no existe' });
+    await db('videos').where({ id: share.video_id }).update({ approved_at: null, approved_by: null, approved_by_guest_name: null });
+    await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
+    res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 

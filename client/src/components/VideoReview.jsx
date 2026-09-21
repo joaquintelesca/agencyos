@@ -5,6 +5,7 @@ import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
 import { uploadVideoChunked, captureVideoThumbnail } from '../utils/upload';
 import VideoPlayerAnnotator, { formatTime } from './VideoPlayerAnnotator';
+import VideoCompareModal from './VideoCompareModal';
 
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
   const { api, user, socket, mediaUrl, token } = useAuth();
@@ -16,6 +17,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const [comments, setComments] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
   const [shareModal, setShareModal] = useState(false);
+  const [showCompareModal, setShowCompareModal] = useState(false);
   const [share, setShare] = useState(undefined); // undefined = sin cargar, null = sin link activo
   const [shareDays, setShareDays] = useState(30);
   const [shareBusy, setShareBusy] = useState(false);
@@ -85,6 +87,15 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     const v = videos.find(x => x.id === initialVideoId);
     if (v) { setSelectedVideo(v); appliedInitialVideoRef.current = initialVideoId; }
   }, [initialVideoId, videos]);
+
+  // selectedVideo es una copia tomada en el momento del click — un `reloadVideos()` disparado por
+  // otra sesión (por ejemplo, alguien más aprobando el mismo video) actualiza `videos` pero no esta
+  // copia. La sincroniza con lo último que llegó del server sin perder la selección.
+  useEffect(() => {
+    if (!selectedVideo) return;
+    const fresh = videos.find(v => v.id === selectedVideo.id);
+    if (fresh && fresh !== selectedVideo) setSelectedVideo(fresh);
+  }, [videos, selectedVideo]);
 
   const gridItems = useMemo(() => {
     const groups = {};
@@ -173,6 +184,23 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       if (e.status === 404) { setComments(prev => prev.filter(c => c.id !== cid)); return; }
       console.error(e); await alert('Error al resolver el comentario: ' + e.message);
     }
+  };
+
+  // Solo actualiza `videos` — el efecto de sincronización de acá arriba se encarga de reflejarlo
+  // en `selectedVideo` (evita mantener el mismo patch en dos lugares distintos).
+  const approveVideo = async () => {
+    try {
+      await api(`/api/videos/${selectedVideo.id}/approve`, { method: 'PATCH' });
+      const patch = { approved_at: new Date().toISOString(), approved_by_name: user.name };
+      setVideos(prev => prev.map(v => v.id === selectedVideo.id ? { ...v, ...patch } : v));
+    } catch (e) { console.error(e); await alert('No se pudo aprobar el video: ' + e.message); }
+  };
+  const unapproveVideo = async () => {
+    try {
+      await api(`/api/videos/${selectedVideo.id}/approve`, { method: 'DELETE' });
+      const patch = { approved_at: null, approved_by_name: null };
+      setVideos(prev => prev.map(v => v.id === selectedVideo.id ? { ...v, ...patch } : v));
+    } catch (e) { console.error(e); await alert('No se pudo quitar la aprobación: ' + e.message); }
   };
 
   const startEditComment = (c) => { setEditingComment(c.id); setEditText(c.content); };
@@ -398,6 +426,12 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         {v.thumbnail_filename
           ? <img src={mediaUrl(`/uploads/${v.thumbnail_filename}`)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
           : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>▶️</div>}
+        {v.approved_at && (
+          <div title={`Aprobado${v.approved_by_name ? ` por ${v.approved_by_name}` : ''}`}
+            style={{ position: 'absolute', bottom: 6, left: 6, width: 20, height: 20, borderRadius: '50%', background: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 700 }}>
+            ✓
+          </div>
+        )}
       </div>
       <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{v.title}</div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -566,6 +600,14 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         </div>
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{selectedVideo.title}</span>
         <span style={{ fontSize: 11, color: 'var(--text3)' }}>{comments.length} comentarios</span>
+        {/* Solo tiene sentido si hay al menos otra versión del mismo video (mismo group_id) —
+            comparar contra un video sin relación no es lo que alguien espera de "comparar versiones". */}
+        {videos.filter(v => v.group_id && v.group_id === selectedVideo.group_id).length > 1 && (
+          <button onClick={() => setShowCompareModal(true)} title="Comparar con otra versión"
+            style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
+            🔀 Comparar
+          </button>
+        )}
         {/* Admin-only a propósito, no "admin o quien subió" como Eliminar — decidir qué sale a
             un cliente externo es una decisión de la agencia, no de un editor individual. */}
         {user.role === 'admin' && (
@@ -593,6 +635,10 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           activeComment={activeComment}
           onActiveCommentChange={setActiveComment}
           allowAttachments={true}
+          approvedAt={selectedVideo.approved_at}
+          approvedByName={selectedVideo.approved_by_name}
+          onApprove={approveVideo}
+          onUnapprove={unapproveVideo}
           onSubmit={async ({ content, timestampSec, timestampEnd, annotations, files }) => {
             const fd = new FormData();
             fd.append('content', content);
@@ -882,6 +928,20 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           </div>
         </div>
       )}
+
+      {showCompareModal && (() => {
+        const siblings = videos.filter(v => v.group_id && v.group_id === selectedVideo.group_id);
+        const other = siblings.find(v => v.id !== selectedVideo.id) || siblings[0];
+        return (
+          <VideoCompareModal
+            videos={siblings}
+            initialLeftId={other.id}
+            initialRightId={selectedVideo.id}
+            mediaUrl={mediaUrl}
+            onClose={() => setShowCompareModal(false)}
+          />
+        );
+      })()}
     </div>
   );
 }
