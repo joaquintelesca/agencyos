@@ -693,6 +693,20 @@ async function initDB() {
     await seedProjectMembers();
   }
 
+  // Silenciar notificaciones de un proyecto puntual — antes la única forma de "no recibir más
+  // avisos de esto" era ignorarlos a mano cada vez, sin ninguna forma real de bajarle el volumen
+  // a un proyecto específico que ya no necesita seguimiento activo.
+  const hasNotificationMutes = await db.schema.hasTable('notification_mutes');
+  if (!hasNotificationMutes) {
+    await db.schema.createTable('notification_mutes', t => {
+      t.string('id').primary();
+      t.string('user_id').notNullable();
+      t.string('project_id').notNullable();
+      t.timestamp('created_at').defaultTo(db.fn.now());
+      t.unique(['user_id', 'project_id']);
+    });
+  }
+
   // Orden manual (drag & drop) de clientes y proyectos en el sidebar. Al agregar la columna se
   // hace un backfill único con el orden que ya se veía (alfabético para clientes, más reciente
   // primero para proyectos dentro de cada cliente) para no pegarle un salto visual a nadie.
@@ -1263,13 +1277,15 @@ app.get('/api/projects', auth, async (req, res) => {
       .groupBy('project_id');
     const unreadReviewMap = {};
     for (const row of unreadReviewRows) unreadReviewMap[row.project_id] = Number(row.count);
+    const mutedIds = new Set(await db('notification_mutes').where({ user_id: req.user.id }).pluck('project_id'));
     const withCounts = projects.map(p => {
       withDeletedEditorFallback(p);
       withComputedTotals(p);
       return {
         ...(req.user.role === 'admin' ? p : stripProjectFinancials(p)),
         ...(countsMap[p.id] || { task_count: 0, done_count: 0, review_count: 0 }),
-        unread_review_count: unreadReviewMap[p.id] || 0
+        unread_review_count: unreadReviewMap[p.id] || 0,
+        muted: mutedIds.has(p.id)
       };
     });
     res.json(withCounts);
@@ -1287,7 +1303,25 @@ app.get('/api/projects/:id', auth, requireProjectAccess('id'), async (req, res) 
     if (!project) return res.status(404).json({ error: 'No encontrado' });
     withDeletedEditorFallback(project);
     withComputedTotals(project);
-    res.json(req.user.role === 'admin' ? project : stripProjectFinancials(project));
+    const muted = !!(await db('notification_mutes').where({ user_id: req.user.id, project_id: req.params.id }).first());
+    res.json({ ...(req.user.role === 'admin' ? project : stripProjectFinancials(project)), muted });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// Silenciar/reactivar notificaciones de este proyecto para quien hace el pedido — es por usuario,
+// no global: cada uno decide su propio volumen sin afectar al resto del equipo.
+app.post('/api/projects/:id/mute', auth, requireProjectAccess('id'), async (req, res) => {
+  try {
+    const existing = await db('notification_mutes').where({ user_id: req.user.id, project_id: req.params.id }).first();
+    if (!existing) await db('notification_mutes').insert({ id: uuidv4(), user_id: req.user.id, project_id: req.params.id });
+    res.json({ muted: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+app.delete('/api/projects/:id/mute', auth, requireProjectAccess('id'), async (req, res) => {
+  try {
+    await db('notification_mutes').where({ user_id: req.user.id, project_id: req.params.id }).delete();
+    res.json({ muted: false });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
@@ -3126,6 +3160,14 @@ async function createNotification(args) {
 }
 async function createNotificationInner({ userId, type, actorId, guestName, projectId, videoId, commentId, chatMessageId, preview }) {
   if (userId && userId === actorId) return; // don't notify yourself
+
+  // Silenciado gana sobre cualquier tipo de aviso de ESE proyecto — salvo una mención directa
+  // (@nombre), que es un pedido explícito de atención puntual, no ruido ambiente del proyecto en
+  // general. Mismo criterio que silenciar un canal en Slack: las menciones igual llegan.
+  if (projectId && type !== 'mention') {
+    const muted = await db('notification_mutes').where({ user_id: userId, project_id: projectId }).first();
+    if (muted) return;
+  }
 
   // Notificaciones de chat de proyecto: agrupar las no leídas del mismo emisor en una sola, en vez
   // de crear una fila nueva por cada mensaje — alguien escribiendo 10 mensajes seguidos generaba

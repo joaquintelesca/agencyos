@@ -95,6 +95,15 @@ export default function Project() {
 
   const openMembers = async () => { setShowMembers(true); await loadMembers(); };
 
+  // Por usuario, no global — cada uno decide su propio volumen de avisos de este proyecto sin
+  // afectar al resto del equipo. Las @menciones siguen llegando igual (ver createNotificationInner).
+  const toggleMute = async () => {
+    try {
+      const { muted } = await api(`/api/projects/${id}/mute`, { method: project.muted ? 'DELETE' : 'POST' });
+      setProject(prev => ({ ...prev, muted }));
+    } catch (e) { console.error(e); }
+  };
+
   // Las @menciones del chat necesitan la lista de miembros disponible apenas se entra a la
   // pestaña — antes solo se cargaba al abrir el panel "Acceso" a mano.
   useEffect(() => { if (tab === 'chat') loadMembers(); }, [tab, loadMembers]);
@@ -384,6 +393,10 @@ export default function Project() {
             </div>
           )}
           <span className="badge" style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', background: 'var(--bg3)' }}>{tasks.length} tareas</span>
+          <button onClick={toggleMute} title={project.muted ? 'Reactivar notificaciones de este proyecto' : 'Silenciar notificaciones de este proyecto (las @menciones igual llegan)'}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: project.muted ? 'var(--yellow)' : 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'var(--font)' }}>
+            {project.muted ? '🔕 Silenciado' : '🔔'}
+          </button>
           <div style={{ position: 'relative' }}>
             <button onClick={() => showMembers ? setShowMembers(false) : openMembers()}
               style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'var(--font)' }}>
