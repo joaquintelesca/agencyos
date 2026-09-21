@@ -6,6 +6,7 @@ import { initials } from '../utils/format';
 import { uploadVideoChunked, captureVideoThumbnail } from '../utils/upload';
 import VideoPlayerAnnotator, { formatTime } from './VideoPlayerAnnotator';
 import VideoCompareModal from './VideoCompareModal';
+import MentionInput, { renderMentions } from './MentionInput';
 
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
   const { api, user, socket, mediaUrl, token } = useAuth();
@@ -13,6 +14,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const { alert, confirm } = useAlert();
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
+  // Para el autocompletado de @menciones en el composer de comentarios (ver MentionInput).
+  const [members, setMembers] = useState([]);
   const appliedInitialVideoRef = useRef(null);
   const [comments, setComments] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
@@ -59,6 +62,10 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   }, [projectId]);
 
   useEffect(() => { reloadVideos(); }, [reloadVideos]);
+
+  useEffect(() => {
+    api(`/api/projects/${projectId}/members`).then(setMembers).catch(console.error);
+  }, [projectId]);
 
   useEffect(() => () => clearTimeout(longPressTimerRef.current), []);
 
@@ -635,6 +642,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           activeComment={activeComment}
           onActiveCommentChange={setActiveComment}
           allowAttachments={true}
+          members={members}
           approvedAt={selectedVideo.approved_at}
           approvedByName={selectedVideo.approved_by_name}
           onApprove={approveVideo}
@@ -725,7 +733,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                         </div>
                       </div>
                     ) : (
-                      <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{c.content}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{renderMentions(c.content)}</div>
                     )}
                     {c.annotation && <div style={{ fontSize: 10, color: 'var(--yellow)', marginTop: 3 }}>✏️ Incluye dibujo</div>}
                     {c.attachments?.length > 0 && (
@@ -778,7 +786,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                               </div>
                               <div style={{ flex: 1 }}>
                                 <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2 }}>{r.user_name}</div>
-                                <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.4 }}>{r.content}</div>
+                                <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.4 }}>{renderMentions(r.content)}</div>
                                 {r.attachments?.length > 0 && r.attachments.map(a => (
                                   <a key={a.id} href={mediaUrl(`/uploads/${a.filename}`)} target="_blank" rel="noreferrer"
                                     style={{ fontSize: 11, color: 'var(--accent2)', display: 'flex', alignItems: 'center', gap: 3, marginTop: 3, textDecoration: 'none' }}
@@ -795,10 +803,11 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                     {/* Reply input */}
                     {replyingTo === c.id && (
                       <div style={{ marginTop: 8, borderTop: `1px solid var(--border)`, paddingTop: 8 }} onClick={e => e.stopPropagation()}>
-                        <textarea
+                        <MentionInput as="textarea"
                           value={replyText}
-                          onChange={e => setReplyText(e.target.value)}
-                          placeholder="Dejá tu respuesta acá..."
+                          onChange={setReplyText}
+                          members={members}
+                          placeholder="Dejá tu respuesta acá... (@ para mencionar)"
                           autoFocus
                           rows={2}
                           style={{ width: '100%', background: 'var(--bg)', border: `1px solid var(--border)`, borderRadius: 7, padding: '6px 9px', color: 'var(--text)', fontSize: 12, fontFamily: 'inherit', resize: 'none', outline: 'none', boxSizing: 'border-box' }}

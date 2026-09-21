@@ -13,6 +13,7 @@ export function notificationIcon(type) {
   if (type === 'project_assigned') return '📁';
   if (type === 'task_assigned') return '✅';
   if (type === 'project_message') return '💬';
+  if (type === 'mention') return '📣';
   return '✉️';
 }
 
@@ -29,6 +30,7 @@ export function notificationLabel(n) {
   if (n.type === 'project_assigned') return <><strong>{n.actor_name}</strong> te asignó un proyecto{proj}</>;
   if (n.type === 'task_assigned') return <><strong>{n.actor_name}</strong> te asignó una tarea{proj}</>;
   if (n.type === 'project_message') return <><strong>{n.actor_name}</strong> escribió en el chat del proyecto{proj}</>;
+  if (n.type === 'mention') return <><strong>{n.actor_name}</strong> te mencionó{proj}</>;
   return <><strong>{n.actor_name}</strong> te envió un mensaje</>;
 }
 
@@ -38,7 +40,7 @@ export function notificationTarget(n) {
   if (n.video_id && n.project_id) return `/project/${n.project_id}?tab=videos&video=${n.video_id}`;
   // Antes esto llevaba a /project/:id a secas, que abre la pestaña Kanban por default — el
   // mensaje que la notificación anuncia quedaba igual de escondido, había que ir a buscarlo.
-  if (n.type === 'project_message' && n.project_id) return `/project/${n.project_id}?tab=chat`;
+  if ((n.type === 'project_message' || n.type === 'mention') && n.project_id) return `/project/${n.project_id}?tab=chat`;
   if (n.project_id) return `/project/${n.project_id}`;
   return null;
 }

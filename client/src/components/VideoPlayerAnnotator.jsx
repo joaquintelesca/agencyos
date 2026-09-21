@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useAlert } from '../context/AlertContext';
+import MentionInput from './MentionInput';
 
 // Reproductor + herramientas de dibujo + timeline con marcadores + compositor de comentario,
 // compartido entre el panel interno (VideoReview.jsx, admin/editor autenticado) y el link público
@@ -64,7 +65,7 @@ export function formatTime(s) {
 // navegar a otro video o a la lista — el compositor de comentario vive DENTRO de este componente,
 // así que el padre no tiene otra forma de saber si hay algo sin enviar.
 const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
-  { src, comments, currentUserId, activeComment, onActiveCommentChange, allowAttachments = true, onSubmit, approvedAt, approvedByName, onApprove, onUnapprove },
+  { src, comments, currentUserId, activeComment, onActiveCommentChange, allowAttachments = true, onSubmit, approvedAt, approvedByName, onApprove, onUnapprove, members = [] },
   ref
 ) {
   const { alert, confirm } = useAlert();
@@ -669,8 +670,8 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
                 style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>✕</button>
             </div>
           )}
-          <textarea value={commentText} onChange={e => setCommentText(e.target.value)}
-            placeholder="Escribí tu feedback..."
+          <MentionInput as="textarea" value={commentText} onChange={setCommentText} members={members}
+            placeholder="Escribí tu feedback... (@ para mencionar)"
             autoFocus
             style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit', resize: 'none', minHeight: 56, outline: 'none', boxSizing: 'border-box' }}
             onFocus={e => e.target.style.borderColor = 'var(--accent)'}

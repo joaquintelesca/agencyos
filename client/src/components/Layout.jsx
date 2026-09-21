@@ -5,6 +5,7 @@ import { useUndo } from '../context/UndoContext';
 import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
 import { notificationLabel, notificationTarget } from '../utils/notifications';
+import { renderMentions } from './MentionInput';
 import ErrorBoundary from './ErrorBoundary';
 import SearchPalette from './SearchPalette';
 
@@ -1205,7 +1206,7 @@ export default function Layout() {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.4 }}>{notificationLabel(t)}</div>
-                {t.preview && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{t.preview}"</div>}
+                {t.preview && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{renderMentions(t.preview)}"</div>}
               </div>
               <button onClick={e => { e.stopPropagation(); dismissToast(t.id); }} title="Cerrar"
                 style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 14, cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>

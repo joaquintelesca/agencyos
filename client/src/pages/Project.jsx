@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { useAlert } from '../context/AlertContext';
 import VideoReview from '../components/VideoReview';
+import MentionInput, { renderMentions } from '../components/MentionInput';
 import { initials } from '../utils/format';
 
 const STATUSES = [
@@ -77,8 +78,7 @@ export default function Project() {
   // servidor — se le agrega gente automáticamente al asignarle una tarea o ponerla de editora, y
   // se la saca sola cuando ya no le queda ningún motivo para seguir ahí. Sin esta lista visible,
   // nadie puede saber quién ve este proyecto en un momento dado sin ir a revisar caso por caso.
-  const openMembers = async () => {
-    setShowMembers(true);
+  const loadMembers = useCallback(async () => {
     if (members) return;
     try {
       const data = await api(`/api/projects/${id}/members`);
@@ -91,7 +91,13 @@ export default function Project() {
         .map(u => ({ id: u.id, name: u.name, avatar_color: u.avatar_color, role: 'admin' }));
       setMembers([...data, ...missingAdmins]);
     } catch (e) { console.error(e); setMembersError('No se pudo cargar quién tiene acceso.'); }
-  };
+  }, [id, members, users]);
+
+  const openMembers = async () => { setShowMembers(true); await loadMembers(); };
+
+  // Las @menciones del chat necesitan la lista de miembros disponible apenas se entra a la
+  // pestaña — antes solo se cargaba al abrir el panel "Acceso" a mano.
+  useEffect(() => { if (tab === 'chat') loadMembers(); }, [tab, loadMembers]);
 
   // Deep link desde una notificación (?tab=videos): si ya estamos en este proyecto, React Router
   // no remonta el componente al cambiar solo el query param, así que hay que resincronizar el tab.
@@ -540,7 +546,7 @@ export default function Project() {
                       background: isMine ? 'var(--accent)' : 'var(--bg3)',
                       color: 'var(--text)', padding: '9px 13px', borderRadius: isMine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                       fontSize: 14, lineHeight: 1.5
-                    }}>{m.content}</div>
+                    }}>{renderMentions(m.content)}</div>
                     <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3, textAlign: isMine ? 'right' : 'left' }}>{formatTime(m.created_at)}</div>
                   </div>
                 </div>
@@ -549,7 +555,8 @@ export default function Project() {
             <div ref={msgEndRef} />
           </div>
           <form onSubmit={sendMessage} style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10 }}>
-            <input className="input" value={newMsg} onChange={e => setNewMsg(e.target.value)} placeholder={`Mensaje en ${project.name}...`} style={{ flex: 1 }} />
+            <MentionInput as="input" className="input" value={newMsg} onChange={setNewMsg} members={members || []}
+              placeholder={`Mensaje en ${project.name}... (@ para mencionar)`} style={{ flex: 1 }} />
             <button className="btn btn-primary" type="submit">Enviar</button>
           </form>
         </div>

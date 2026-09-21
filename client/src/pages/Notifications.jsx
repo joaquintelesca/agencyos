@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { notificationIcon, notificationLabel, notificationTarget } from '../utils/notifications';
+import { renderMentions } from '../components/MentionInput';
 
 const PAGE_SIZE = 50;
 
@@ -135,7 +136,7 @@ export default function Notifications() {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.4, marginBottom: 4 }}>{label(n)}</div>
-        {n.preview && <div style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--bg3)', borderRadius: 6, padding: '3px 8px', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{n.preview}"</div>}
+        {n.preview && <div style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--bg3)', borderRadius: 6, padding: '3px 8px', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{renderMentions(n.preview)}"</div>}
         <div style={{ fontSize: 11, color: 'var(--text3)' }}>{icon(n.type)} {timeAgo(n.created_at)}</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>

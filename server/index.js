@@ -2734,15 +2734,26 @@ app.post('/api/videos/:videoId/comments', auth, async (req, res, next) => {
         ? (await db('tasks').where({ id: video.task_id }).select('assigned_to').first())?.assigned_to
         : null;
       const directIds = [video.uploaded_by, taskAssignee].filter(Boolean);
-      const members = await db('users')
+      const recipients = await db('users')
         .where('id', '!=', req.user.id)
         .where(function() {
           this.where({ role: 'admin' })
             .orWhereIn('id', db('video_comments').where({ video_id: req.params.videoId }).select('user_id'))
             .orWhereIn('id', directIds);
         });
-      for (const m of members) {
-        await createNotification({ userId: m.id, type: 'comment', actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });
+      // A quien mencionaron le llega "te mencionaron" en vez del genérico "comentó en un video" —
+      // mandarle los dos sería el mismo aviso anunciado dos veces distintas.
+      const mentionedIds = new Set(extractMentionedUserIds(content));
+      for (const m of recipients) {
+        const type = mentionedIds.has(m.id) ? 'mention' : 'comment';
+        await createNotification({ userId: m.id, type, actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });
+        mentionedIds.delete(m.id);
+      }
+      // Alguien mencionado que no estuviera ya en la lista de destinatarios habituales (por
+      // ejemplo, un editor de otra tarea del mismo proyecto que nunca comentó este video) igual
+      // tiene que enterarse — la mención es una invitación explícita a mirar, no solo un aviso pasivo.
+      for (const uid of mentionedIds) {
+        await createNotification({ userId: uid, type: 'mention', actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });
       }
     }
     res.json(full);
@@ -2876,8 +2887,14 @@ app.post('/api/comments/:id/replies', auth, async (req, res, next) => {
       // parentComment.user_id es null cuando el comentario original es de un invitado externo
       // (link de revisión) — no tiene cuenta ni in-app notifications, así que no hay a quién
       // notificar acá (createNotification inserta con user_id NOT NULL, se rompería si se llamara).
-      if (parentComment.user_id) {
+      if (parentComment.user_id && parentComment.user_id !== req.user.id) {
         await createNotification({ userId: parentComment.user_id, type: 'reply', actorId: req.user.id, projectId: video?.project_id, videoId: parentComment.video_id, commentId: req.params.id, preview: content?.slice(0, 80) });
+      }
+      if (video) {
+        const mentionedIds = extractMentionedUserIds(content).filter(uid => uid !== req.user.id && uid !== parentComment.user_id);
+        for (const uid of mentionedIds) {
+          await createNotification({ userId: uid, type: 'mention', actorId: req.user.id, projectId: video.project_id, videoId: parentComment.video_id, commentId: req.params.id, preview: content?.slice(0, 80) });
+        }
       }
     }
     res.json(full);
@@ -3081,6 +3098,18 @@ app.delete('/api/review/:token/approve', reviewLimiter, async (req, res) => {
 });
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
+
+// Mismo formato que MentionInput.jsx guarda en el texto: @[Nombre](userId) — parseable sin
+// ambigüedad server-side (dos personas se pueden llamar igual), a diferencia de buscar "@Nombre"
+// como texto plano.
+function extractMentionedUserIds(content) {
+  if (!content) return [];
+  const re = /@\[[^\]]+\]\(([a-zA-Z0-9-]+)\)/g;
+  const ids = new Set();
+  let m;
+  while ((m = re.exec(content))) ids.add(m[1]);
+  return [...ids];
+}
 
 // Se llama SIEMPRE después de que la acción principal (crear tarea, comentario, proyecto, etc.)
 // ya se guardó y se emitió por socket. Si esto tira una excepción sin capturarla acá, el catch del
@@ -3629,8 +3658,12 @@ io.on('connection', (socket) => {
       const adminIds = await db('users').where({ role: 'admin' }).pluck('id');
       const notifyIds = new Set([...memberIds, ...adminIds]);
       notifyIds.delete(socket.userId);
+      // A quien mencionaron le llega "te mencionaron" en vez del genérico "escribió en el chat" —
+      // mandarle los dos sería el mismo mensaje anunciado dos veces distintas.
+      const mentionedIds = new Set(extractMentionedUserIds(content).filter(uid => notifyIds.has(uid)));
       for (const uid of notifyIds) {
-        await createNotification({ userId: uid, type: 'project_message', actorId: socket.userId, projectId: project_id, preview: content?.slice(0, 80) });
+        const type = mentionedIds.has(uid) ? 'mention' : 'project_message';
+        await createNotification({ userId: uid, type, actorId: socket.userId, projectId: project_id, preview: content?.slice(0, 80) });
       }
     } catch (e) {
       console.error('socket message:send:', e);
