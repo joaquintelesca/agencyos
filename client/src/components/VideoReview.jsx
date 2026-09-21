@@ -43,12 +43,22 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const [dragVideoId, setDragVideoId] = useState(null);
   const [dragOverTarget, setDragOverTarget] = useState(null);
   const [expandedGroup, setExpandedGroup] = useState(null);
+  // El drag-and-drop nativo (draggable/onDragStart) no dispara en touch — para apilar videos
+  // desde el celular usamos un long-press manual: mantener 350ms sin moverse activa el arrastre,
+  // después seguimos el dedo con elementFromPoint. justDraggedRef evita que el "click" fantasma
+  // que dispara el navegador al soltar el touch abra el video en vez de soltar el drag.
+  const touchStartRef = useRef({ x: 0, y: 0, videoId: null });
+  const dragActiveRef = useRef(false);
+  const longPressTimerRef = useRef(null);
+  const justDraggedRef = useRef(false);
 
   const reloadVideos = useCallback(() => {
     api(`/api/projects/${projectId}/videos`).then(setVideos).catch(console.error);
   }, [projectId]);
 
   useEffect(() => { reloadVideos(); }, [reloadVideos]);
+
+  useEffect(() => () => clearTimeout(longPressTimerRef.current), []);
 
   useEffect(() => {
     if (!socket) return;
@@ -320,13 +330,59 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     onDrop: (e) => { e.preventDefault(); handleDrop(videoId); },
   });
 
+  const LONG_PRESS_MS = 350;
+  const MOVE_CANCEL_PX = 10;
+
+  const touchDragProps = (videoId) => ({
+    'data-video-id': videoId,
+    onTouchStart: (e) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      touchStartRef.current = { x: t.clientX, y: t.clientY, videoId };
+      dragActiveRef.current = false;
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = setTimeout(() => {
+        dragActiveRef.current = true;
+        setDragVideoId(videoId);
+        if (navigator.vibrate) navigator.vibrate(15);
+      }, LONG_PRESS_MS);
+    },
+    onTouchMove: (e) => {
+      const t = e.touches[0];
+      if (!t) return;
+      if (!dragActiveRef.current) {
+        const dx = t.clientX - touchStartRef.current.x;
+        const dy = t.clientY - touchStartRef.current.y;
+        if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) clearTimeout(longPressTimerRef.current);
+        return;
+      }
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      const targetId = el?.closest('[data-video-id]')?.getAttribute('data-video-id');
+      setDragOverTarget(targetId && targetId !== touchStartRef.current.videoId ? targetId : null);
+    },
+    onTouchEnd: (e) => {
+      clearTimeout(longPressTimerRef.current);
+      if (dragActiveRef.current) {
+        justDraggedRef.current = true;
+        setTimeout(() => { justDraggedRef.current = false; }, 300);
+        const t = e.changedTouches[0];
+        const el = t && document.elementFromPoint(t.clientX, t.clientY);
+        const targetId = el?.closest('[data-video-id]')?.getAttribute('data-video-id');
+        if (targetId && targetId !== touchStartRef.current.videoId) handleDrop(targetId);
+        else { setDragVideoId(null); setDragOverTarget(null); }
+      }
+      dragActiveRef.current = false;
+    },
+  });
+
   const renderVideoCard = (v, { isDragOver, isExpanded } = {}) => (
     <div
       className="video-card"
       {...cardDragProps(v.id)}
       {...dropTargetProps(v.id)}
-      onClick={() => setSelectedVideo(v)}
-      style={{ position: 'relative', background: 'var(--bg2)', border: `2px solid ${isDragOver ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 12, padding: 16, cursor: dragVideoId ? 'grabbing' : 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s', opacity: dragVideoId === v.id ? 0.4 : 1 }}
+      {...touchDragProps(v.id)}
+      onClick={() => { if (justDraggedRef.current) return; setSelectedVideo(v); }}
+      style={{ position: 'relative', background: 'var(--bg2)', border: `2px solid ${isDragOver ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 12, padding: 16, cursor: dragVideoId ? 'grabbing' : 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s', opacity: dragVideoId === v.id ? 0.4 : 1, touchAction: dragVideoId ? 'none' : 'auto' }}
       onMouseEnter={e => { if (!isDragOver && !dragVideoId) e.currentTarget.style.borderColor = 'var(--accent)'; }}
       onMouseLeave={e => { if (!isDragOver) e.currentTarget.style.borderColor = 'var(--border)'; }}>
       {(user.role === 'admin' || v.uploaded_by === user.id) && (
@@ -398,7 +454,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
               <div key={item.groupId}
                 {...dropTargetProps(item.latest.id)}
                 {...cardDragProps(item.latest.id)}
-                onClick={() => setSelectedVideo(item.latest)}
+                {...touchDragProps(item.latest.id)}
+                onClick={() => { if (justDraggedRef.current) return; setSelectedVideo(item.latest); }}
                 style={{
                   background: 'var(--bg2)', borderRadius: 12, padding: 16,
                   cursor: dragVideoId ? 'grabbing' : 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s',
@@ -407,6 +464,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                   marginBottom: Math.min(item.videos.length - 1, 3) * 6,
                   marginRight: Math.min(item.videos.length - 1, 3) * 6,
                   opacity: dragVideoId === item.latest.id ? 0.4 : 1,
+                  touchAction: dragVideoId ? 'none' : 'auto',
                 }}
                 onMouseEnter={e => { if (!stackDragOver && !dragVideoId) e.currentTarget.style.borderColor = 'var(--accent)'; }}
                 onMouseLeave={e => { if (!stackDragOver) e.currentTarget.style.borderColor = 'var(--border)'; }}>
