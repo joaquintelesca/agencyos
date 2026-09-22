@@ -9,6 +9,10 @@ import Icon from '../components/Icon';
 
 const formatRecordingTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
+// Mismo set que QUICK_REACTIONS en server/routes/chat.js — reacciones rápidas fijas, sin picker
+// libre (a propósito, no todo el catálogo de emoji del sistema).
+const QUICK_REACTIONS = ['👍', '👀', '✅', '🙌', '❤️', '🎉', '🔥', '😂'];
+
 // Reproductor propio para notas de voz (estilo Slack) en vez de <audio controls> nativo: los
 // .webm que graba MediaRecorder no siempre reportan su propia duración de forma confiable en
 // los controles del navegador (queda en Infinity/NaN, o directamente 0), así que el total
@@ -229,6 +233,24 @@ export default function Chat() {
       });
     };
 
+    // Igual que un mensaje nuevo, la propia reacción vuelve por acá (el emisor también está en
+    // la room que recibe el emit) — no hay update optimista separado, esto es la única fuente.
+    const handleChatReaction = ({ messageId, emoji, userId, userName, action }) => {
+      setMessagesRef.current(prev => prev.map(m => {
+        if (m.id !== messageId) return m;
+        const reactions = (m.reactions || []).map(r => ({ ...r, users: [...r.users] }));
+        let entry = reactions.find(r => r.emoji === emoji);
+        if (action === 'add') {
+          if (!entry) { entry = { emoji, users: [] }; reactions.push(entry); }
+          if (!entry.users.some(u => u.id === userId)) entry.users.push({ id: userId, name: userName });
+        } else if (entry) {
+          entry.users = entry.users.filter(u => u.id !== userId);
+        }
+        const cleaned = reactions.filter(r => r.users.length > 0).map(r => ({ ...r, count: r.users.length }));
+        return { ...m, reactions: cleaned };
+      }));
+    };
+
     // Tras una reconexión (WiFi cortado, pestaña dormida) pueden haber quedado mensajes sin
     // enterarse — se resincroniza la lista de conversaciones, los no leídos, y si hay una
     // conversación abierta, sus mensajes.
@@ -252,11 +274,13 @@ export default function Chat() {
 
     socket.on('chat:message', handleChatMessage);
     socket.on('chat:read', handleChatRead);
+    socket.on('chat:reaction', handleChatReaction);
     socket.on('connect', onReconnect);
 
     return () => {
       socket.off('chat:message', handleChatMessage);
       socket.off('chat:read', handleChatRead);
+      socket.off('chat:reaction', handleChatReaction);
       socket.off('connect', onReconnect);
     };
   }, [socket]); // solo depende del socket, no de activeConv ni user
@@ -403,6 +427,14 @@ export default function Chat() {
       await alert('No se pudo enviar: ' + e.message);
     } finally {
       sendingMessageRef.current = false;
+    }
+  };
+
+  const toggleReaction = async (messageId, emoji) => {
+    try {
+      await api(`/api/chat/messages/${messageId}/react`, { method: 'POST', body: { emoji } });
+    } catch (e) {
+      console.error('Error al reaccionar:', e);
     }
   };
 
@@ -863,6 +895,9 @@ export default function Chat() {
                   initials={initials}
                   mediaUrl={mediaUrl}
                   onImageLoad={rescrollIfNearBottom}
+                  userId={user?.id}
+                  onReact={(emoji) => toggleReaction(msg.id, emoji)}
+                  isNarrowViewport={isNarrowViewport}
                 />
               );
             })}
@@ -1100,10 +1135,28 @@ function SidebarItem({ label, subtitle, active, unread, online, color, isUser, i
   );
 }
 
-function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad }) {
+function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, isNarrowViewport }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   return (
-    <div style={{ display: 'flex', gap: 10, padding: compact ? '1px 0' : '8px 0 2px', alignItems: 'flex-start' }}>
+    <div className="msg-row" style={{ display: 'flex', gap: 10, padding: compact ? '1px 0' : '8px 0 2px', alignItems: 'flex-start', position: 'relative' }}>
+      {/* Barra de reacciones rápidas: aparece al pasar el mouse (siempre visible en viewport
+          angosto, donde no hay hover real). Posicionada arriba a la derecha del mensaje, estilo Slack. */}
+      <div
+        className={`panel msg-react-toolbar${isNarrowViewport ? ' always-visible' : ''}`}
+        style={{ position: 'absolute', top: -14, right: 0, display: 'flex', gap: 2, borderRadius: 20, padding: '2px 4px', boxShadow: 'var(--shadow-lg)', zIndex: 1 }}
+      >
+        {QUICK_REACTIONS.map(emoji => (
+          <button
+            key={emoji}
+            className="icon-btn"
+            onClick={() => onReact(emoji)}
+            title={`Reaccionar con ${emoji}`}
+            style={{ borderRadius: '50%', width: 24, height: 24, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
       <div style={{ width: 36, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
         {!compact ? (
           <div className="avatar" style={{ background: msg.sender_color || 'var(--accent)', width: 34, height: 34, fontSize: 12 }}>
@@ -1158,6 +1211,29 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad }) {
         {msg.content && (
           <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.55, wordBreak: 'break-word' }}>
             {msg.content}
+          </div>
+        )}
+        {msg.reactions?.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+            {msg.reactions.map(r => {
+              const mine = r.users.some(u => u.id === userId);
+              return (
+                <button
+                  key={r.emoji}
+                  className="badge"
+                  onClick={() => onReact(r.emoji)}
+                  title={r.users.map(u => u.name).join(', ')}
+                  style={{
+                    gap: 5, cursor: 'pointer', fontFamily: 'var(--font)',
+                    border: mine ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    background: mine ? 'var(--accent-glow)' : 'var(--bg3)',
+                    color: mine ? 'var(--accent2)' : 'var(--text2)',
+                  }}
+                >
+                  <span>{r.emoji}</span><span>{r.count}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

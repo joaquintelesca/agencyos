@@ -1,6 +1,10 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 
+// Mismo set que QUICK_REACTIONS en client/src/pages/Chat.jsx — no vía picker libre (a propósito,
+// el pedido fue "solo algunos emojis"), así que el servidor rechaza cualquier otro valor.
+const QUICK_REACTIONS = ['👍', '👀', '✅', '🙌', '❤️', '🎉', '🔥', '😂'];
+
 module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUpload, verifyAndPersistFiles, SAFE_ATTACHMENT_MIME_EXT }) {
   const router = express.Router();
 
@@ -142,7 +146,70 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
       }
 
       const msgs = await query.orderBy('m.created_at', 'desc').limit(PAGE_SIZE);
-      res.json(msgs.reverse());
+      const ordered = msgs.reverse();
+
+      // Reacciones batcheadas en una sola query (por message_id) en vez de una por mensaje —
+      // mismo criterio que los adjuntos/respuestas de comentarios de video.
+      const messageIds = ordered.map(m => m.id);
+      const reactionRows = messageIds.length
+        ? await db('chat_reactions as r')
+            .join('users as u', 'r.user_id', 'u.id')
+            .whereIn('r.message_id', messageIds)
+            .select('r.message_id', 'r.emoji', 'r.user_id', 'u.name as user_name')
+        : [];
+      const reactionsByMessage = {};
+      for (const row of reactionRows) {
+        const byEmoji = (reactionsByMessage[row.message_id] ??= {});
+        (byEmoji[row.emoji] ??= { emoji: row.emoji, users: [] }).users.push({ id: row.user_id, name: row.user_name });
+      }
+      const withReactions = ordered.map(m => ({
+        ...m,
+        reactions: Object.values(reactionsByMessage[m.id] || {}).map(r => ({ ...r, count: r.users.length })),
+      }));
+      res.json(withReactions);
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // POST toggle a reaction on a message — mismo emoji + mismo usuario un segundo click la saca
+  // (comportamiento Slack), no la duplica ni la reemplaza por otra.
+  router.post('/api/chat/messages/:id/react', auth, async (req, res) => {
+    try {
+      const { emoji } = req.body;
+      if (!QUICK_REACTIONS.includes(emoji)) return res.status(400).json({ error: 'Emoji no permitido' });
+      const message = await db('chat_messages').where({ id: req.params.id }).first();
+      if (!message) return res.status(404).json({ error: 'Mensaje no encontrado' });
+
+      // Mismo criterio de acceso que ver el mensaje: participante del DM, o miembro del canal (o admin).
+      if (message.type === 'dm') {
+        if (req.user.role !== 'admin' && req.user.id !== message.sender_id && req.user.id !== message.receiver_id) {
+          return res.status(403).json({ error: 'Sin acceso' });
+        }
+      } else if (message.type === 'channel') {
+        if (req.user.role !== 'admin') {
+          const isMember = await db('chat_channel_members').where({ channel_id: message.channel_id, user_id: req.user.id }).first();
+          if (!isMember) return res.status(403).json({ error: 'No sos miembro de este canal' });
+        }
+      }
+
+      const existing = await db('chat_reactions').where({ message_id: req.params.id, user_id: req.user.id, emoji }).first();
+      let action;
+      if (existing) {
+        await db('chat_reactions').where({ id: existing.id }).delete();
+        action = 'remove';
+      } else {
+        await db('chat_reactions').insert({ id: uuidv4(), message_id: req.params.id, user_id: req.user.id, emoji });
+        action = 'add';
+      }
+
+      const actor = await db('users').where({ id: req.user.id }).select('name').first();
+      const payload = { messageId: req.params.id, emoji, userId: req.user.id, userName: actor?.name, action };
+      if (message.type === 'dm') {
+        io.to(`user:${message.sender_id}`).to(`user:${message.receiver_id}`).emit('chat:reaction', payload);
+      } else if (message.type === 'channel') {
+        const members = await db('chat_channel_members').where({ channel_id: message.channel_id }).pluck('user_id');
+        for (const uid of members) io.to(`user:${uid}`).emit('chat:reaction', payload);
+      }
+      res.json({ success: true, action });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 
