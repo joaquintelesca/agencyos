@@ -54,7 +54,7 @@ function VoiceNotePlayer({ src, knownDuration }) {
         }}
         style={{ display: 'none' }}
       />
-      <button onClick={togglePlay} title={playing ? 'Pausar' : 'Reproducir'} style={{
+      <button onClick={togglePlay} title={playing ? 'Pausar' : 'Reproducir'} aria-label={playing ? 'Pausar' : 'Reproducir'} style={{
         background: 'var(--accent)', border: 'none', borderRadius: '50%', width: 26, height: 26,
         display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
         flexShrink: 0, color: '#fff', fontSize: 10
@@ -696,6 +696,7 @@ export default function Chat() {
                   onClick={() => setShowNewChannel(true)}
                   style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}
                   title="Nuevo canal"
+                  aria-label="Nuevo canal"
                 >＋</button>
               )}
             </div>
@@ -875,6 +876,7 @@ export default function Chat() {
                   disabled={sendingRecordedAudio}
                   style={{ ...btnStyle, color: 'var(--text3)' }}
                   title="Descartar"
+                  aria-label="Descartar nota de voz"
                 >
                   🗑
                 </button>
@@ -889,6 +891,7 @@ export default function Chat() {
                     transition: 'all 0.15s', flexShrink: 0
                   }}
                   title="Enviar nota de voz"
+                  aria-label="Enviar nota de voz"
                 >
                   <span style={{ fontSize: 14, color: '#fff' }}>{sendingRecordedAudio ? '…' : '↑'}</span>
                 </button>
@@ -906,6 +909,7 @@ export default function Chat() {
                   onClick={() => !uploadingFile && fileInputRef.current?.click()}
                   style={{ ...btnStyle, opacity: uploadingFile ? 0.5 : 1 }}
                   title={uploadingFile ? 'Subiendo...' : 'Adjuntar archivo'}
+                  aria-label={uploadingFile ? 'Subiendo...' : 'Adjuntar archivo'}
                   disabled={uploadingFile}
                 >
                   {uploadingFile ? '⏳' : '📎'}
@@ -913,7 +917,7 @@ export default function Chat() {
                 {uploadingFile && (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text3)' }}>
                     {uploadProgress}%
-                    <button onClick={cancelFileUpload} title="Cancelar subida"
+                    <button onClick={cancelFileUpload} title="Cancelar subida" aria-label="Cancelar subida"
                       style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 12, padding: 0 }}>
                       ✕
                     </button>
@@ -923,6 +927,7 @@ export default function Chat() {
                   onClick={recording ? stopRecording : startRecording}
                   style={{ ...btnStyle, color: recording ? 'var(--red)' : undefined }}
                   title={recording ? 'Detener grabación' : 'Nota de voz'}
+                  aria-label={recording ? 'Detener grabación' : 'Grabar nota de voz'}
                 >
                   {recording ? '⏹' : '🎤'}
                 </button>
@@ -959,6 +964,8 @@ export default function Chat() {
                 <button
                   onClick={() => sendMessage(input)}
                   disabled={!input.trim() && !recording}
+                  title="Enviar mensaje"
+                  aria-label="Enviar mensaje"
                   style={{
                     background: input.trim() ? 'var(--accent)' : 'var(--bg4)',
                     border: 'none', borderRadius: 8, width: 32, height: 32,

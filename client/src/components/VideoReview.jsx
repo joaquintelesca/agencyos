@@ -430,6 +430,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           className="video-delete-btn"
           onClick={e => { e.stopPropagation(); deleteVideo(v); }}
           title="Eliminar video"
+          aria-label="Eliminar video"
           style={{ position: 'absolute', top: 10, right: 10, zIndex: 1, width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           🗑
         </button>
@@ -713,6 +714,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                   )}
                   <button onClick={e => { e.stopPropagation(); resolveComment(c.id); }}
                     title={c.resolved ? 'Marcar como pendiente' : 'Marcar como hecho'}
+                    aria-label={c.resolved ? 'Marcar como pendiente' : 'Marcar como hecho'}
                     style={{ background: c.resolved ? '#10b98120' : 'transparent', border: `1px solid ${c.resolved ? '#10b981' : 'var(--border)'}`, borderRadius: 6, width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 13, transition: 'all 0.15s', flexShrink: 0 }}>
                     {c.resolved ? '✅' : '☐'}
                   </button>
@@ -832,7 +834,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                             <input ref={replyFileRef} type="file" multiple style={{ display: 'none' }} onChange={e => setReplyFiles(Array.from(e.target.files))} />
                             <button onClick={() => replyFileRef.current?.click()}
                               style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: replyFiles.length > 0 ? 'var(--yellow)' : 'var(--text3)', fontSize: 16, padding: '2px 4px', borderRadius: 5 }}
-                              title="Adjuntar archivo">📎</button>
+                              title="Adjuntar archivo" aria-label="Adjuntar archivo">📎</button>
                             {replyFiles.length > 0 && <span style={{ fontSize: 10, color: 'var(--yellow)' }}>{replyFiles.length} archivo(s)</span>}
                           </div>
                           <div style={{ display: 'flex', gap: 5 }}>

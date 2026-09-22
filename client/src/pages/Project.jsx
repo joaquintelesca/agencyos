@@ -410,6 +410,7 @@ export default function Project() {
           )}
           <span className="badge" style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)', background: 'var(--bg3)' }}>{tasks.length} tareas</span>
           <button onClick={toggleMute} title={project.muted ? 'Reactivar notificaciones de este proyecto' : 'Silenciar notificaciones de este proyecto (las @menciones igual llegan)'}
+            aria-label={project.muted ? 'Reactivar notificaciones' : 'Silenciar notificaciones'}
             style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: project.muted ? 'var(--yellow)' : 'var(--text3)', background: 'var(--bg3)', padding: '2px 8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'var(--font)' }}>
             {project.muted ? '🔕 Silenciado' : '🔔'}
           </button>
@@ -509,7 +510,7 @@ export default function Project() {
                       {tasks.filter(t => t.status === col.key).length}
                     </span>
                   </div>
-                  {user.role === 'admin' && <button onClick={() => openCreateTask(col.key)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>＋</button>}
+                  {user.role === 'admin' && <button onClick={() => openCreateTask(col.key)} title={`Agregar tarea a ${col.label}`} aria-label={`Agregar tarea a ${col.label}`} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>＋</button>}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>

@@ -329,8 +329,8 @@ export default function CalendarPage() {
           </div>
           <button onClick={goToToday} className="btn btn-ghost btn-sm">Hoy</button>
           <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={() => goToPeriod(-1)} style={navBtnStyle} title={viewMode === 'week' ? 'Semana anterior' : 'Mes anterior'}>‹</button>
-            <button onClick={() => goToPeriod(1)} style={navBtnStyle} title={viewMode === 'week' ? 'Semana siguiente' : 'Mes siguiente'}>›</button>
+            <button onClick={() => goToPeriod(-1)} style={navBtnStyle} title={viewMode === 'week' ? 'Semana anterior' : 'Mes anterior'} aria-label={viewMode === 'week' ? 'Semana anterior' : 'Mes anterior'}>‹</button>
+            <button onClick={() => goToPeriod(1)} style={navBtnStyle} title={viewMode === 'week' ? 'Semana siguiente' : 'Mes siguiente'} aria-label={viewMode === 'week' ? 'Semana siguiente' : 'Mes siguiente'}>›</button>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowNewEvent(toDateKey(new Date()))}>+ Evento</button>
           <button className="btn btn-ghost btn-sm" onClick={openFeedModal}>🔗 Suscribirse</button>

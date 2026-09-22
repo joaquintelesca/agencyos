@@ -519,7 +519,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           <div style={{ position: 'absolute', top: 46, left: 10, right: 10, zIndex: 3, background: 'rgba(20,20,23,0.92)', border: '1px solid var(--border2)', borderRadius: 12, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: 3 }}>
               {[['freehand', Icon.pencil, 'Libre'], ['arrow', Icon.arrow, 'Flecha'], ['rect', Icon.rect, 'Rectángulo'], ['text', Icon.text, 'Texto']].map(([t, IconCmp, label]) => (
-                <button key={t} onClick={() => setTool(t)} title={label}
+                <button key={t} onClick={() => setTool(t)} title={label} aria-label={label} aria-pressed={tool === t}
                   style={{ ...iconBtn, background: tool === t ? 'var(--bg4)' : 'transparent', color: tool === t ? 'var(--text)' : 'var(--text2)', border: `1px solid ${tool === t ? 'var(--border2)' : 'transparent'}` }}>
                   <IconCmp />
                 </button>
@@ -528,7 +528,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border2)' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {DRAW_COLORS.map(c => (
-                <button key={c} onClick={() => setDrawColor(c)} title={c}
+                <button key={c} onClick={() => setDrawColor(c)} title={c} aria-label={`Color de dibujo ${c}`} aria-pressed={drawColor === c}
                   style={{ width: 17, height: 17, borderRadius: '50%', background: c, cursor: 'pointer', padding: 0, border: drawColor === c ? '2px solid #fff' : '2px solid transparent', boxShadow: drawColor === c ? '0 0 0 2px rgba(0,0,0,0.4)' : 'none' }} />
               ))}
             </div>
@@ -536,6 +536,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               {STROKE_WIDTHS.map(w => (
                 <button key={w} onClick={() => setStrokeWidth(w)} title={w === STROKE_WIDTHS[0] ? 'Fino' : w === STROKE_WIDTHS[1] ? 'Medio' : 'Grueso'}
+                  aria-label={w === STROKE_WIDTHS[0] ? 'Trazo fino' : w === STROKE_WIDTHS[1] ? 'Trazo medio' : 'Trazo grueso'} aria-pressed={strokeWidth === w}
                   style={{ ...iconBtn, width: 22, height: 22 }}>
                   <span style={{ display: 'block', borderRadius: '50%', width: w + 2, height: w + 2, background: strokeWidth === w ? 'var(--text)' : 'var(--text3)' }} />
                 </button>
@@ -544,10 +545,10 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             {annotations.length > 0 && (
               <>
                 <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border2)' }} />
-                <button onClick={() => setAnnotations(prev => prev.slice(0, -1))} title="Deshacer último trazo (Ctrl+Z)" style={iconBtn}>
+                <button onClick={() => setAnnotations(prev => prev.slice(0, -1))} title="Deshacer último trazo (Ctrl+Z)" aria-label="Deshacer último trazo" style={iconBtn}>
                   <Icon.undo />
                 </button>
-                <button onClick={clearAnnotations} title="Limpiar dibujo" style={{ ...iconBtn, color: 'var(--red)' }}>
+                <button onClick={clearAnnotations} title="Limpiar dibujo" aria-label="Limpiar dibujo" style={{ ...iconBtn, color: 'var(--red)' }}>
                   <Icon.trash />
                 </button>
               </>
@@ -605,13 +606,13 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             como red de seguridad si aun así no entra todo, en vez de desbordar o aplastarse. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingBottom: 10, flexWrap: 'wrap', rowGap: 6 }}>
           <button onClick={() => { if (videoRef.current) { videoRef.current.currentTime = 0; setCurrentTime(0); } }}
-            title="Ir al inicio" style={iconBtn}><Icon.skipBack /></button>
-          <button onClick={togglePlay} title={playing ? 'Pausar' : 'Reproducir'}
+            title="Ir al inicio" aria-label="Ir al inicio" style={iconBtn}><Icon.skipBack /></button>
+          <button onClick={togglePlay} title={playing ? 'Pausar' : 'Reproducir'} aria-label={playing ? 'Pausar' : 'Reproducir'}
             style={{ ...iconBtn, width: 34, height: 34, background: 'var(--bg4)', color: 'var(--text)' }}>
             {playing ? <Icon.pause /> : <Icon.play />}
           </button>
           <button onClick={() => { if (videoRef.current) { videoRef.current.currentTime = Math.min(duration, currentTime + 5); } }}
-            title="Adelantar 5s" style={iconBtn}><Icon.skipForward /></button>
+            title="Adelantar 5s" aria-label="Adelantar 5 segundos" style={iconBtn}><Icon.skipForward /></button>
           <span style={{ fontSize: 11.5, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums', padding: '0 4px', whiteSpace: 'nowrap' }}>
             {formatT(currentTime)} / {formatT(duration)}
           </span>
@@ -635,22 +636,23 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
                 </button>
               )}
               <button onClick={() => { setRangeMode(false); setRangeStart(null); setRangeEnd(null); setCapturedTs(null); setShowCommentInput(false); }}
+                title="Cancelar selección de rango" aria-label="Cancelar selección de rango"
                 style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', color: 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>✕</button>
             </div>
           )}
 
-          <button onClick={() => setRate(RATES[(RATES.indexOf(playbackRate) + 1) % RATES.length])} title="Velocidad de reproducción"
+          <button onClick={() => setRate(RATES[(RATES.indexOf(playbackRate) + 1) % RATES.length])} title="Velocidad de reproducción" aria-label={`Velocidad de reproducción, actualmente ${playbackRate}×`}
             style={{ fontFamily: 'inherit', fontSize: 11, fontWeight: 600, color: playbackRate !== 1 ? 'var(--accent2)' : 'var(--text2)', background: playbackRate !== 1 ? 'var(--accent-glow)' : 'transparent', border: `1px solid ${playbackRate !== 1 ? 'var(--accent)' : 'var(--border2)'}`, borderRadius: 7, padding: '5px 8px', cursor: 'pointer', minWidth: 34 }}>
             {playbackRate}×
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button onClick={toggleMute} title={muted || volume === 0 ? 'Activar sonido' : 'Silenciar'} style={iconBtn}>
+            <button onClick={toggleMute} title={muted || volume === 0 ? 'Activar sonido' : 'Silenciar'} aria-label={muted || volume === 0 ? 'Activar sonido' : 'Silenciar'} style={iconBtn}>
               {muted || volume === 0 ? <Icon.mute /> : <Icon.volume />}
             </button>
             <input type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} onChange={onVolumeChange}
-              style={{ width: 52, accentColor: 'var(--accent)', cursor: 'pointer' }} title="Volumen" />
+              style={{ width: 52, accentColor: 'var(--accent)', cursor: 'pointer' }} title="Volumen" aria-label="Volumen" />
           </div>
-          <button onClick={toggleFullscreen} title="Pantalla completa" style={iconBtn}><Icon.fullscreen /></button>
+          <button onClick={toggleFullscreen} title="Pantalla completa" aria-label="Pantalla completa" style={iconBtn}><Icon.fullscreen /></button>
         </div>
       </div>
 
@@ -661,12 +663,14 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             <div style={{ background: 'var(--bg3)', border: '1px solid var(--yellow)', borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 11, color: 'var(--yellow)', fontWeight: 600 }}>⬌ Rango: {formatT(capturedTs.start)} → {formatT(capturedTs.end)}</span>
               <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); setRangeMode(false); setRangeStart(null); setRangeEnd(null); clearAnnotations(); }}
+                title="Descartar rango marcado" aria-label="Descartar rango marcado"
                 style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>✕</button>
             </div>
           ) : (
             <div style={{ background: 'var(--bg3)', border: '1px solid var(--accent)', borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>⏸ Pausado en {formatT(capturedTs?.ts ?? currentTime)}</span>
               <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
+                title="Descartar marca de tiempo" aria-label="Descartar marca de tiempo"
                 style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>✕</button>
             </div>
           )}

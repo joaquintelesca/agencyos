@@ -117,9 +117,9 @@ export default function Team() {
             </div>
             {user?.role === 'admin' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <button className="btn btn-ghost btn-icon btn-sm" onClick={e => { e.stopPropagation(); openEdit(u); }} title="Editar">✏️</button>
+                <button className="btn btn-ghost btn-icon btn-sm" onClick={e => { e.stopPropagation(); openEdit(u); }} title="Editar" aria-label={`Editar a ${u.name}`}>✏️</button>
                 {u.id !== user.id && (
-                  <button className="btn btn-ghost btn-icon btn-sm" onClick={e => { e.stopPropagation(); deleteUser(u.id); }} style={{ color: 'var(--red)' }} title="Eliminar">🗑</button>
+                  <button className="btn btn-ghost btn-icon btn-sm" onClick={e => { e.stopPropagation(); deleteUser(u.id); }} style={{ color: 'var(--red)' }} title="Eliminar" aria-label={`Eliminar a ${u.name}`}>🗑</button>
                 )}
               </div>
             )}

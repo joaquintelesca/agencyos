@@ -570,7 +570,7 @@ export default function Layout() {
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 30, height: 30, background: 'var(--accent)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🎬</div>
           <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>AgencyOS</span>
-          <button onClick={() => isNarrowViewport ? setMobileSidebarOpen(false) : setSidebarCollapsed(true)} title="Ocultar sidebar" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 15, padding: 4, flexShrink: 0 }}>◀</button>
+          <button onClick={() => isNarrowViewport ? setMobileSidebarOpen(false) : setSidebarCollapsed(true)} title="Ocultar sidebar" aria-label="Ocultar sidebar" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 15, padding: 4, flexShrink: 0 }}>◀</button>
         </div>
 
         <div style={{ padding: '10px 8px 0' }}>
@@ -611,7 +611,7 @@ export default function Layout() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', marginBottom: 4 }}>
             <SideLabel>Clientes</SideLabel>
             {user?.role === 'admin' && (
-              <button onClick={() => setShowNewClient(true)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 4px' }} title="Nuevo cliente">＋</button>
+              <button onClick={() => setShowNewClient(true)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 4px' }} title="Nuevo cliente" aria-label="Nuevo cliente">＋</button>
             )}
           </div>
 
@@ -711,8 +711,8 @@ export default function Layout() {
             <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>{user?.role}</div>
           </div>
-          <button onClick={openChangePassword} title="Cambiar contraseña" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>🔑</button>
-          <button onClick={logout} title="Cerrar sesión" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>⏻</button>
+          <button onClick={openChangePassword} title="Cambiar contraseña" aria-label="Cambiar contraseña" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>🔑</button>
+          <button onClick={logout} title="Cerrar sesión" aria-label="Cerrar sesión" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>⏻</button>
         </div>
       </aside>
       )}
@@ -726,7 +726,7 @@ export default function Layout() {
       )}
 
       {!sidebarVisible && (
-        <button onClick={() => isNarrowViewport ? setMobileSidebarOpen(true) : setSidebarCollapsed(false)} title="Mostrar sidebar" style={{
+        <button onClick={() => isNarrowViewport ? setMobileSidebarOpen(true) : setSidebarCollapsed(false)} title="Mostrar sidebar" aria-label="Mostrar sidebar" style={{
           position: 'fixed', left: 10, top: 12, zIndex: 101, width: 32, height: 32, borderRadius: 8,
           background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text2)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 14
@@ -741,7 +741,7 @@ export default function Layout() {
               <span style={{ fontSize: 13, color: 'var(--yellow)', fontWeight: 600 }}>Almacenamiento: {storageWarning.gb} GB usados</span>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>— Superaste los 20GB. Considerá borrar archivos viejos o migrar a la nube.</span>
             </div>
-            <button onClick={() => setStorageWarning(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>✕</button>
+            <button onClick={() => setStorageWarning(null)} title="Cerrar aviso" aria-label="Cerrar aviso de almacenamiento" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>✕</button>
           </div>
         )}
         {/* Va acá adentro y no solo en App.jsx para que un error en una pantalla deje el sidebar
@@ -1270,7 +1270,7 @@ export default function Layout() {
                 <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.4 }}>{notificationLabel(t)}</div>
                 {t.preview && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{renderMentions(t.preview)}"</div>}
               </div>
-              <button onClick={e => { e.stopPropagation(); dismissToast(t.id); }} title="Cerrar"
+              <button onClick={e => { e.stopPropagation(); dismissToast(t.id); }} title="Cerrar" aria-label="Cerrar notificación"
                 style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 14, cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>
                 ✕
               </button>
@@ -1289,9 +1289,9 @@ function ProjectRowActions({ fontSize, padding, onEdit, onDelete, onDuplicate })
   return (
     <div style={{ display: 'flex', gap: 0 }}>
       {/* Solo las filas de proyecto pasan onDuplicate — no tiene sentido "duplicar" un cliente. */}
-      {onDuplicate && <button className="reveal-btn edit" title="Duplicar proyecto" onClick={onDuplicate} style={{ fontSize, padding }}>⧉</button>}
-      <button className="reveal-btn edit" onClick={onEdit} style={{ fontSize, padding }}>✏️</button>
-      <button className="reveal-btn delete" onClick={onDelete} style={{ fontSize, padding }}>🗑</button>
+      {onDuplicate && <button className="reveal-btn edit" title="Duplicar proyecto" aria-label="Duplicar proyecto" onClick={onDuplicate} style={{ fontSize, padding }}>⧉</button>}
+      <button className="reveal-btn edit" title="Editar" aria-label="Editar" onClick={onEdit} style={{ fontSize, padding }}>✏️</button>
+      <button className="reveal-btn delete" title="Eliminar" aria-label="Eliminar" onClick={onDelete} style={{ fontSize, padding }}>🗑</button>
     </div>
   );
 }
