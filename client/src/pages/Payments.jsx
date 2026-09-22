@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { initials, monthKey } from '../utils/format';
 import useModalA11y from '../hooks/useModalA11y';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 
 const UPWORK_OPTIONS = ['Pendiente de carga', 'Cargado', 'No'];
 
@@ -11,6 +12,7 @@ export default function Payments() {
   const { api, socket } = useAuth();
   const { alert } = useAlert();
   const { openEditProject } = useOutletContext();
+  const isNarrowViewport = useNarrowViewport();
   const [projects, setProjects] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -194,14 +196,18 @@ export default function Payments() {
 
   return (
     <div style={{ flex: 1, overflow: 'auto' }}>
-      <div style={{ padding: '0 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56, flexShrink: 0 }}>
+      <div style={{
+        padding: isNarrowViewport ? '10px 16px' : '0 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', flexShrink: 0,
+        ...(isNarrowViewport ? { flexWrap: 'wrap', rowGap: 10 } : { height: 56 })
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 20 }}>💰</span>
           <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'var(--fs-xl)' }}>Pagos</h1>
           <span className="badge" style={{ background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)' }}>🔒 Solo admin</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: isNarrowViewport ? 'wrap' : 'nowrap', rowGap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: isNarrowViewport ? 'wrap' : 'nowrap' }}>
             <select value={filterClient} onChange={e => setFilterClient(e.target.value)}
               style={{ fontSize: 11, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border)', background: filterClient ? 'var(--accent-glow)' : 'var(--bg3)', color: filterClient ? 'var(--accent2)' : 'var(--text2)', cursor: 'pointer', fontFamily: 'var(--font)' }}>
               <option value="">Todos los clientes</option>
@@ -237,7 +243,7 @@ export default function Payments() {
         {tab === 'active' && (
           <>
             {/* Summary */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isNarrowViewport ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 24 }}>
               {[
                 { label: 'Por pagar a editores', val: `$${totalEditorPending.toFixed(0)}`, color: 'var(--pink)' },
                 { label: 'Por cobrar a clientes', val: `$${totalClientPending.toFixed(0)}`, color: 'var(--lavender)' },
@@ -308,7 +314,7 @@ export default function Payments() {
               </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isNarrowViewport ? '1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 24 }}>
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Recibido de clientes</div>
                 <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--lavender)' }}>${totalReceivedMonth.toFixed(0)}</div>
@@ -333,7 +339,7 @@ export default function Payments() {
               {totalUpworkFeeMonth > 0 && <> — este mes se fueron <strong style={{ color: 'var(--text2)' }}>${totalUpworkFeeMonth.toFixed(0)}</strong> en comisiones</>} — "Pagado a editores" nunca se ve afectado por ese %, es siempre el monto fijo acordado con cada editor.
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isNarrowViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Detalle — cobrado a clientes</div>
                 {receivedThisMonth.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>Nada cobrado este mes</div>}

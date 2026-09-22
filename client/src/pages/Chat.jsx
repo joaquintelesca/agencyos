@@ -4,6 +4,7 @@ import { useAlert } from '../context/AlertContext';
 import { initials as initialsBase } from '../utils/format';
 import { uploadWithProgress } from '../utils/upload';
 import useModalA11y from '../hooks/useModalA11y';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 
 const formatRecordingTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -73,6 +74,9 @@ function VoiceNotePlayer({ src, knownDuration }) {
 export default function Chat() {
   const { user, api, socket, onlineUsers, mediaUrl, token } = useAuth();
   const { alert } = useAlert();
+  // En celular la lista de conversaciones (240px fijo) y el chat abierto no entran juntos —
+  // abajo del breakpoint se muestra uno u otro, como cualquier app de mensajería mobile.
+  const isNarrowViewport = useNarrowViewport();
   const [conversations, setConversations] = useState([]);
   const [channels, setChannels] = useState([]);
   const [activeConv, setActiveConv] = useState(null);
@@ -594,12 +598,15 @@ export default function Chat() {
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
 
       {/* ── SIDEBAR ── */}
-      <div style={{ width: 240, background: 'var(--bg2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      {(!isNarrowViewport || !activeConv) && (
+      <div style={{ width: isNarrowViewport ? '100%' : 240, background: 'var(--bg2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
 
         {/* Header del sidebar */}
         <div style={{ padding: '14px 14px 10px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* marginLeft en angosto despeja el botón flotante "▶ Mostrar sidebar" del shell,
+                que si no tapa el título (mismo problema que el botón "Volver" de la conversación). */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: isNarrowViewport ? 34 : 0 }}>
               <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>Chat</span>
               <span tabIndex={0}
                 title="Mensajes directos: 1 a 1 con otra persona. Canales: grupales, con varios miembros. Notas (📝): tu bloc de notas personal, solo vos lo ves. Cada proyecto tiene además su propio chat, en la pestaña 'Chat' dentro del proyecto."
@@ -734,9 +741,10 @@ export default function Chat() {
           </div>
         </div>
       </div>
+      )}
 
       {/* ── ÁREA PRINCIPAL ── */}
-      {!activeConv ? (
+      {isNarrowViewport && !activeConv ? null : !activeConv ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, color: 'var(--text3)' }}>
           <div style={{ fontSize: 48 }}>💬</div>
           <div style={{ textAlign: 'center' }}>
@@ -749,6 +757,13 @@ export default function Chat() {
 
           {/* Header */}
           <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+            {isNarrowViewport && (
+              // marginLeft despeja el botón flotante "▶ Mostrar sidebar" del shell (fixed, top-left,
+              // visible por default en angosto) — sin esto quedaban superpuestos y el de acá no
+              // recibía el click.
+              <button onClick={() => setActiveConv(null)} title="Volver" aria-label="Volver a la lista"
+                style={{ background: 'transparent', border: 'none', color: 'var(--text2)', fontSize: 18, cursor: 'pointer', padding: 0, marginLeft: 34, flexShrink: 0 }}>←</button>
+            )}
             {activeConv.type === 'dm' ? (
               <>
                 <div style={{ position: 'relative' }}>
