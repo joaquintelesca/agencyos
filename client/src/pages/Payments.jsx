@@ -133,6 +133,8 @@ export default function Payments() {
   const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + p.computed_editor_total, 0);
   const totalUpworkFeeMonth = receivedThisMonth.reduce((s, p) => s + (p.computed_client_gross - p.computed_client_net), 0);
 
+  const pendingCompleteModalRef = useModalA11y(!!pendingComplete, () => setPendingComplete(null));
+
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><div className="spinner" /></div>;
 
   const thStyle = { padding: '7px 12px', textAlign: 'left', fontSize: 10, color: 'var(--text3)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' };
@@ -189,8 +191,6 @@ export default function Payments() {
       </div>
     );
   };
-
-  const pendingCompleteModalRef = useModalA11y(!!pendingComplete, () => setPendingComplete(null));
 
   return (
     <div style={{ flex: 1, overflow: 'auto' }}>

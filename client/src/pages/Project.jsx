@@ -364,6 +364,14 @@ export default function Project() {
 
   const formatTime = (ts) => new Date(ts).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
 
+  // Los 3 hooks de abajo tienen que llamarse ANTES de los early return de notFound/!project —
+  // si no, la primera carga (con !project todavía true) los saltea, y en cuanto project llega
+  // React tira "Rendered more hooks than during the previous render" (bug real, visto en Pagos
+  // con el mismo patrón: un hook agregado después de un early return existente).
+  const taskModalRef = useModalA11y(showTaskModal, () => setShowTaskModal(false));
+  const reviewReminderModalRef = useModalA11y(!!reviewReminderTask, () => setReviewReminderTask(null));
+  const priceModalRef = useModalA11y(showPriceModal, () => setShowPriceModal(false));
+
   if (notFound) return (
     <div className="empty" style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
       <div className="empty-icon">🔍</div>
@@ -381,10 +389,6 @@ export default function Project() {
     (project.payment_editor_id === user.id ? !(Number(project.client_amount) > 0) : !(Number(project.payment_amount) > 0))
     || !project.payment_editor_id
   );
-
-  const taskModalRef = useModalA11y(showTaskModal, () => setShowTaskModal(false));
-  const reviewReminderModalRef = useModalA11y(!!reviewReminderTask, () => setReviewReminderTask(null));
-  const priceModalRef = useModalA11y(showPriceModal, () => setShowPriceModal(false));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
