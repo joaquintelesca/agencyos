@@ -114,7 +114,7 @@ export default function Dashboard() {
                 <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
                 {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
                 {p.payment_editor_name && (
-                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: p.payment_editor_color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>
+                  <div className="avatar" style={{ width: 22, height: 22, background: p.payment_editor_color, fontSize: 9, fontWeight: 700 }}>
                     {initials(p.payment_editor_name)}
                   </div>
                 )}
@@ -132,7 +132,7 @@ export default function Dashboard() {
                   {proj && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{proj.client_name ? `${proj.client_name} · ` : ''}{proj.name}</span>}
                   {t.assignee_name && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <div style={{ width: 20, height: 20, borderRadius: '50%', background: t.assignee_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>
+                      <div className="avatar" style={{ width: 20, height: 20, background: t.assignee_color || 'var(--accent)', fontSize: 8, fontWeight: 700 }}>
                         {initials(t.assignee_name)}
                       </div>
                       <span style={{ fontSize: 11, color: 'var(--text3)' }}>{t.assignee_name}</span>
@@ -185,7 +185,7 @@ export default function Dashboard() {
               <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
               {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
               {p.payment_editor_name && (
-                <div style={{ width: 22, height: 22, borderRadius: '50%', background: p.payment_editor_color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>
+                <div className="avatar" style={{ width: 22, height: 22, background: p.payment_editor_color, fontSize: 9, fontWeight: 700 }}>
                   {initials(p.payment_editor_name)}
                 </div>
               )}
@@ -210,7 +210,7 @@ export default function Dashboard() {
               {proj && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{proj.client_name ? `${proj.client_name} · ` : ''}{proj.name}</span>}
               {t.assignee_name && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: t.assignee_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>
+                  <div className="avatar" style={{ width: 20, height: 20, background: t.assignee_color || 'var(--accent)', fontSize: 8, fontWeight: 700 }}>
                     {initials(t.assignee_name)}
                   </div>
                   <span style={{ fontSize: 11, color: 'var(--text3)' }}>{t.assignee_name}</span>
@@ -240,7 +240,7 @@ export default function Dashboard() {
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.client_name ? `${v.client_name} · ` : ''}{v.project_name}</span>
             {v.uploader_name && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>
+                <div className="avatar" style={{ width: 20, height: 20, background: 'var(--accent)', fontSize: 8, fontWeight: 700 }}>
                   {initials(v.uploader_name)}
                 </div>
                 <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.uploader_name}</span>
@@ -287,7 +287,7 @@ export default function Dashboard() {
                 {p.client_name ? `${p.client_name} · ` : ''}{p.name}
               </span>
               {p.editor_name && (
-                <div style={{ width: 20, height: 20, borderRadius: '50%', background: p.editor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                <div className="avatar" style={{ width: 20, height: 20, background: p.editor_color || 'var(--accent)', fontSize: 8, fontWeight: 700 }}>
                   {initials(p.editor_name)}
                 </div>
               )}

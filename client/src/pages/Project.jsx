@@ -433,7 +433,7 @@ export default function Project() {
                   {members && members.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', padding: '4px 6px' }}>Nadie tiene acceso todavía</div>}
                   {members && members.map(m => (
                     <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px' }}>
-                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: m.avatar_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff', flexShrink: 0 }}>{initials(m.name)}</div>
+                      <div className="avatar" style={{ width: 22, height: 22, background: m.avatar_color || 'var(--accent)', fontSize: 9, fontWeight: 700 }}>{initials(m.name)}</div>
                       <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{m.name}</span>
                       <span style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>{m.role === 'admin' ? 'admin' : m.member_role === 'owner' ? 'creador' : 'editor'}</span>
                     </div>
@@ -451,7 +451,7 @@ export default function Project() {
           )}
           {project.payment_editor_name && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <div style={{ width: 20, height: 20, borderRadius: '50%', background: project.payment_editor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>{initials(project.payment_editor_name)}</div>
+              <div className="avatar" style={{ width: 20, height: 20, background: project.payment_editor_color || 'var(--accent)', fontSize: 8, fontWeight: 700 }}>{initials(project.payment_editor_name)}</div>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>{project.payment_editor_name}</span>
             </div>
           )}

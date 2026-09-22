@@ -156,7 +156,7 @@ export default function ClientDashboard() {
           )}
           {p.payment_editor_name && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: p.payment_editor_color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>
+              <div className="avatar" style={{ width: 22, height: 22, background: p.payment_editor_color, fontSize: 9, fontWeight: 700 }}>
                 {initials(p.payment_editor_name)}
               </div>
               <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.payment_editor_name}</span>

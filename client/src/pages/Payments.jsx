@@ -479,7 +479,7 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }
       {/* Editor */}
       <td style={{ padding: '9px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div style={{ width: 20, height: 20, borderRadius: '50%', background: p.editor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>
+          <div className="avatar" style={{ width: 20, height: 20, background: p.editor_color || 'var(--accent)', fontSize: 8, fontWeight: 700 }}>
             {initials(p.editor_name)}
           </div>
           <span style={{ fontSize: 12, color: 'var(--text2)' }}>{p.editor_name}</span>

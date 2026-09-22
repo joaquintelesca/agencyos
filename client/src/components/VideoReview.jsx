@@ -720,7 +720,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                   </button>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: c.avatar_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                  <div className="avatar" style={{ width: 24, height: 24, background: c.avatar_color || 'var(--accent)', fontSize: 9, fontWeight: 700 }}>
                     {initials(c.user_name)}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -795,7 +795,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {c.replies.map(r => (
                             <div key={r.id} style={{ display: 'flex', gap: 7 }}>
-                              <div style={{ width: 20, height: 20, borderRadius: '50%', background: r.avatar_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                              <div className="avatar" style={{ width: 20, height: 20, background: r.avatar_color || 'var(--accent)', fontSize: 8, fontWeight: 700 }}>
                                 {initials(r.user_name)}
                               </div>
                               <div style={{ flex: 1 }}>

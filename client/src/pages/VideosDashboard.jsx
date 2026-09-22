@@ -23,7 +23,7 @@ function VideoRow({ v, navigate, showClient }) {
       <span style={{ fontSize: 11, color: 'var(--text3)' }}>{showClient && v.client_name ? `${v.client_name} · ` : ''}{v.project_name}</span>
       {v.uploader_name && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#fff' }}>
+          <div className="avatar" style={{ width: 20, height: 20, background: 'var(--accent)', fontSize: 8, fontWeight: 700 }}>
             {initials(v.uploader_name)}
           </div>
           <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.uploader_name}</span>
