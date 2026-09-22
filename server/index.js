@@ -1541,125 +1541,12 @@ app.delete('/api/projects/:id', auth, async (req, res) => {
 });
 
 // ─── PROJECT MEMBERS CRUD ───────────────────────────────────────────────────
-app.get('/api/projects/:projectId/members', auth, requireProjectAccess(), async (req, res) => {
-  try {
-    const members = await db('project_members as pm')
-      .join('users as u', 'pm.user_id', 'u.id')
-      .where('pm.project_id', req.params.projectId)
-      .select('u.id', 'u.name', 'u.avatar_color', 'u.role', 'pm.role as member_role');
-    res.json(members);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-});
-
-app.post('/api/projects/:projectId/members', auth, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    const { user_id } = req.body;
-    const user = await db('users').where({ id: user_id }).first();
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    await addProjectMember(req.params.projectId, user_id);
-    res.json({ success: true });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-});
-
-app.delete('/api/projects/:projectId/members/:userId', auth, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    const { projectId, userId } = req.params;
-    // Sacar a alguien que todavía tiene trabajo asignado (o que es el editor que cobra) lo deja
-    // en un estado roto: sigue figurando como responsable pero sin poder ver el board ni el chat.
-    // Se pide resolver primero eso, que es una decisión del admin, no algo para inferir acá.
-    const project = await db('projects').where({ id: projectId }).first();
-    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' });
-    if (project.payment_editor_id === userId) {
-      return res.status(409).json({ error: 'Es el editor que cobra este proyecto. Cambiá el editor antes de sacarle el acceso.' });
-    }
-    const hasTask = await db('tasks').where({ project_id: projectId, assigned_to: userId }).first();
-    if (hasTask) {
-      return res.status(409).json({ error: 'Todavía tiene tareas asignadas en este proyecto. Reasignalas antes de sacarle el acceso.' });
-    }
-    await db('project_members').where({ project_id: projectId, user_id: userId }).delete();
-    // Sin esto el socket ya conectado sigue en la room del proyecto y recibe el chat en vivo
-    // hasta que recargue (mismo cierre que hace removeProjectMemberIfOrphaned).
-    io.in(`user:${userId}`).socketsLeave(`project:${projectId}`);
-    res.json({ success: true });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-});
+// Extraído a routes/project-members.js.
+app.use(require('./routes/project-members')({ db, auth, io, requireProjectAccess, addProjectMember }));
 
 // ─── CLIENTS ─────────────────────────────────────────────────────────────────
-
-// Un editor solo debe ver los clientes de los proyectos donde es miembro, no el listado completo
-// de clientes de la agencia (nombre, email, teléfono, notas internas son datos de negocio sensibles).
-app.get('/api/clients', auth, async (req, res) => {
-  try {
-    let query = db('clients').orderBy([{ column: 'sort_order', order: 'asc' }, { column: 'name', order: 'asc' }]);
-    if (req.user.role !== 'admin') {
-      const clientIds = await db('project_members as pm')
-        .join('projects as p', 'pm.project_id', 'p.id')
-        .where('pm.user_id', req.user.id)
-        .whereNotNull('p.client_id')
-        .pluck('p.client_id');
-      query = query.whereIn('id', [...new Set(clientIds)]);
-    }
-    const clients = await query;
-    res.json(clients);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-});
-
-app.post('/api/clients', auth, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    const { name, color, email, phone, notes } = req.body;
-    if (!name?.trim()) return res.status(400).json({ error: 'El nombre del cliente es obligatorio' });
-    const id = uuidv4();
-    await db('clients').insert({ id, name, color: color || '#6366f1', email: email || null, phone: phone || null, notes: notes || null });
-    const client = await db('clients').where({ id }).first();
-    io.to('admins').emit('client:created', client);
-    res.json(client);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-});
-
-// Nota: tiene que ir ANTES de /api/clients/:id — si no, Express matchea "reorder" como :id.
-app.patch('/api/clients/reorder', auth, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    const { order } = req.body;
-    if (!Array.isArray(order) || order.some(id => typeof id !== 'string')) {
-      return res.status(400).json({ error: 'order debe ser un array de ids' });
-    }
-    // Mismo criterio que /api/projects/reorder: N updates en paralelo en vez de secuenciales.
-    await db.transaction(async trx => {
-      await Promise.all(order.map((id, i) => trx('clients').where({ id }).update({ sort_order: i })));
-    });
-    io.to('admins').emit('clients:reordered', { order });
-    res.json({ success: true });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-});
-
-app.patch('/api/clients/:id', auth, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    const { name, color, email, phone, notes } = req.body;
-    if (name !== undefined && !name?.trim()) return res.status(400).json({ error: 'El nombre del cliente es obligatorio' });
-    await db('clients').where({ id: req.params.id }).update({ name, color, email, phone, notes });
-    const client = await db('clients').where({ id: req.params.id }).first();
-    io.to('admins').emit('client:updated', client);
-    res.json(client);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-});
-
-app.delete('/api/clients/:id', auth, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    await db.transaction(async trx => {
-      await trx('projects').where({ client_id: req.params.id }).update({ client_id: null });
-      await trx('chat_messages').where({ client_id: req.params.id }).update({ client_id: null });
-      await trx('clients').where({ id: req.params.id }).delete();
-    });
-    io.to('admins').emit('client:deleted', { id: req.params.id });
-    res.json({ success: true });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-});
+// Extraído a routes/clients.js.
+app.use(require('./routes/clients')({ db, auth, io }));
 
 // ─── SEARCH ──────────────────────────────────────────────────────────────────
 // Extraído a routes/search.js (ver ese archivo para el detalle) — primera sección movida fuera
@@ -1667,113 +1554,8 @@ app.delete('/api/clients/:id', auth, async (req, res) => {
 app.use(require('./routes/search')({ db, auth }));
 
 // ─── DASHBOARD ──────────────────────────────────────────────────────────────
-app.get('/api/dashboard/pending-videos', auth, async (req, res) => {
-  try {
-    let projectFilter = null;
-    if (req.user.role !== 'admin') {
-      projectFilter = await db('project_members')
-        .where({ user_id: req.user.id }).pluck('project_id');
-    }
-
-    // Videos vinculados a tareas en revisión
-    let reviewQuery = db('videos as v')
-      .join('tasks as tk', function() {
-        this.on('v.task_id', 'tk.id').andOn('tk.status', db.raw('?', ['review']));
-      })
-      .join('projects as p', 'v.project_id', 'p.id')
-      .leftJoin('clients as c', 'p.client_id', 'c.id')
-      .leftJoin('users as u', 'v.uploaded_by', 'u.id')
-      .select(
-        'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at',
-        'p.name as project_name', 'p.color as project_color',
-        'c.name as client_name',
-        'u.name as uploader_name',
-        'tk.id as task_id', 'tk.title as task_title',
-        db.raw('? as type', ['review'])
-      );
-    if (projectFilter) reviewQuery = reviewQuery.whereIn('v.project_id', projectFilter);
-    const reviewVideos = await reviewQuery;
-
-    // Videos con comentarios sin resolver (excluyendo los que ya están en revisión, y los que
-    // ya están en "Aplicar feedback" — ese estado ya le avisa al editor que tiene que resolverlos,
-    // así que mostrárselo también acá como "pendiente" al admin era un segundo aviso de lo mismo,
-    // encima confuso porque ahí la pelota ya no está del lado del admin).
-    const reviewVideoIds = reviewVideos.map(v => v.id);
-    let commentsQuery = db('videos as v')
-      .join('video_comments as vc', function() {
-        this.on('vc.video_id', 'v.id').andOn('vc.resolved', db.raw('?', [false]));
-      })
-      .leftJoin('tasks as tk', 'v.task_id', 'tk.id')
-      .join('projects as p', 'v.project_id', 'p.id')
-      .leftJoin('clients as c', 'p.client_id', 'c.id')
-      .leftJoin('users as u', 'v.uploaded_by', 'u.id')
-      .where(function() { this.whereNull('tk.status').orWhereNot('tk.status', 'feedback'); })
-      .select(
-        'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at',
-        'p.name as project_name', 'p.color as project_color',
-        'c.name as client_name',
-        'u.name as uploader_name',
-        db.raw('count(vc.id) as unresolved_count'),
-        db.raw('? as type', ['comments'])
-      )
-      .groupBy('v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at',
-        'p.name', 'p.color', 'c.name', 'u.name');
-    if (projectFilter) commentsQuery = commentsQuery.whereIn('v.project_id', projectFilter);
-    if (reviewVideoIds.length > 0) commentsQuery = commentsQuery.whereNotIn('v.id', reviewVideoIds);
-    const commentVideos = await commentsQuery;
-
-    res.json([...reviewVideos, ...commentVideos]);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-});
-
-// Todos los videos de la plataforma con su categoría ya calculada (admin only) — misma
-// distinción review/comentarios-sin-resolver que /pending-videos de arriba, más "unreviewed"
-// (nadie dejó nunca un comentario) y "approved" (se revisó y quedó resuelto) para el resto.
-app.get('/api/dashboard/videos-overview', auth, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-    const unresolvedSub = db('video_comments')
-      .where({ resolved: false })
-      .groupBy('video_id')
-      .select('video_id', db.raw('count(*) as unresolved_count'));
-    // Antes "approved" era el catch-all de "no está trabado en ningún lado", así que un video
-    // recién subido sin tarea vinculada ni comentarios caía ahí por descarte — no porque alguien
-    // lo hubiera aprobado (no existe ninguna acción de "aprobar" en la app), sino porque nada lo
-    // frenaba. total_count (todos los comentarios, no solo los sin resolver) es lo que separa
-    // "nadie lo miró todavía" de "se revisó y quedó resuelto".
-    const totalSub = db('video_comments')
-      .groupBy('video_id')
-      .select('video_id', db.raw('count(*) as total_count'));
-    const videos = await db('videos as v')
-      .join('projects as p', 'v.project_id', 'p.id')
-      .leftJoin('clients as c', 'p.client_id', 'c.id')
-      .leftJoin('users as u', 'v.uploaded_by', 'u.id')
-      .leftJoin('users as av', 'v.approved_by', 'av.id')
-      .leftJoin('tasks as tk', 'v.task_id', 'tk.id')
-      .leftJoin(unresolvedSub.as('uc'), 'uc.video_id', 'v.id')
-      .leftJoin(totalSub.as('tc'), 'tc.video_id', 'v.id')
-      .select(
-        'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at', 'v.file_size',
-        'p.name as project_name', 'p.color as project_color',
-        'c.id as client_id', 'c.name as client_name', 'c.color as client_color',
-        'u.name as uploader_name',
-        'tk.title as task_title', 'tk.status as task_status',
-        'v.approved_at', 'v.approved_by_guest_name',
-        db.raw('COALESCE(av.name, v.approved_by_guest_name) as approved_by_name'),
-        db.raw('COALESCE(uc.unresolved_count, 0) as unresolved_count'),
-        // La aprobación explícita gana siempre — si un humano ya lo decidió, eso pesa más que
-        // el estado inferido de la tarea o los comentarios (por ejemplo, un comentario nuevo
-        // menor después de aprobar no debería tapar la aprobación en el resumen).
-        db.raw(`CASE WHEN v.approved_at IS NOT NULL THEN 'approved'
-                     WHEN tk.status = 'review' THEN 'review'
-                     WHEN COALESCE(uc.unresolved_count, 0) > 0 THEN 'editing'
-                     WHEN COALESCE(tc.total_count, 0) = 0 THEN 'unreviewed'
-                     ELSE 'approved' END as category`)
-      )
-      .orderBy('v.created_at', 'desc');
-    res.json(videos);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-});
+// Extraído a routes/dashboard.js.
+app.use(require('./routes/dashboard')({ db, auth }));
 
 // ─── CALENDAR ────────────────────────────────────────────────────────────────
 // Extraído a routes/calendar.js.
@@ -2077,20 +1859,8 @@ app.delete('/api/tasks/:id', auth, async (req, res) => {
 });
 
 // ─── MESSAGES ────────────────────────────────────────────────────────────────
-app.get('/api/projects/:projectId/messages', auth, requireProjectAccess(), async (req, res) => {
-  try {
-    const { before } = req.query;
-    let query = db('messages as m').join('users as u', 'm.sender_id', 'u.id')
-      .where({ 'project_id': req.params.projectId, 'type': 'project' })
-      .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color');
-    if (before) {
-      const ref = await db('messages').where({ id: before }).first();
-      if (ref) query = query.where('m.created_at', '<', ref.created_at);
-    }
-    const messages = await query.orderBy('m.created_at', 'desc').limit(50);
-    res.json(messages.reverse());
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
-});
+// Extraído a routes/messages.js.
+app.use(require('./routes/messages')({ db, auth, requireProjectAccess }));
 
 // ─── VIDEOS ──────────────────────────────────────────────────────────────────
 app.get('/api/projects/:projectId/videos', auth, requireProjectAccess(), async (req, res) => {
