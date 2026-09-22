@@ -1492,10 +1492,11 @@ app.patch('/api/projects/reorder', auth, async (req, res) => {
     if (!Array.isArray(order) || order.some(id => typeof id !== 'string')) {
       return res.status(400).json({ error: 'order debe ser un array de ids' });
     }
+    // N updates en paralelo (misma transacción) en vez de uno por uno esperando cada uno —
+    // secuencial era N round-trips a la DB en fila por cada drag-and-drop, sin ninguna razón para
+    // esperar a que termine el anterior antes de mandar el siguiente.
     await db.transaction(async trx => {
-      for (let i = 0; i < order.length; i++) {
-        await trx('projects').where({ id: order[i] }).update({ sort_order: i });
-      }
+      await Promise.all(order.map((id, i) => trx('projects').where({ id }).update({ sort_order: i })));
     });
     io.to('admins').emit('projects:reordered', { order });
     res.json({ success: true });
@@ -1626,10 +1627,9 @@ app.patch('/api/clients/reorder', auth, async (req, res) => {
     if (!Array.isArray(order) || order.some(id => typeof id !== 'string')) {
       return res.status(400).json({ error: 'order debe ser un array de ids' });
     }
+    // Mismo criterio que /api/projects/reorder: N updates en paralelo en vez de secuenciales.
     await db.transaction(async trx => {
-      for (let i = 0; i < order.length; i++) {
-        await trx('clients').where({ id: order[i] }).update({ sort_order: i });
-      }
+      await Promise.all(order.map((id, i) => trx('clients').where({ id }).update({ sort_order: i })));
     });
     io.to('admins').emit('clients:reordered', { order });
     res.json({ success: true });
@@ -3447,9 +3447,14 @@ app.post('/api/chat/read', auth, async (req, res) => {
   try {
     const { type, id } = req.body;
     const userId = req.user.id;
+    // Antes traía TODOS los mensajes de la conversación completos (contenido, adjuntos, todo) para
+    // fijarse read_by de cada uno, y actualizaba de a uno esperando cada query — en un canal con
+    // historial largo, esto se ponía cada vez más lento con el tiempo aunque casi todo ya estuviera
+    // leído. Se trae solo id+read_by, se filtra en memoria a los que de verdad faltan marcar (que
+    // en un canal activo suelen ser pocos, no el historial entero), y esos se actualizan en paralelo.
     let msgs;
     if (type === 'dm') {
-      msgs = await db('chat_messages').where({ type: 'dm', sender_id: id, receiver_id: userId }).orWhere({ type: 'dm', sender_id: userId, receiver_id: id });
+      msgs = await db('chat_messages').select('id', 'read_by').where({ type: 'dm', sender_id: id, receiver_id: userId }).orWhere({ type: 'dm', sender_id: userId, receiver_id: id });
     } else if (type === 'channel') {
       // Antes cualquier `type` distinto de 'dm' caía acá sin verificar nada, así que se podía
       // escribirse a sí mismo en el read_by de todos los mensajes de cualquier canal ajeno
@@ -3458,17 +3463,16 @@ app.post('/api/chat/read', auth, async (req, res) => {
         const isMember = await db('chat_channel_members').where({ channel_id: String(id), user_id: userId }).first();
         if (!isMember) return res.status(403).json({ error: 'No sos miembro de este canal' });
       }
-      msgs = await db('chat_messages').where({ type: 'channel', channel_id: id });
+      msgs = await db('chat_messages').select('id', 'read_by').where({ type: 'channel', channel_id: id });
     } else {
       return res.status(400).json({ error: 'Tipo de conversación inválido' });
     }
-    for (const m of msgs) {
+    const unread = msgs.filter(m => !parseReadBy(m.read_by).includes(userId));
+    await Promise.all(unread.map(m => {
       const readBy = parseReadBy(m.read_by);
-      if (!readBy.includes(userId)) {
-        readBy.push(userId);
-        await db('chat_messages').where({ id: m.id }).update({ read_by: JSON.stringify(readBy) });
-      }
-    }
+      readBy.push(userId);
+      return db('chat_messages').where({ id: m.id }).update({ read_by: JSON.stringify(readBy) });
+    }));
     io.to(`user:${userId}`).emit('chat:read', { type, id });
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
