@@ -98,6 +98,16 @@ body {
    cada instancia los sigue definiendo con su propio inline style. */
 .icon-btn { background: transparent; border: none; cursor: pointer; }
 
+/* Variante con borde de .icon-btn — mismo criterio: solo fija lo 100% constante en las ~12
+   instancias que lo reimplementaban (fondo transparente, borde, cursor). Radio, padding, color y
+   tamaño de fuente siguen siendo overrides por instancia, varían según densidad del contexto. */
+.btn-outline { background: transparent; border: 1px solid var(--border); cursor: pointer; }
+
+/* Superficie elevada básica: fondo + borde que ~30 cards/filas/paneles repetían a mano en vez de
+   usar esto. Border-radius, padding y demás siguen siendo overrides por instancia — es la única
+   combinación realmente constante en todos esos usos, el resto varía según densidad. */
+.panel { background: var(--bg2); border: 1px solid var(--border); }
+
 /* Selector de vista tipo pestañas (segmented control) — Notifications.jsx y VideosDashboard.jsx
    reimplementaban exactamente el mismo control por separado. */
 .tab-switch {

@@ -234,8 +234,8 @@ export default function Team() {
                 <div id="detail-user-modal-title" style={{ fontWeight: 700, fontSize: 16 }}>{detailUser.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--text3)' }}>{detailUser.email}</div>
               </div>
-              <button onClick={() => { openEdit(detailUser); setDetailUser(null); }}
-                style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
+              <button className="btn-outline" onClick={() => { openEdit(detailUser); setDetailUser(null); }}
+                style={{ borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12 }}>
                 ✏️ Editar
               </button>
               <button className="icon-btn" onClick={() => setDetailUser(null)} title="Cerrar" aria-label="Cerrar"
@@ -264,15 +264,15 @@ export default function Team() {
                   return (
                     <>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 20 }}>
-                        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
+                        <div className="panel" style={{ borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
                           <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--yellow)' }}>{pending}</div>
                           <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>Pendientes</div>
                         </div>
-                        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
+                        <div className="panel" style={{ borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
                           <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--yellow)' }}>{review}</div>
                           <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>En revisión</div>
                         </div>
-                        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
+                        <div className="panel" style={{ borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
                           <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--green)' }}>{done}</div>
                           <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>Completadas</div>
                         </div>
@@ -289,7 +289,7 @@ export default function Team() {
                             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Tareas pendientes</div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                               {pendingTasks.map(task => (
-                                <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}>
+                                <div key={task.id} className="panel" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, fontSize: 13 }}>
                                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: task.project_color || 'var(--text3)', flexShrink: 0 }} />
                                   <span style={{ flex: 1, color: 'var(--text)' }}>{task.title}</span>
                                   <span style={{ fontSize: 10, color: 'var(--text3)' }}>{task.client_name ? `${task.client_name} · ` : ''}{task.project_name}</span>
@@ -306,11 +306,11 @@ export default function Team() {
                         <div style={{ marginBottom: 20 }}>
                           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Pagos</div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-                            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
+                            <div className="panel" style={{ borderRadius: 10, padding: '10px 12px' }}>
                               <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Pagado</div>
                               <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--green)' }}>${totalPaid.toFixed(0)}</div>
                             </div>
-                            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
+                            <div className="panel" style={{ borderRadius: 10, padding: '10px 12px' }}>
                               <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Pendiente</div>
                               <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: totalPending > 0 ? 'var(--red)' : 'var(--text3)' }}>${totalPending.toFixed(0)}</div>
                             </div>
@@ -320,7 +320,7 @@ export default function Team() {
                               const amount = projectTotal(proj);
                               const paid = proj.editor_paid === 'paid';
                               return (
-                                <div key={proj.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}>
+                                <div key={proj.id} className="panel" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, fontSize: 13 }}>
                                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: proj.color || 'var(--text3)', flexShrink: 0 }} />
                                   <span style={{ flex: 1, color: 'var(--text)' }}>{proj.client_name ? `${proj.client_name} · ` : ''}{proj.name}</span>
                                   <span style={{ fontSize: 12, fontWeight: 600, color: paid ? 'var(--green)' : 'var(--text)' }}>${amount.toFixed(0)}</span>

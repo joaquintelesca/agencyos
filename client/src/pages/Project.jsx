@@ -422,9 +422,9 @@ export default function Project() {
             {showMembers && (
               <>
                 <div onClick={() => setShowMembers(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
-                <div style={{
+                <div className="panel" style={{
                   position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: 220, zIndex: 11,
-                  background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10,
+                  borderRadius: 10,
                   boxShadow: '0 8px 24px rgba(0,0,0,0.35)', padding: 8
                 }}>
                   <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 6px 8px' }}>Quién tiene acceso</div>
@@ -817,8 +817,8 @@ function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, 
   const priorityColors = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' };
   const priorityLabels = { high: 'Alta', medium: 'Media', low: 'Baja' };
   return (
-    <div draggable={canDrag} onDragStart={canDrag ? onDragStart : undefined} onClick={onEdit || undefined} style={{
-      background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10,
+    <div className="panel" draggable={canDrag} onDragStart={canDrag ? onDragStart : undefined} onClick={onEdit || undefined} style={{
+      borderRadius: 10,
       padding: '12px 14px', cursor: canDrag || onEdit ? 'pointer' : 'default', transition: 'all 0.15s',
     }}
     onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}

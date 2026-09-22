@@ -873,7 +873,7 @@ export default function Chat() {
             {recordedAudio ? (
               // Preview de la nota de voz ya grabada — nada se sube todavía, hace falta
               // confirmar con "Enviar" (mismo patrón que Slack: grabar no es enviar).
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg2)', borderRadius: 12, padding: '8px 12px', border: '1px solid var(--border)' }}>
+              <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 10, borderRadius: 12, padding: '8px 12px' }}>
                 <button
                   onClick={discardRecordedAudio}
                   disabled={sendingRecordedAudio}
@@ -900,7 +900,7 @@ export default function Chat() {
                 </button>
               </div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg2)', borderRadius: 12, padding: '8px 12px', border: '1px solid var(--border)' }}>
+              <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 12, padding: '8px 12px' }}>
                 <input
                   ref={fileInputRef}
                   type="file"

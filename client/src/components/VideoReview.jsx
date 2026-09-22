@@ -457,8 +457,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         </div>
       )}
       {isExpanded && (
-        <button onClick={e => { e.stopPropagation(); handleUnstack(v.id); }}
-          style={{ marginTop: 8, width: '100%', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 0', color: 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>
+        <button className="btn-outline" onClick={e => { e.stopPropagation(); handleUnstack(v.id); }}
+          style={{ marginTop: 8, width: '100%', borderRadius: 6, padding: '4px 0', color: 'var(--text3)', fontSize: 11 }}>
           Desapilar
         </button>
       )}
@@ -491,8 +491,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                 <div key={item.groupId} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
                     <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600 }}>{item.videos.length} versiones</span>
-                    <button onClick={() => setExpandedGroup(null)}
-                      style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', fontSize: 11, color: 'var(--text3)', cursor: 'pointer' }}>
+                    <button className="btn-outline" onClick={() => setExpandedGroup(null)}
+                      style={{ borderRadius: 6, padding: '2px 8px', fontSize: 11, color: 'var(--text3)' }}>
                       Colapsar
                     </button>
                   </div>
@@ -736,8 +736,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                           style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--accent)', borderRadius: 7, padding: '6px 9px', color: 'var(--text)', fontSize: 12, fontFamily: 'inherit', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
                           onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) saveEditComment(c.id); if (e.key === 'Escape') setEditingComment(null); }} />
                         <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                          <button onClick={() => setEditingComment(null)}
-                            style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', color: 'var(--text2)', fontSize: 11, cursor: 'pointer' }}>
+                          <button className="btn-outline" onClick={() => setEditingComment(null)}
+                            style={{ borderRadius: 6, padding: '2px 8px', color: 'var(--text2)', fontSize: 11 }}>
                             Cancelar
                           </button>
                           <button onClick={() => saveEditComment(c.id)} disabled={!editText.trim()}

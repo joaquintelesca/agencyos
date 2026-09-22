@@ -726,9 +726,9 @@ export default function Layout() {
       )}
 
       {!sidebarVisible && (
-        <button onClick={() => isNarrowViewport ? setMobileSidebarOpen(true) : setSidebarCollapsed(false)} title="Mostrar sidebar" aria-label="Mostrar sidebar" style={{
+        <button className="panel" onClick={() => isNarrowViewport ? setMobileSidebarOpen(true) : setSidebarCollapsed(false)} title="Mostrar sidebar" aria-label="Mostrar sidebar" style={{
           position: 'fixed', left: 10, top: 12, zIndex: 101, width: 32, height: 32, borderRadius: 8,
-          background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text2)',
+          color: 'var(--text2)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 14
         }}>▶</button>
       )}

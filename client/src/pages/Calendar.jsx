@@ -428,7 +428,7 @@ export default function CalendarPage() {
               onDragStart={() => setDraggedProjectId(p.id)}
               onDragEnd={() => setDraggedProjectId(null)}
               onClick={() => openProjectChip(p)}
-              style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 10px', cursor: isAdmin ? 'grab' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, touchAction: draggedProjectId ? 'none' : 'auto' }}>
+              className="panel" style={{ borderRadius: 9, padding: '8px 10px', cursor: isAdmin ? 'grab' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, touchAction: draggedProjectId ? 'none' : 'auto' }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
               <span style={{ fontSize: 12.5, color: 'var(--text)' }}>{p.name}</span>
             </div>
@@ -444,8 +444,8 @@ export default function CalendarPage() {
             <h2 id="day-modal-title" style={{ textTransform: 'capitalize' }}>{new Date(dayModal + 'T00:00:00').toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' })}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14, maxHeight: '50vh', overflowY: 'auto' }}>
               {(eventsByDay[dayModal]?.events || []).map(ev => (
-                <div key={ev.id} onClick={() => { setDayModal(null); setChipModal({ type: 'event', data: ev }); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>
+                <div key={ev.id} className="panel" onClick={() => { setDayModal(null); setChipModal({ type: 'event', data: ev }); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, cursor: 'pointer' }}>
                   <span>📅</span>
                   <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{ev.title}</span>
                 </div>
@@ -453,8 +453,8 @@ export default function CalendarPage() {
               {(eventsByDay[dayModal]?.projects || []).map(p => {
                 const dl = deadlineLabel(p.deadline);
                 return (
-                  <div key={p.id} onClick={() => { setDayModal(null); openProjectChip(p); }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>
+                  <div key={p.id} className="panel" onClick={() => { setDayModal(null); openProjectChip(p); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, cursor: 'pointer' }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                     <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
                     {dl && <span style={{ fontSize: 10, fontWeight: 700, color: dl.color, background: dl.bg, padding: '2px 6px', borderRadius: 5 }}>{dl.label}</span>}

@@ -85,8 +85,8 @@ export default function Dashboard() {
         { type: 'deadlines', label: 'Deadlines esta semana', val: deadlinesThisWeek.length, color: 'var(--red)' },
         { type: 'clients', label: 'Clientes activos', val: clients.length, color: 'var(--accent2)' },
       ].map(s => (
-        <div key={s.label} onDoubleClick={() => setStatModal(s.type)} title="Doble click para ver el detalle"
-          style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', cursor: 'pointer', transition: 'border-color 0.15s' }}
+        <div key={s.label} className="panel" onDoubleClick={() => setStatModal(s.type)} title="Doble click para ver el detalle"
+          style={{ borderRadius: 12, padding: '12px 16px', cursor: 'pointer', transition: 'border-color 0.15s' }}
           onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
           <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{s.label}</div>
@@ -261,7 +261,7 @@ export default function Dashboard() {
       <div style={{ marginBottom: 8 }}>
         <div style={sectionTitleStyle}>💰 Pagos pendientes</div>
       </div>
-      <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px 6px' }}>
+      <div className="panel" style={{ borderRadius: 12, padding: '14px 16px 6px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
           <div style={{ background: 'var(--bg3)', borderRadius: 9, padding: '10px 12px' }}>
             <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 3 }}>Total a pagar a editores</div>

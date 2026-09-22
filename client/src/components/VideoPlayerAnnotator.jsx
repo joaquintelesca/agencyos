@@ -635,9 +635,9 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
                   {rangeEnd != null ? `⏹ ${formatT(rangeEnd)}` : '⏹ Marcar fin'}
                 </button>
               )}
-              <button onClick={() => { setRangeMode(false); setRangeStart(null); setRangeEnd(null); setCapturedTs(null); setShowCommentInput(false); }}
+              <button className="btn-outline" onClick={() => { setRangeMode(false); setRangeStart(null); setRangeEnd(null); setCapturedTs(null); setShowCommentInput(false); }}
                 title="Cancelar selección de rango" aria-label="Cancelar selección de rango"
-                style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', color: 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>✕</button>
+                style={{ borderRadius: 6, padding: '4px 8px', color: 'var(--text3)', fontSize: 11 }}>✕</button>
             </div>
           )}
 
@@ -686,8 +686,8 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {allowAttachments && (
                 <>
-                  <button onClick={() => commentFileRef.current?.click()}
-                    style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
+                  <button className="btn-outline" onClick={() => commentFileRef.current?.click()}
+                    style={{ borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12 }}>
                     📎 Adjuntar
                   </button>
                   <input ref={commentFileRef} type="file" multiple style={{ display: 'none' }} onChange={e => setCommentFiles(Array.from(e.target.files))} />
@@ -697,8 +697,8 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
               {annotations.length > 0 && <span style={{ fontSize: 11, color: 'var(--yellow)' }}>✏️ Incluye dibujo</span>}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
-                style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 12px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
+              <button className="btn-outline" onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
+                style={{ borderRadius: 6, padding: '5px 12px', color: 'var(--text2)', fontSize: 12 }}>
                 Cancelar
               </button>
               <button onClick={submitComment} disabled={!commentText.trim() || submitting}

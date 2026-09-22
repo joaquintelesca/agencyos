@@ -141,8 +141,8 @@ export default function Notifications() {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
         {!n.read && (
-          <button onClick={e => markOne(e, n)} title="Marcar como leído"
-            style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', color: 'var(--accent2)', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <button className="btn-outline" onClick={e => markOne(e, n)} title="Marcar como leído"
+            style={{ borderRadius: 6, padding: '3px 8px', color: 'var(--accent2)', fontSize: 11, whiteSpace: 'nowrap' }}>
             Marcar como leído
           </button>
         )}
@@ -178,8 +178,8 @@ export default function Notifications() {
           {unread > 0 && <span className="badge badge-count">{unread}</span>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {unread > 0 && <button onClick={markAll} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 12px', color: 'var(--accent2)', fontSize: 12, cursor: 'pointer' }}>Marcar todo como leído</button>}
-          {notifs.some(n => n.read) && <button onClick={deleteRead} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 12px', color: 'var(--text3)', fontSize: 12, cursor: 'pointer' }}>Borrar leídas</button>}
+          {unread > 0 && <button className="btn-outline" onClick={markAll} style={{ borderRadius: 7, padding: '5px 12px', color: 'var(--accent2)', fontSize: 12 }}>Marcar todo como leído</button>}
+          {notifs.some(n => n.read) && <button className="btn-outline" onClick={deleteRead} style={{ borderRadius: 7, padding: '5px 12px', color: 'var(--text3)', fontSize: 12 }}>Borrar leídas</button>}
         </div>
       </div>
 
@@ -204,8 +204,8 @@ export default function Notifications() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {notifs.map(renderNotif)}
           {hasMore && notifs.length > 0 && (
-            <button onClick={loadMore} disabled={loadingMore}
-              style={{ alignSelf: 'center', marginTop: 10, background: 'transparent', border: '1px solid var(--border)', borderRadius: 7, padding: '7px 16px', color: 'var(--text2)', fontSize: 12, cursor: loadingMore ? 'default' : 'pointer' }}>
+            <button className="btn-outline" onClick={loadMore} disabled={loadingMore}
+              style={{ alignSelf: 'center', marginTop: 10, borderRadius: 7, padding: '7px 16px', color: 'var(--text2)', fontSize: 12, cursor: loadingMore ? 'default' : 'pointer' }}>
               {loadingMore ? 'Cargando...' : 'Cargar más'}
             </button>
           )}
@@ -213,8 +213,8 @@ export default function Notifications() {
       ) : (
         <div>
           <div style={{ position: 'relative', marginBottom: 20, width: 'fit-content' }}>
-            <button onClick={() => setClientDropdownOpen(o => !o)} style={{
-              display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg2)', border: '1px solid var(--border)',
+            <button className="panel" onClick={() => setClientDropdownOpen(o => !o)} style={{
+              display: 'flex', alignItems: 'center', gap: 8,
               borderRadius: 9, padding: '7px 12px', cursor: 'pointer', fontFamily: 'var(--font)', minWidth: 180
             }}>
               {selectedClient !== 'all' && (
@@ -229,9 +229,9 @@ export default function Notifications() {
             {clientDropdownOpen && (
               <>
                 <div onClick={() => setClientDropdownOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
-                <div style={{
+                <div className="panel" style={{
                   position: 'absolute', top: 'calc(100% + 4px)', left: 0, minWidth: 220, zIndex: 11,
-                  background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10,
+                  borderRadius: 10,
                   boxShadow: '0 8px 24px rgba(0,0,0,0.35)', padding: 4, maxHeight: 320, overflowY: 'auto'
                 }}>
                   <button onClick={() => { setSelectedClient('all'); setClientDropdownOpen(false); }} style={{

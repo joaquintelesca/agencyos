@@ -219,8 +219,8 @@ export default function Payments() {
               {allEditors.map(e => <option key={e} value={e}>{e}</option>)}
             </select>
             {(filterClient || filterEditor) && (
-              <button onClick={() => { setFilterClient(''); setFilterEditor(''); }}
-                style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', color: 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>✕ Limpiar</button>
+              <button className="btn-outline" onClick={() => { setFilterClient(''); setFilterEditor(''); }}
+                style={{ borderRadius: 6, padding: '3px 8px', color: 'var(--text3)', fontSize: 11 }}>✕ Limpiar</button>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -250,7 +250,7 @@ export default function Payments() {
                 { label: 'Proyectos con pago pendiente', val: activeProjects.length, color: 'var(--yellow)' },
                 { label: 'Clientes con pago pendiente', val: clientsPending, color: 'var(--accent2)' },
               ].map(m => (
-                <div key={m.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px' }}>
+                <div key={m.label} className="panel" style={{ borderRadius: 12, padding: '12px 16px' }}>
                   <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{m.label}</div>
                   <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: m.color }}>{m.val}</div>
                 </div>
@@ -262,7 +262,7 @@ export default function Payments() {
             )}
 
             {groupByClient(activeProjects).map(client => (
-              <div key={client.name} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
+              <div key={client.name} className="panel" style={{ borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
                 <div style={{ padding: '10px 16px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ width: 26, height: 26, borderRadius: 7, background: client.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff' }}>
                     {client.name[0].toUpperCase()}
@@ -289,7 +289,7 @@ export default function Payments() {
               <div className="empty"><div className="empty-icon">✅</div><p>Aún no hay proyectos saldados</p><p style={{ fontSize: 12 }}>Cuando un proyecto tenga el editor pagado y el cliente cobrado, aparecerá acá como registro histórico</p></div>
             )}
             {groupByClient(completedProjects).map(client => (
-              <div key={client.name} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 14, opacity: 0.85 }}>
+              <div key={client.name} className="panel" style={{ borderRadius: 14, overflow: 'hidden', marginBottom: 14, opacity: 0.85 }}>
                 <div style={{ padding: '10px 16px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ width: 26, height: 26, borderRadius: 7, background: client.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff' }}>
                     {client.name[0].toUpperCase()}
@@ -315,17 +315,17 @@ export default function Payments() {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: isNarrowViewport ? '1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 24 }}>
-              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
+              <div className="panel" style={{ borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Recibido de clientes</div>
                 <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--lavender)' }}>${totalReceivedMonth.toFixed(0)}</div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{receivedThisMonth.length} proyecto{receivedThisMonth.length !== 1 ? 's' : ''}</div>
               </div>
-              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
+              <div className="panel" style={{ borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Pagado a editores</div>
                 <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: 'var(--pink)' }}>${totalPaidEditorsMonth.toFixed(0)}</div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{paidToEditorsThisMonth.length} proyecto{paidToEditorsThisMonth.length !== 1 ? 's' : ''}{projects.some(p => p.editor_paid_at && p.editor_paid_at.slice(0, 7) === selectedMonth && p.editor_is_owner) ? ' · no incluye tus proyectos propios' : ''}</div>
               </div>
-              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
+              <div className="panel" style={{ borderRadius: 12, padding: '14px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Ganancia del mes</div>
                 <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: (totalReceivedMonth - totalPaidEditorsMonth) >= 0 ? 'var(--green)' : 'var(--red)' }}>
                   ${(totalReceivedMonth - totalPaidEditorsMonth).toFixed(0)}
@@ -345,7 +345,7 @@ export default function Payments() {
                 {receivedThisMonth.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>Nada cobrado este mes</div>}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {receivedThisMonth.map(p => (
-                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    <div key={p.id} className="panel" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8 }}>
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.client_name ? `${p.client_name} · ` : ''}{p.name}</span>
                       <div style={{ textAlign: 'right' }}>
@@ -363,7 +363,7 @@ export default function Payments() {
                 {paidToEditorsThisMonth.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>Nada pagado este mes</div>}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {paidToEditorsThisMonth.map(p => (
-                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    <div key={p.id} className="panel" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8 }}>
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.editor_name ? `${p.editor_name} · ` : ''}{p.name}</span>
                       <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--pink)', whiteSpace: 'nowrap' }}>${p.computed_editor_total.toFixed(0)}</span>

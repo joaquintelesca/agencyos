@@ -14,8 +14,8 @@ const categoryMeta = (key) => CATEGORIES.find(c => c.key === key);
 function VideoRow({ v, navigate, showClient }) {
   const meta = categoryMeta(v.category);
   return (
-    <div onClick={() => navigate(`/project/${v.project_id}?tab=videos`)}
-      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, cursor: 'pointer', transition: 'all 0.1s' }}
+    <div className="panel" onClick={() => navigate(`/project/${v.project_id}?tab=videos`)}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 9, cursor: 'pointer', transition: 'all 0.1s' }}
       onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
       onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
       <div style={{ width: 8, height: 8, borderRadius: '50%', background: v.project_color || 'var(--text3)', flexShrink: 0 }} />

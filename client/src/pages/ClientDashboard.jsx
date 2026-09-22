@@ -72,7 +72,7 @@ export default function ClientDashboard() {
       </div>
 
       {client.notes && (
-        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 20, fontSize: 13, color: 'var(--text2)', lineHeight: 1.5 }}>
+        <div className="panel" style={{ borderRadius: 10, padding: '10px 14px', marginBottom: 20, fontSize: 13, color: 'var(--text2)', lineHeight: 1.5 }}>
           {client.notes}
         </div>
       )}
@@ -85,7 +85,7 @@ export default function ClientDashboard() {
           { label: 'En revisión', val: reviewTasks, color: reviewTasks > 0 ? 'var(--red)' : 'var(--text3)' },
           { label: 'Proyectos terminados', val: completedProjects.length, color: 'var(--green)' },
         ].map(s => (
-          <div key={s.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px' }}>
+          <div key={s.label} className="panel" style={{ borderRadius: 12, padding: '12px 16px' }}>
             <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{s.label}</div>
             <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: s.color }}>{s.val}</div>
           </div>
