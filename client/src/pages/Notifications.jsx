@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { notificationIcon, notificationLabel, notificationTarget } from '../utils/notifications';
 import { renderMentions } from '../components/MentionInput';
+import Icon from '../components/Icon';
 
 const PAGE_SIZE = 50;
 
@@ -147,10 +148,10 @@ export default function Notifications() {
           </button>
         )}
         <button className="icon-btn" onClick={e => deleteOne(e, n)} title="Borrar notificación" aria-label="Borrar notificación"
-          style={{ color: 'var(--text3)', fontSize: 12, padding: '3px 6px' }}
+          style={{ color: 'var(--text3)', padding: '3px 6px', display: 'flex' }}
           onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
           onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
-          🗑
+          <Icon.trash />
         </button>
       </div>
     </div>

@@ -10,6 +10,7 @@ import ErrorBoundary from './ErrorBoundary';
 import SearchPalette from './SearchPalette';
 import useNarrowViewport, { MOBILE_BREAKPOINT } from '../hooks/useNarrowViewport';
 import useModalA11y from '../hooks/useModalA11y';
+import Icon from './Icon';
 
 const TOAST_DURATION_MS = 6000;
 
@@ -579,7 +580,7 @@ export default function Layout() {
             background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer',
             color: 'var(--text3)', fontSize: 12.5, fontFamily: 'var(--font)'
           }}>
-            <span>🔍</span>
+            <span style={{ display: 'flex' }}><Icon.search /></span>
             <span style={{ flex: 1, textAlign: 'left' }}>Buscar...</span>
             <span style={{ fontSize: 10.5, border: '1px solid var(--border2)', borderRadius: 4, padding: '1px 5px' }}>
               {navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl+K'}
@@ -589,20 +590,20 @@ export default function Layout() {
 
         <div style={{ padding: '6px 8px 6px' }}>
           <SideLabel>General</SideLabel>
-          <NavItem to="/" label="Dashboard" icon="🏠" active={isActive('/')} />
-          <NavItem to="/calendar" label="Calendario" icon="📅" active={isActive('/calendar')} />
-          <NavItem to="/chat" label="Chat" icon="💬" active={isActive('/chat')} badge={Object.values(chatUnread).reduce((a, b) => a + b, 0)} />
-          <NavItem to="/team" label="Equipo" icon="👥" active={isActive('/team')} />
-          <NavItem to="/notifications" label="Notificaciones" icon="🔔" active={isActive('/notifications')} badge={unreadNotifs} badgeRed />
+          <NavItem to="/" label="Dashboard" icon={Icon.home} active={isActive('/')} />
+          <NavItem to="/calendar" label="Calendario" icon={Icon.calendar} active={isActive('/calendar')} />
+          <NavItem to="/chat" label="Chat" icon={Icon.comment} active={isActive('/chat')} badge={Object.values(chatUnread).reduce((a, b) => a + b, 0)} />
+          <NavItem to="/team" label="Equipo" icon={Icon.users} active={isActive('/team')} />
+          <NavItem to="/notifications" label="Notificaciones" icon={Icon.bell} active={isActive('/notifications')} badge={unreadNotifs} badgeRed />
           {/* El admin ya ve todo esto (y más) en Pagos — este link self-scoped es para el
               editor, que hoy no tiene ninguna forma de ver ni su propia tarifa. */}
           {user?.role !== 'admin' && (
-            <NavItem to="/earnings" label="Mis ganancias" icon="💵" active={isActive('/earnings')} />
+            <NavItem to="/earnings" label="Mis ganancias" icon={Icon.dollar} active={isActive('/earnings')} />
           )}
           {user?.role === 'admin' && (
             <>
-              <NavItem to="/videos" label="Videos" icon="🎬" active={isActive('/videos')} admin />
-              <NavItem to="/payments" label="Pagos" icon="💰" active={isActive('/payments')} admin />
+              <NavItem to="/videos" label="Videos" icon={Icon.video} active={isActive('/videos')} admin />
+              <NavItem to="/payments" label="Pagos" icon={Icon.dollar} active={isActive('/payments')} admin />
             </>
           )}
         </div>
@@ -611,7 +612,7 @@ export default function Layout() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', marginBottom: 4 }}>
             <SideLabel>Clientes</SideLabel>
             {user?.role === 'admin' && (
-              <button className="icon-btn" onClick={() => setShowNewClient(true)} style={{ color: 'var(--text3)', fontSize: 16, lineHeight: 1, padding: '0 4px' }} title="Nuevo cliente" aria-label="Nuevo cliente">＋</button>
+              <button className="icon-btn" onClick={() => setShowNewClient(true)} style={{ color: 'var(--text3)', display: 'flex', padding: '0 4px' }} title="Nuevo cliente" aria-label="Nuevo cliente"><Icon.plus /></button>
             )}
           </div>
 
@@ -701,7 +702,7 @@ export default function Layout() {
           ))}
 
           <button className="icon-btn" onClick={openNewProject} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', color: 'var(--text3)', fontSize: 12, width: '100%', marginTop: 4, borderRadius: 7 }}>
-            <span>＋</span> Nuevo proyecto
+            <Icon.plus /> Nuevo proyecto
           </button>
         </div>
 
@@ -711,8 +712,8 @@ export default function Layout() {
             <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>{user?.role}</div>
           </div>
-          <button className="icon-btn" onClick={openChangePassword} title="Cambiar contraseña" aria-label="Cambiar contraseña" style={{ color: 'var(--text3)', fontSize: 16 }}>🔑</button>
-          <button className="icon-btn" onClick={logout} title="Cerrar sesión" aria-label="Cerrar sesión" style={{ color: 'var(--text3)', fontSize: 16 }}>⏻</button>
+          <button className="icon-btn" onClick={openChangePassword} title="Cambiar contraseña" aria-label="Cambiar contraseña" style={{ color: 'var(--text3)', display: 'flex' }}><Icon.key /></button>
+          <button className="icon-btn" onClick={logout} title="Cerrar sesión" aria-label="Cerrar sesión" style={{ color: 'var(--text3)', display: 'flex' }}><Icon.power /></button>
         </div>
       </aside>
       )}
@@ -1289,9 +1290,9 @@ function ProjectRowActions({ fontSize, padding, onEdit, onDelete, onDuplicate })
   return (
     <div style={{ display: 'flex', gap: 0 }}>
       {/* Solo las filas de proyecto pasan onDuplicate — no tiene sentido "duplicar" un cliente. */}
-      {onDuplicate && <button className="reveal-btn edit" title="Duplicar proyecto" aria-label="Duplicar proyecto" onClick={onDuplicate} style={{ fontSize, padding }}>⧉</button>}
-      <button className="reveal-btn edit" title="Editar" aria-label="Editar" onClick={onEdit} style={{ fontSize, padding }}>✏️</button>
-      <button className="reveal-btn delete" title="Eliminar" aria-label="Eliminar" onClick={onDelete} style={{ fontSize, padding }}>🗑</button>
+      {onDuplicate && <button className="reveal-btn edit" title="Duplicar proyecto" aria-label="Duplicar proyecto" onClick={onDuplicate} style={{ fontSize, padding, display: 'flex' }}><Icon.copy /></button>}
+      <button className="reveal-btn edit" title="Editar" aria-label="Editar" onClick={onEdit} style={{ fontSize, padding, display: 'flex' }}><Icon.pencil /></button>
+      <button className="reveal-btn delete" title="Eliminar" aria-label="Eliminar" onClick={onDelete} style={{ fontSize, padding, display: 'flex' }}><Icon.trash /></button>
     </div>
   );
 }
@@ -1300,11 +1301,11 @@ function SideLabel({ children }) {
   return <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0 8px', marginBottom: 4 }}>{children}</div>;
 }
 
-function NavItem({ to, label, icon, active, admin, badge, badgeRed }) {
+function NavItem({ to, label, icon: IconCmp, active, admin, badge, badgeRed }) {
   return (
     <Link to={to} style={{ textDecoration: 'none' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7, marginBottom: 1, cursor: 'pointer', background: active ? 'var(--bg3)' : 'transparent', color: active ? 'var(--text)' : 'var(--text2)', fontSize: 13, transition: 'all 0.1s' }}>
-        <span>{icon}</span>
+        <span style={{ display: 'flex', flexShrink: 0 }}><IconCmp /></span>
         <span style={{ flex: 1 }}>{label}</span>
         {admin && <span style={{ fontSize: 9, background: 'rgba(240,168,58,0.15)', color: 'var(--yellow)', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>ADMIN</span>}
         {badge > 0 && <span className="badge badge-count" style={{ background: badgeRed ? 'var(--red)' : 'var(--accent)', fontSize: 10, padding: '1px 6px', minWidth: 18, textAlign: 'center' }}>{badge}</span>}

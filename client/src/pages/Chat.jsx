@@ -5,6 +5,7 @@ import { initials as initialsBase } from '../utils/format';
 import { uploadWithProgress } from '../utils/upload';
 import useModalA11y from '../hooks/useModalA11y';
 import useNarrowViewport from '../hooks/useNarrowViewport';
+import Icon from '../components/Icon';
 
 const formatRecordingTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -697,10 +698,10 @@ export default function Chat() {
                 <button
                   className="icon-btn"
                   onClick={() => setShowNewChannel(true)}
-                  style={{ color: 'var(--text3)', fontSize: 16, padding: '0 4px' }}
+                  style={{ color: 'var(--text3)', display: 'flex', padding: '0 4px' }}
                   title="Nuevo canal"
                   aria-label="Nuevo canal"
-                >＋</button>
+                ><Icon.plus /></button>
               )}
             </div>
 
@@ -877,11 +878,11 @@ export default function Chat() {
                 <button
                   onClick={discardRecordedAudio}
                   disabled={sendingRecordedAudio}
-                  style={{ ...btnStyle, color: 'var(--text3)' }}
+                  style={{ ...btnStyle, color: 'var(--text3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   title="Descartar"
                   aria-label="Descartar nota de voz"
                 >
-                  🗑
+                  <Icon.trash />
                 </button>
                 <VoiceNotePlayer src={recordedAudio.url} knownDuration={recordedAudio.durationSec} />
                 <button
@@ -910,12 +911,12 @@ export default function Chat() {
                 />
                 <button
                   onClick={() => !uploadingFile && fileInputRef.current?.click()}
-                  style={{ ...btnStyle, opacity: uploadingFile ? 0.5 : 1 }}
+                  style={{ ...btnStyle, opacity: uploadingFile ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   title={uploadingFile ? 'Subiendo...' : 'Adjuntar archivo'}
                   aria-label={uploadingFile ? 'Subiendo...' : 'Adjuntar archivo'}
                   disabled={uploadingFile}
                 >
-                  {uploadingFile ? '⏳' : '📎'}
+                  {uploadingFile ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <Icon.paperclip />}
                 </button>
                 {uploadingFile && (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text3)' }}>
@@ -1146,7 +1147,7 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad }) {
         {msg.file_type === 'file' && (
           <a href={mediaUrl(msg.file_url)} download={msg.file_name} style={{ textDecoration: 'none', display: 'inline-block', marginBottom: 2 }}>
             <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 18 }}>📎</span>
+              <span style={{ display: 'flex', color: 'var(--text2)' }}><Icon.paperclip /></span>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{msg.file_name}</div>
                 <div style={{ fontSize: 11, color: 'var(--text3)' }}>Descargar</div>

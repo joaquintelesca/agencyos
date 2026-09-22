@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { initials } from '../utils/format';
 import useModalA11y from '../hooks/useModalA11y';
+import Icon from '../components/Icon';
 
 const AVATAR_COLORS = ['#6366f1','#ec4899','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ef4444','#14b8a6','#f97316','#06b6d4'];
 
@@ -99,7 +100,7 @@ export default function Team() {
           <p style={{ color: 'var(--text2)', fontSize: 14 }}>{users.length} miembro{users.length !== 1 ? 's' : ''} en total</p>
         </div>
         {user?.role === 'admin' && (
-          <button className="btn btn-primary" onClick={() => { setShowNewUser(true); setError(''); }}>＋ Agregar editor</button>
+          <button className="btn btn-primary" onClick={() => { setShowNewUser(true); setError(''); }}><Icon.plus /> Agregar editor</button>
         )}
       </div>
 
@@ -117,9 +118,9 @@ export default function Team() {
             </div>
             {user?.role === 'admin' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <button className="btn btn-ghost btn-icon btn-sm" onClick={e => { e.stopPropagation(); openEdit(u); }} title="Editar" aria-label={`Editar a ${u.name}`}>✏️</button>
+                <button className="btn btn-ghost btn-icon btn-sm" onClick={e => { e.stopPropagation(); openEdit(u); }} title="Editar" aria-label={`Editar a ${u.name}`} style={{ display: 'flex' }}><Icon.pencil /></button>
                 {u.id !== user.id && (
-                  <button className="btn btn-ghost btn-icon btn-sm" onClick={e => { e.stopPropagation(); deleteUser(u.id); }} style={{ color: 'var(--red)' }} title="Eliminar" aria-label={`Eliminar a ${u.name}`}>🗑</button>
+                  <button className="btn btn-ghost btn-icon btn-sm" onClick={e => { e.stopPropagation(); deleteUser(u.id); }} style={{ color: 'var(--red)', display: 'flex' }} title="Eliminar" aria-label={`Eliminar a ${u.name}`}><Icon.trash /></button>
                 )}
               </div>
             )}
@@ -235,8 +236,8 @@ export default function Team() {
                 <div style={{ fontSize: 12, color: 'var(--text3)' }}>{detailUser.email}</div>
               </div>
               <button className="btn-outline" onClick={() => { openEdit(detailUser); setDetailUser(null); }}
-                style={{ borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12 }}>
-                ✏️ Editar
+                style={{ borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <Icon.pencil /> Editar
               </button>
               <button className="icon-btn" onClick={() => setDetailUser(null)} title="Cerrar" aria-label="Cerrar"
                 style={{ color: 'var(--text3)', fontSize: 14, padding: '2px 6px' }}>✕</button>

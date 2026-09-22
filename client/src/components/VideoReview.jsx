@@ -9,6 +9,7 @@ import VideoCompareModal from './VideoCompareModal';
 import MentionInput, { renderMentions } from './MentionInput';
 import useNarrowViewport from '../hooks/useNarrowViewport';
 import useModalA11y from '../hooks/useModalA11y';
+import Icon from './Icon';
 
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
   const { api, user, socket, mediaUrl, token } = useAuth();
@@ -431,8 +432,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           onClick={e => { e.stopPropagation(); deleteVideo(v); }}
           title="Eliminar video"
           aria-label="Eliminar video"
-          style={{ position: 'absolute', top: 10, right: 10, zIndex: 1, width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          🗑
+          style={{ position: 'absolute', top: 10, right: 10, zIndex: 1, width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon.trash />
         </button>
       )}
       <div style={{ width: '100%', paddingBottom: '56%', background: 'var(--bg4)', borderRadius: 8, marginBottom: 10, position: 'relative', overflow: 'hidden' }}>
@@ -633,9 +634,9 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           </button>
         )}
         {(user.role === 'admin' || selectedVideo.uploaded_by === user.id) && (
-          <button onClick={() => deleteVideo(selectedVideo)} title="Eliminar video"
-            style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
-            🗑 Eliminar
+          <button className="btn-outline" onClick={() => deleteVideo(selectedVideo)} title="Eliminar video"
+            style={{ borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <Icon.trash /> Eliminar
           </button>
         )}
         <button className="btn btn-primary btn-sm" onClick={() => setShowUpload(true)}>⬆ Nueva versión</button>
@@ -772,18 +773,18 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                         </button>
                         {(c.user_id === user.id || user.role === 'admin') && (
                           <button className="icon-btn" onClick={e => { e.stopPropagation(); startEditComment(c); }}
-                            style={{ color: 'var(--text3)', fontSize: 11, padding: 0 }}
+                            style={{ color: 'var(--text3)', fontSize: 11, padding: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--text2)'}
                             onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
-                            ✏️ Editar
+                            <Icon.pencil /> Editar
                           </button>
                         )}
                         {(c.user_id === user.id || user.role === 'admin') && (
                           <button className="icon-btn" onClick={e => { e.stopPropagation(); deleteComment(c.id); }}
-                            style={{ color: 'var(--text3)', fontSize: 11, padding: 0 }}
+                            style={{ color: 'var(--text3)', fontSize: 11, padding: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
                             onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
-                            🗑 Eliminar
+                            <Icon.trash /> Eliminar
                           </button>
                         )}
                       </div>
@@ -833,8 +834,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                             <input ref={replyFileRef} type="file" multiple style={{ display: 'none' }} onChange={e => setReplyFiles(Array.from(e.target.files))} />
                             <button className="icon-btn" onClick={() => replyFileRef.current?.click()}
-                              style={{ color: replyFiles.length > 0 ? 'var(--yellow)' : 'var(--text3)', fontSize: 16, padding: '2px 4px', borderRadius: 5 }}
-                              title="Adjuntar archivo" aria-label="Adjuntar archivo">📎</button>
+                              style={{ color: replyFiles.length > 0 ? 'var(--yellow)' : 'var(--text3)', display: 'flex', padding: '2px 4px', borderRadius: 5 }}
+                              title="Adjuntar archivo" aria-label="Adjuntar archivo"><Icon.paperclip /></button>
                             {replyFiles.length > 0 && <span style={{ fontSize: 10, color: 'var(--yellow)' }}>{replyFiles.length} archivo(s)</span>}
                           </div>
                           <div style={{ display: 'flex', gap: 5 }}>

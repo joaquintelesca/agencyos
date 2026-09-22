@@ -5,6 +5,7 @@ import { useAlert } from '../context/AlertContext';
 import { deadlineLabel } from '../utils/format';
 import useNarrowViewport from '../hooks/useNarrowViewport';
 import useModalA11y from '../hooks/useModalA11y';
+import Icon from '../components/Icon';
 
 const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const MAX_VISIBLE_PER_DAY_MONTH = 3;
@@ -332,7 +333,7 @@ export default function CalendarPage() {
             <button onClick={() => goToPeriod(-1)} style={navBtnStyle} title={viewMode === 'week' ? 'Semana anterior' : 'Mes anterior'} aria-label={viewMode === 'week' ? 'Semana anterior' : 'Mes anterior'}>‹</button>
             <button onClick={() => goToPeriod(1)} style={navBtnStyle} title={viewMode === 'week' ? 'Semana siguiente' : 'Mes siguiente'} aria-label={viewMode === 'week' ? 'Semana siguiente' : 'Mes siguiente'}>›</button>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowNewEvent(toDateKey(new Date()))}>+ Evento</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowNewEvent(toDateKey(new Date()))}><Icon.plus /> Evento</button>
           <button className="btn btn-ghost btn-sm" onClick={openFeedModal}>🔗 Suscribirse</button>
         </div>
 

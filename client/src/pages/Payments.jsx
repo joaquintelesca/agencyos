@@ -5,6 +5,7 @@ import { useAlert } from '../context/AlertContext';
 import { initials, monthKey } from '../utils/format';
 import useModalA11y from '../hooks/useModalA11y';
 import useNarrowViewport from '../hooks/useNarrowViewport';
+import Icon from '../components/Icon';
 
 const UPWORK_OPTIONS = ['Pendiente de carga', 'Cargado', 'No'];
 
@@ -461,7 +462,7 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{p.name}</span>
           <button className="icon-btn" onClick={() => onEdit(p)} title="Editar proyecto" aria-label={`Editar proyecto ${p.name}`}
-            style={{ color: 'var(--text3)', fontSize: 12, padding: 2, lineHeight: 1 }}>✏️</button>
+            style={{ color: 'var(--text3)', padding: 2, display: 'flex' }}><Icon.pencil /></button>
         </div>
         {p.payment_type === 'hourly' && (
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>

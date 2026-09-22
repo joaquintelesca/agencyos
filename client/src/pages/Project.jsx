@@ -6,6 +6,7 @@ import { useAlert } from '../context/AlertContext';
 import VideoReview from '../components/VideoReview';
 import MentionInput, { renderMentions } from '../components/MentionInput';
 import { initials } from '../utils/format';
+import Icon from '../components/Icon';
 import useNarrowViewport from '../hooks/useNarrowViewport';
 import useModalA11y from '../hooks/useModalA11y';
 
@@ -510,7 +511,7 @@ export default function Project() {
                       {tasks.filter(t => t.status === col.key).length}
                     </span>
                   </div>
-                  {user.role === 'admin' && <button className="icon-btn" onClick={() => openCreateTask(col.key)} title={`Agregar tarea a ${col.label}`} aria-label={`Agregar tarea a ${col.label}`} style={{ color: 'var(--text3)', fontSize: 18, lineHeight: 1 }}>＋</button>}
+                  {user.role === 'admin' && <button className="icon-btn" onClick={() => openCreateTask(col.key)} title={`Agregar tarea a ${col.label}`} aria-label={`Agregar tarea a ${col.label}`} style={{ color: 'var(--text3)', display: 'flex' }}><Icon.plus /></button>}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
@@ -530,7 +531,7 @@ export default function Project() {
                   background: 'transparent', color: 'var(--text3)', fontSize: 12, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center'
                 }}>
-                  ＋ Agregar tarea
+                  <Icon.plus /> Agregar tarea
                 </button>
               )}
             </div>
