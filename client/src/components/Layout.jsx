@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
@@ -747,9 +747,14 @@ export default function Layout() {
         )}
         {/* Va acá adentro y no solo en App.jsx para que un error en una pantalla deje el sidebar
             en pie y se pueda navegar a otra. La key por pathname lo resetea al cambiar de ruta:
-            si no, una vez que una pantalla rompe, el fallback queda pegado para todas. */}
+            si no, una vez que una pantalla rompe, el fallback queda pegado para todas.
+            Mismo criterio para el Suspense: cada página es su propio chunk (ver App.jsx) — sin
+            este boundary acá adentro, el <Suspense> de App.jsx (que envuelve TODO <Routes>)
+            reemplazaría el sidebar entero por el spinner en cada navegación, no solo el contenido. */}
         <ErrorBoundary key={location.pathname}>
-          <Outlet context={{ projects, setProjects, unreadNotifs, setUnreadNotifs, openEditProject }} />
+          <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" style={{ width: 28, height: 28 }} /></div>}>
+            <Outlet context={{ projects, setProjects, unreadNotifs, setUnreadNotifs, openEditProject }} />
+          </Suspense>
         </ErrorBoundary>
       </main>
 
