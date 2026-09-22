@@ -460,8 +460,8 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }
       <td style={{ padding: '9px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{p.name}</span>
-          <button onClick={() => onEdit(p)} title="Editar proyecto" aria-label={`Editar proyecto ${p.name}`}
-            style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 12, padding: 2, lineHeight: 1 }}>✏️</button>
+          <button className="icon-btn" onClick={() => onEdit(p)} title="Editar proyecto" aria-label={`Editar proyecto ${p.name}`}
+            style={{ color: 'var(--text3)', fontSize: 12, padding: 2, lineHeight: 1 }}>✏️</button>
         </div>
         {p.payment_type === 'hourly' && (
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>

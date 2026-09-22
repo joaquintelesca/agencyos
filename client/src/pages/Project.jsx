@@ -510,7 +510,7 @@ export default function Project() {
                       {tasks.filter(t => t.status === col.key).length}
                     </span>
                   </div>
-                  {user.role === 'admin' && <button onClick={() => openCreateTask(col.key)} title={`Agregar tarea a ${col.label}`} aria-label={`Agregar tarea a ${col.label}`} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>＋</button>}
+                  {user.role === 'admin' && <button className="icon-btn" onClick={() => openCreateTask(col.key)} title={`Agregar tarea a ${col.label}`} aria-label={`Agregar tarea a ${col.label}`} style={{ color: 'var(--text3)', fontSize: 18, lineHeight: 1 }}>＋</button>}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>

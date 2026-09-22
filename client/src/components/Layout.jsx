@@ -570,7 +570,7 @@ export default function Layout() {
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 30, height: 30, background: 'var(--accent)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🎬</div>
           <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>AgencyOS</span>
-          <button onClick={() => isNarrowViewport ? setMobileSidebarOpen(false) : setSidebarCollapsed(true)} title="Ocultar sidebar" aria-label="Ocultar sidebar" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 15, padding: 4, flexShrink: 0 }}>◀</button>
+          <button className="icon-btn" onClick={() => isNarrowViewport ? setMobileSidebarOpen(false) : setSidebarCollapsed(true)} title="Ocultar sidebar" aria-label="Ocultar sidebar" style={{ color: 'var(--text3)', fontSize: 15, padding: 4, flexShrink: 0 }}>◀</button>
         </div>
 
         <div style={{ padding: '10px 8px 0' }}>
@@ -611,7 +611,7 @@ export default function Layout() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', marginBottom: 4 }}>
             <SideLabel>Clientes</SideLabel>
             {user?.role === 'admin' && (
-              <button onClick={() => setShowNewClient(true)} style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 4px' }} title="Nuevo cliente" aria-label="Nuevo cliente">＋</button>
+              <button className="icon-btn" onClick={() => setShowNewClient(true)} style={{ color: 'var(--text3)', fontSize: 16, lineHeight: 1, padding: '0 4px' }} title="Nuevo cliente" aria-label="Nuevo cliente">＋</button>
             )}
           </div>
 
@@ -700,7 +700,7 @@ export default function Layout() {
             </div>
           ))}
 
-          <button onClick={openNewProject} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 12, cursor: 'pointer', width: '100%', marginTop: 4, borderRadius: 7 }}>
+          <button className="icon-btn" onClick={openNewProject} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', color: 'var(--text3)', fontSize: 12, width: '100%', marginTop: 4, borderRadius: 7 }}>
             <span>＋</span> Nuevo proyecto
           </button>
         </div>
@@ -711,8 +711,8 @@ export default function Layout() {
             <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>{user?.role}</div>
           </div>
-          <button onClick={openChangePassword} title="Cambiar contraseña" aria-label="Cambiar contraseña" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>🔑</button>
-          <button onClick={logout} title="Cerrar sesión" aria-label="Cerrar sesión" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>⏻</button>
+          <button className="icon-btn" onClick={openChangePassword} title="Cambiar contraseña" aria-label="Cambiar contraseña" style={{ color: 'var(--text3)', fontSize: 16 }}>🔑</button>
+          <button className="icon-btn" onClick={logout} title="Cerrar sesión" aria-label="Cerrar sesión" style={{ color: 'var(--text3)', fontSize: 16 }}>⏻</button>
         </div>
       </aside>
       )}
@@ -741,7 +741,7 @@ export default function Layout() {
               <span style={{ fontSize: 13, color: 'var(--yellow)', fontWeight: 600 }}>Almacenamiento: {storageWarning.gb} GB usados</span>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>— Superaste los 20GB. Considerá borrar archivos viejos o migrar a la nube.</span>
             </div>
-            <button onClick={() => setStorageWarning(null)} title="Cerrar aviso" aria-label="Cerrar aviso de almacenamiento" style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>✕</button>
+            <button className="icon-btn" onClick={() => setStorageWarning(null)} title="Cerrar aviso" aria-label="Cerrar aviso de almacenamiento" style={{ color: 'var(--text3)', fontSize: 14, padding: '0 4px' }}>✕</button>
           </div>
         )}
         {/* Va acá adentro y no solo en App.jsx para que un error en una pantalla deje el sidebar
@@ -835,8 +835,8 @@ export default function Layout() {
               <>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <h2 id="new-project-modal-title">Paso 2 — Configuración de pago</h2>
-                  <button type="button" onClick={createProject} disabled={isCreatingProject}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--accent2)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}>
+                  <button type="button" className="icon-btn" onClick={createProject} disabled={isCreatingProject}
+                    style={{ color: 'var(--accent2)', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}>
                     Omitir por ahora →
                   </button>
                 </div>
@@ -1040,8 +1040,8 @@ export default function Layout() {
             </div>
             {user?.role === 'admin' && (
               <div className="form-group" style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-                <button type="button" onClick={() => setShowPaymentSection(s => !s)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent2)', fontSize: 13, fontWeight: 600, fontFamily: 'var(--font)' }}>
+                <button type="button" className="icon-btn" onClick={() => setShowPaymentSection(s => !s)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 0, color: 'var(--accent2)', fontSize: 13, fontWeight: 600, fontFamily: 'var(--font)' }}>
                   <span style={{ display: 'inline-block', transform: showPaymentSection ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▸</span>
                   Configuración de pago
                 </button>
@@ -1270,8 +1270,8 @@ export default function Layout() {
                 <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.4 }}>{notificationLabel(t)}</div>
                 {t.preview && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{renderMentions(t.preview)}"</div>}
               </div>
-              <button onClick={e => { e.stopPropagation(); dismissToast(t.id); }} title="Cerrar" aria-label="Cerrar notificación"
-                style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 14, cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>
+              <button className="icon-btn" onClick={e => { e.stopPropagation(); dismissToast(t.id); }} title="Cerrar" aria-label="Cerrar notificación"
+                style={{ color: 'var(--text3)', fontSize: 14, flexShrink: 0, lineHeight: 1 }}>
                 ✕
               </button>
             </div>

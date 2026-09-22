@@ -681,8 +681,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           </div>
           <div style={{ display: 'flex', borderBottom: `1px solid var(--border)`, flexShrink: 0 }}>
             {[['all','Todos'],['pending','Pendientes'],['resolved','Hechos']].map(([val, label]) => (
-              <button key={val} onClick={() => setFilter(val)}
-                style={{ flex: 1, background: 'transparent', border: 'none', borderBottom: filter === val ? `2px solid var(--accent)` : '2px solid transparent', padding: '7px 4px', fontSize: 11, color: filter === val ? 'var(--accent2)' : 'var(--text3)', cursor: 'pointer', fontWeight: filter === val ? 600 : 400, transition: 'all 0.15s' }}>
+              <button key={val} className="icon-btn" onClick={() => setFilter(val)}
+                style={{ flex: 1, borderBottom: filter === val ? `2px solid var(--accent)` : '2px solid transparent', padding: '7px 4px', fontSize: 11, color: filter === val ? 'var(--accent2)' : 'var(--text3)', fontWeight: filter === val ? 600 : 400, transition: 'all 0.15s' }}>
                 {label}
               </button>
             ))}
@@ -764,23 +764,23 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                     {/* Reply button */}
                     {editingComment !== c.id && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                        <button onClick={e => { e.stopPropagation(); setReplyingTo(replyingTo === c.id ? null : c.id); setReplyText(''); setReplyFiles([]); }}
-                          style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 11, padding: 0, display: 'flex', alignItems: 'center', gap: 3 }}
+                        <button className="icon-btn" onClick={e => { e.stopPropagation(); setReplyingTo(replyingTo === c.id ? null : c.id); setReplyText(''); setReplyFiles([]); }}
+                          style={{ color: 'var(--text3)', fontSize: 11, padding: 0, display: 'flex', alignItems: 'center', gap: 3 }}
                           onMouseEnter={e => e.currentTarget.style.color = 'var(--text2)'}
                           onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
                           ↩ Responder
                         </button>
                         {(c.user_id === user.id || user.role === 'admin') && (
-                          <button onClick={e => { e.stopPropagation(); startEditComment(c); }}
-                            style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 11, padding: 0 }}
+                          <button className="icon-btn" onClick={e => { e.stopPropagation(); startEditComment(c); }}
+                            style={{ color: 'var(--text3)', fontSize: 11, padding: 0 }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--text2)'}
                             onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
                             ✏️ Editar
                           </button>
                         )}
                         {(c.user_id === user.id || user.role === 'admin') && (
-                          <button onClick={e => { e.stopPropagation(); deleteComment(c.id); }}
-                            style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 11, padding: 0 }}
+                          <button className="icon-btn" onClick={e => { e.stopPropagation(); deleteComment(c.id); }}
+                            style={{ color: 'var(--text3)', fontSize: 11, padding: 0 }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
                             onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
                             🗑 Eliminar
@@ -832,8 +832,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 5 }}>
                           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                             <input ref={replyFileRef} type="file" multiple style={{ display: 'none' }} onChange={e => setReplyFiles(Array.from(e.target.files))} />
-                            <button onClick={() => replyFileRef.current?.click()}
-                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: replyFiles.length > 0 ? 'var(--yellow)' : 'var(--text3)', fontSize: 16, padding: '2px 4px', borderRadius: 5 }}
+                            <button className="icon-btn" onClick={() => replyFileRef.current?.click()}
+                              style={{ color: replyFiles.length > 0 ? 'var(--yellow)' : 'var(--text3)', fontSize: 16, padding: '2px 4px', borderRadius: 5 }}
                               title="Adjuntar archivo" aria-label="Adjuntar archivo">📎</button>
                             {replyFiles.length > 0 && <span style={{ fontSize: 10, color: 'var(--yellow)' }}>{replyFiles.length} archivo(s)</span>}
                           </div>

@@ -238,8 +238,8 @@ export default function Team() {
                 style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
                 ✏️ Editar
               </button>
-              <button onClick={() => setDetailUser(null)} title="Cerrar" aria-label="Cerrar"
-                style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 14, cursor: 'pointer', padding: '2px 6px' }}>✕</button>
+              <button className="icon-btn" onClick={() => setDetailUser(null)} title="Cerrar" aria-label="Cerrar"
+                style={{ color: 'var(--text3)', fontSize: 14, padding: '2px 6px' }}>✕</button>
             </div>
 
             {detailError ? (

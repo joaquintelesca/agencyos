@@ -91,6 +91,13 @@ body {
 }
 .btn-retry-sm { padding: 2px 6px; border-radius: 5px; font-size: 10px; }
 
+/* Botón "sin chrome": resetea solo lo que un <button> nativo agrega por default (fondo, borde,
+   cursor) para que se comporte como un ícono clickeable — decenas de lugares reimplementaban
+   exactamente estas 3 líneas a mano. Color, tamaño y padding se dejan afuera a propósito: varían
+   legítimamente según el contexto (un ícono de toolbar no es del mismo tamaño que uno de sidebar),
+   cada instancia los sigue definiendo con su propio inline style. */
+.icon-btn { background: transparent; border: none; cursor: pointer; }
+
 /* Selector de vista tipo pestañas (segmented control) — Notifications.jsx y VideosDashboard.jsx
    reimplementaban exactamente el mismo control por separado. */
 .tab-switch {

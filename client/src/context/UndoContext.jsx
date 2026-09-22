@@ -63,9 +63,9 @@ export function UndoProvider({ children }) {
           zIndex: 9999, boxShadow: '0 8px 28px rgba(0,0,0,0.35)'
         }}>
           <span style={{ fontSize: 13, color: 'var(--text)' }}>{pending.label}</span>
-          <button onClick={undo} style={{
-            background: 'transparent', border: 'none', color: 'var(--accent2)', fontWeight: 600,
-            fontSize: 13, cursor: 'pointer', padding: '4px 8px'
+          <button className="icon-btn" onClick={undo} style={{
+            color: 'var(--accent2)', fontWeight: 600,
+            fontSize: 13, padding: '4px 8px'
           }}>Deshacer <span style={{ opacity: 0.6, fontWeight: 400 }}>{navigator.platform.includes('Mac') ? '⌘Z' : 'Ctrl+Z'}</span></button>
         </div>
       )}

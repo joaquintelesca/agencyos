@@ -662,16 +662,16 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           {capturedTs?.type === 'range' ? (
             <div style={{ background: 'var(--bg3)', border: '1px solid var(--yellow)', borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 11, color: 'var(--yellow)', fontWeight: 600 }}>⬌ Rango: {formatT(capturedTs.start)} → {formatT(capturedTs.end)}</span>
-              <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); setRangeMode(false); setRangeStart(null); setRangeEnd(null); clearAnnotations(); }}
+              <button className="icon-btn" onClick={() => { setShowCommentInput(false); setCapturedTs(null); setRangeMode(false); setRangeStart(null); setRangeEnd(null); clearAnnotations(); }}
                 title="Descartar rango marcado" aria-label="Descartar rango marcado"
-                style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                style={{ color: 'var(--text3)', fontSize: 14 }}>✕</button>
             </div>
           ) : (
             <div style={{ background: 'var(--bg3)', border: '1px solid var(--accent)', borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>⏸ Pausado en {formatT(capturedTs?.ts ?? currentTime)}</span>
-              <button onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
+              <button className="icon-btn" onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
                 title="Descartar marca de tiempo" aria-label="Descartar marca de tiempo"
-                style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                style={{ color: 'var(--text3)', fontSize: 14 }}>✕</button>
             </div>
           )}
           <MentionInput as="textarea" value={commentText} onChange={setCommentText} members={members}

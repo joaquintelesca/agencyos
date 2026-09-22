@@ -146,8 +146,8 @@ export default function Notifications() {
             Marcar como leído
           </button>
         )}
-        <button onClick={e => deleteOne(e, n)} title="Borrar notificación" aria-label="Borrar notificación"
-          style={{ background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 12, cursor: 'pointer', padding: '3px 6px' }}
+        <button className="icon-btn" onClick={e => deleteOne(e, n)} title="Borrar notificación" aria-label="Borrar notificación"
+          style={{ color: 'var(--text3)', fontSize: 12, padding: '3px 6px' }}
           onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
           onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}>
           🗑

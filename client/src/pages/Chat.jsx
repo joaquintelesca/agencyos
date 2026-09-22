@@ -633,8 +633,9 @@ export default function Chat() {
           {/* Sección DMs */}
           <div style={{ padding: '10px 10px 4px' }}>
             <button
+              className="icon-btn"
               onClick={() => setDmsCollapsed(p => !p)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 5, marginBottom: 4 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%', padding: '2px 4px', borderRadius: 5, marginBottom: 4 }}
             >
               <span style={{ fontSize: 10, color: 'var(--text3)', display: 'inline-block', transition: 'transform 0.15s', transform: dmsCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1, textAlign: 'left' }}>Mensajes directos</span>
@@ -685,16 +686,18 @@ export default function Chat() {
           <div style={{ padding: '4px 10px 10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
               <button
+                className="icon-btn"
                 onClick={() => setChannelsCollapsed(p => !p)}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 5 }}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, padding: '2px 4px', borderRadius: 5 }}
               >
                 <span style={{ fontSize: 10, color: 'var(--text3)', display: 'inline-block', transition: 'transform 0.15s', transform: channelsCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Canales</span>
               </button>
               {user?.role === 'admin' && (
                 <button
+                  className="icon-btn"
                   onClick={() => setShowNewChannel(true)}
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}
+                  style={{ color: 'var(--text3)', fontSize: 16, padding: '0 4px' }}
                   title="Nuevo canal"
                   aria-label="Nuevo canal"
                 >＋</button>
@@ -762,8 +765,8 @@ export default function Chat() {
               // marginLeft despeja el botón flotante "▶ Mostrar sidebar" del shell (fixed, top-left,
               // visible por default en angosto) — sin esto quedaban superpuestos y el de acá no
               // recibía el click.
-              <button onClick={() => setActiveConv(null)} title="Volver" aria-label="Volver a la lista"
-                style={{ background: 'transparent', border: 'none', color: 'var(--text2)', fontSize: 18, cursor: 'pointer', padding: 0, marginLeft: 34, flexShrink: 0 }}>←</button>
+              <button className="icon-btn" onClick={() => setActiveConv(null)} title="Volver" aria-label="Volver a la lista"
+                style={{ color: 'var(--text2)', fontSize: 18, padding: 0, marginLeft: 34, flexShrink: 0 }}>←</button>
             )}
             {activeConv.type === 'dm' ? (
               <>
@@ -796,18 +799,18 @@ export default function Chat() {
           {/* Pestañas por cliente (solo DMs con tabs) */}
           {activeConv.type === 'dm' && dmTabs.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '0 20px', borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' }}>
-              <button onClick={() => switchTab(null)} style={{
-                padding: '10px 16px', background: 'transparent', border: 'none',
+              <button className="icon-btn" onClick={() => switchTab(null)} style={{
+                padding: '10px 16px',
                 borderBottom: !activeTab ? '2px solid var(--accent)' : '2px solid transparent',
-                cursor: 'pointer', fontSize: 13, fontWeight: !activeTab ? 700 : 500,
+                fontSize: 13, fontWeight: !activeTab ? 700 : 500,
                 color: !activeTab ? 'var(--accent)' : 'var(--text3)',
                 fontFamily: 'var(--font)', whiteSpace: 'nowrap', transition: 'all 0.15s'
               }}>General</button>
               {dmTabs.map(client => (
-                <button key={client.id} onClick={() => switchTab(client.id)} style={{
-                  padding: '10px 16px', background: 'transparent', border: 'none',
+                <button key={client.id} className="icon-btn" onClick={() => switchTab(client.id)} style={{
+                  padding: '10px 16px',
                   borderBottom: activeTab === client.id ? '2px solid var(--accent)' : '2px solid transparent',
-                  cursor: 'pointer', fontSize: 13, fontWeight: activeTab === client.id ? 700 : 500,
+                  fontSize: 13, fontWeight: activeTab === client.id ? 700 : 500,
                   color: activeTab === client.id ? 'var(--accent)' : 'var(--text3)',
                   fontFamily: 'var(--font)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6,
                   transition: 'all 0.15s'
@@ -917,8 +920,8 @@ export default function Chat() {
                 {uploadingFile && (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text3)' }}>
                     {uploadProgress}%
-                    <button onClick={cancelFileUpload} title="Cancelar subida" aria-label="Cancelar subida"
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 12, padding: 0 }}>
+                    <button className="icon-btn" onClick={cancelFileUpload} title="Cancelar subida" aria-label="Cancelar subida"
+                      style={{ color: 'var(--text3)', fontSize: 12, padding: 0 }}>
                       ✕
                     </button>
                   </span>
