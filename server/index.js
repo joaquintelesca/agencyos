@@ -1047,6 +1047,7 @@ app.use(require('./routes/video-upload')({
   CHUNK_SIZE, VIDEO_MAX_BYTES, chunksDir, uploadSessions, discardUploadSession, getUploadsSize, STORAGE_WARN_BYTES,
 }));
 require('./lib/review-reminders')({ db, createNotification });
+require('./lib/payment-reminders')({ db, createNotification });
 
 // ─── STORAGE CHECK ───────────────────────────────────────────────────────────
 // (GET /api/storage está en routes/video-upload.js; el resto de esta sección se movió a lib/storage.js.)

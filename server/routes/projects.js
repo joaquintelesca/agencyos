@@ -239,7 +239,15 @@ module.exports = function projectsRoutes({ db, auth, io, requireProjectAccess, w
         return res.status(400).json({ error: 'Para marcar el proyecto como terminado necesita un editor asignado y un precio cargado' });
       }
       const update = { status };
-      if (status === 'completed') update.ever_completed = true; // nunca se vuelve a poner en false
+      if (status === 'completed') {
+        update.ever_completed = true; // nunca se vuelve a poner en false
+        // Arranca (o reinicia) el reloj del recordatorio de cobro pendiente — ver
+        // server/lib/payment-reminders.js. Se pisa cada vez, no solo si estaba vacío: si el
+        // proyecto se reabrió y se vuelve a completar, es un ciclo de cobro nuevo.
+        update.pending_collection_since = new Date().toISOString();
+      } else {
+        update.pending_collection_since = null;
+      }
       await db('projects').where({ id: req.params.id }).update(update);
       const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color', 'eu.email as _editor_email').first());
       // Sin esto, editor_is_owner/computed_* faltaban en la respuesta de este endpoint en

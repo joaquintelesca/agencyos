@@ -5,24 +5,10 @@
 // efectivamente se compartió (video_shares o client_shares activo en el momento del chequeo):
 // pedido explícito del usuario, ya que muchos videos se entregan directo sin pasar nunca por
 // aprobación del cliente, y esos no deberían generar ruido acá.
+const { businessDaysBetween } = require('./business-days');
+
 module.exports = function createReviewReminders({ db, createNotification }) {
   const BUSINESS_DAYS_THRESHOLD = 2;
-
-  // Días hábiles (lunes a viernes) entre dos fechas — un findes de por medio no cuenta como
-  // "2 días sin respuesta" de la misma forma que 2 días de semana.
-  function businessDaysBetween(from, to) {
-    let count = 0;
-    const cursor = new Date(from);
-    cursor.setHours(0, 0, 0, 0);
-    const end = new Date(to);
-    end.setHours(0, 0, 0, 0);
-    while (cursor < end) {
-      cursor.setDate(cursor.getDate() + 1);
-      const day = cursor.getDay(); // 0 = domingo, 6 = sábado
-      if (day !== 0 && day !== 6) count++;
-    }
-    return count;
-  }
 
   // Sin esto, dos llamadas superpuestas (el disparo automático al construir + una llamada manual,
   // o en teoría el intervalo diario si un chequeo anterior todavía no terminó) pueden pisarse: las
