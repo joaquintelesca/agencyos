@@ -1061,8 +1061,8 @@ app.use(require('./routes/video-upload')({
 // ─── VIDEO COMMENTS ──────────────────────────────────────────────────────────
 app.use(require('./routes/video-comments')({ db, auth, isProjectMember, safeJsonParse, attachmentUploadMiddleware, emitToProject, extractMentionedUserIds, createNotification, safeUnlink }));
 
-// ─── VIDEO SHARES (link de revisión para clientes) ───────────────────────────
-app.use(require('./routes/video-shares')({ db, auth, serveFile, safeJsonParse, emitToProject, createNotification }));
+// ─── SHARES (links de revisión sin cuenta para clientes: por video y por cliente) ────────────
+app.use(require('./routes/shares')({ db, auth, serveFile, safeJsonParse, emitToProject, createNotification }));
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
 

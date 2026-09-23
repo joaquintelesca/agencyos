@@ -22,6 +22,7 @@ const Notifications = lazy(() => import('./pages/Notifications'));
 const Earnings = lazy(() => import('./pages/Earnings'));
 const ClientDashboard = lazy(() => import('./pages/ClientDashboard'));
 const PublicReview = lazy(() => import('./pages/PublicReview'));
+const ClientReview = lazy(() => import('./pages/ClientReview'));
 
 const PageLoader = () => <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh'}}><div className="spinner" style={{width:32,height:32}}/></div>;
 
@@ -52,6 +53,7 @@ export default function App() {
                   {/* Pública a propósito, fuera de PrivateRoute — el cliente que abre esto no
                       tiene cuenta ni la va a crear. */}
                   <Route path="/review/:token" element={<PublicReview />} />
+                  <Route path="/client-review/:token" element={<ClientReview />} />
                   <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
                     <Route index element={<Dashboard />} />
                     <Route path="calendar" element={<CalendarPage />} />

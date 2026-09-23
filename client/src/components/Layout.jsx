@@ -48,6 +48,12 @@ export default function Layout() {
   const toastTimers = useRef({});
   const [editingClient, setEditingClient] = useState(null);
   const [editClientForm, setEditClientForm] = useState({ name: '', color: '#6366f1', email: '', phone: '', notes: '' });
+  // Portal del cliente: un link estable con todos sus proyectos activos, además del link por
+  // video existente (VideoReview.jsx) — el usuario pidió tener las dos opciones disponibles.
+  // undefined = todavía no se consultó, null = consultado y no hay uno activo.
+  const [clientShare, setClientShare] = useState(undefined);
+  const [clientShareBusy, setClientShareBusy] = useState(false);
+  const [clientShareDays, setClientShareDays] = useState(90);
   const [editingProject, setEditingProject] = useState(null);
   // La sección de pago del modal de editar cambia de forma según 3 variables (tipo fijo/hora, si
   // sos el propio editor, si Upwork está activo) — nadie que no escribió el código puede predecir
@@ -335,6 +341,29 @@ export default function Layout() {
       setClients(updated);
       setEditingClient(null);
     } catch (e) { console.error(e); await alert('Error: ' + e.message); }
+  };
+
+  // Se consulta apenas se abre el modal de edición — mismo criterio que openShareModal en
+  // VideoReview.jsx, solo que acá dispara automático en vez de esperar un click aparte.
+  useEffect(() => {
+    if (!editingClient) { setClientShare(undefined); return; }
+    setClientShare(undefined);
+    api(`/api/clients/${editingClient.id}/share`).then(setClientShare).catch(() => setClientShare(null));
+  }, [editingClient]); // eslint-disable-line
+
+  const createClientShare = async () => {
+    setClientShareBusy(true);
+    try { setClientShare(await api(`/api/clients/${editingClient.id}/share`, { method: 'POST', body: { expiresInDays: clientShareDays } })); }
+    catch (e) { console.error(e); await alert('No se pudo generar el link: ' + e.message); }
+    finally { setClientShareBusy(false); }
+  };
+
+  const revokeClientShare = async () => {
+    if (!clientShare || !await confirm('¿Desactivar este portal? El cliente ya no va a poder abrirlo.', { confirmText: 'Desactivar', danger: true })) return;
+    setClientShareBusy(true);
+    try { await api(`/api/client-shares/${clientShare.id}/revoke`, { method: 'PATCH' }); setClientShare(null); }
+    catch (e) { console.error(e); await alert('Error: ' + e.message); }
+    finally { setClientShareBusy(false); }
   };
 
   const openChangePassword = () => {
@@ -1241,6 +1270,53 @@ export default function Layout() {
                 ))}
               </div>
             </div>
+
+            {/* Portal del cliente: link estable con todos sus proyectos activos, además del
+                link por video existente en VideoReview.jsx. */}
+            <div className="form-group">
+              <label>Portal para el cliente</label>
+              {clientShare === undefined && (
+                <div style={{ padding: '6px 0' }}><div className="spinner" style={{ width: 18, height: 18 }} /></div>
+              )}
+              {clientShare === null && (
+                <>
+                  <p style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.4, marginBottom: 8 }}>
+                    Un solo link con todos los proyectos activos y videos de {editingClient.name} —
+                    a diferencia del link por video (desde cada video en Videos), no hace falta generar uno nuevo cada vez que subís algo.
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <select className="input" value={clientShareDays} onChange={e => setClientShareDays(Number(e.target.value))} style={{ width: 'auto' }}>
+                      <option value={30}>Vence en 30 días</option>
+                      <option value={90}>Vence en 90 días</option>
+                      <option value={365}>Vence en 1 año</option>
+                    </select>
+                    <button className="btn btn-primary" onClick={createClientShare} disabled={clientShareBusy}>
+                      {clientShareBusy ? 'Generando...' : 'Generar portal'}
+                    </button>
+                  </div>
+                </>
+              )}
+              {clientShare && (
+                <>
+                  <input className="input" readOnly value={`${window.location.origin}/client-review/${clientShare.id}`}
+                    onClick={e => e.target.select()} style={{ marginBottom: 8 }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span className="badge" style={{ fontWeight: 500, background: 'rgba(34,201,122,0.12)', color: 'var(--green)' }}>✓ Activo</span>
+                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>vence el {new Date(clientShare.expires_at).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn-outline" style={{ borderRadius: 7, padding: '5px 12px', fontSize: 12 }}
+                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/client-review/${clientShare.id}`)}>
+                      Copiar link
+                    </button>
+                    <button className="btn btn-danger" style={{ padding: '5px 12px', fontSize: 12 }} onClick={revokeClientShare} disabled={clientShareBusy}>
+                      Desactivar
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setEditingClient(null)}>Cancelar</button>
               <button className="btn btn-primary" onClick={saveClient} disabled={!editClientForm.name.trim()}>Guardar cambios</button>
