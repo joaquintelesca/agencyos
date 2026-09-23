@@ -11,6 +11,7 @@ export default function Team() {
   const { api, user, updateUser } = useAuth();
   const { scheduleDelete } = useUndo();
   const [users, setUsers] = useState([]);
+  const [workload, setWorkload] = useState({});
   const [showNewUser, setShowNewUser] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [userForm, setUserForm] = useState({ name: '', email: '', password: '', role: 'editor' });
@@ -22,6 +23,9 @@ export default function Team() {
   const [detailError, setDetailError] = useState('');
 
   useEffect(() => { api('/api/users').then(setUsers).catch(console.error); }, []);
+  // 403 esperado para un editor viendo esta pantalla (el endpoint es admin-only) — no es un error
+  // real que valga la pena loguear, solo significa "no me corresponde ver esto".
+  useEffect(() => { if (user?.role === 'admin') api('/api/team/workload').then(setWorkload).catch(() => {}); }, [user]);
 
   const createUser = async () => {
     if (!userForm.name || !userForm.email || !userForm.password) return;
@@ -88,6 +92,17 @@ export default function Team() {
     });
   };
 
+  // Umbrales elegidos a ojo (no hay dato histórico de "capacidad ideal" por editor todavía) —
+  // sirven para distinguir de un vistazo "tiene lugar" de "está complicado", no para ser exactos.
+  const workloadInfo = (userId) => {
+    const w = workload[userId];
+    const total = w ? Object.values(w).reduce((s, n) => s + n, 0) : 0;
+    if (total === 0) return { total, label: 'Sin tareas activas', color: 'var(--text3)', bg: 'var(--bg3)' };
+    if (total <= 3) return { total, label: `${total} tarea${total !== 1 ? 's' : ''} activa${total !== 1 ? 's' : ''}`, color: 'var(--green)', bg: 'rgba(34,201,122,0.12)' };
+    if (total <= 6) return { total, label: `${total} tareas activas`, color: 'var(--yellow)', bg: 'rgba(240,168,58,0.12)' };
+    return { total, label: `${total} tareas activas`, color: 'var(--red)', bg: 'rgba(240,92,92,0.12)' };
+  };
+
   const newUserModalRef = useModalA11y(showNewUser, () => setShowNewUser(false));
   const editUserModalRef = useModalA11y(!!editingUser, () => setEditingUser(null));
   const detailModalRef = useModalA11y(!!detailUser, () => setDetailUser(null));
@@ -114,7 +129,13 @@ export default function Team() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 600, fontSize: 15 }}>{u.name}</div>
               {u.email && <div style={{ color: 'var(--text2)', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>}
-              {u.role && <span className={`badge ${u.role === 'admin' ? 'badge-in_progress' : 'badge-todo'}`} style={{ marginTop: 6 }}>{u.role}</span>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                {u.role && <span className={`badge ${u.role === 'admin' ? 'badge-in_progress' : 'badge-todo'}`}>{u.role}</span>}
+                {user?.role === 'admin' && (() => {
+                  const wl = workloadInfo(u.id);
+                  return <span className="badge" style={{ background: wl.bg, color: wl.color }}>🗂 {wl.label}</span>;
+                })()}
+              </div>
             </div>
             {user?.role === 'admin' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

@@ -4,6 +4,31 @@ const { v4: uuidv4 } = require('uuid');
 module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjectMember, addProjectMember, removeProjectMemberIfOrphaned, emitToProject, createNotification, TASK_STATUSES }) {
   const router = express.Router();
 
+  // Cuántas tareas activas tiene cada integrante AHORA MISMO — hoy, para asignar una tarea nueva
+  // hay que ir proyecto por proyecto adivinando quién tiene lugar. Solo cuenta tareas de proyectos
+  // 'active' (el backlog de un proyecto ya terminado no es carga real) y excluye 'done' (ya no
+  // pesa en la capacidad de nadie). Antes de 'done', no 'terminadas' — TASK_STATUSES completo
+  // salvo la última, para no hardcodear la lista acá si algún día cambia.
+  router.get('/api/team/workload', auth, async (req, res) => {
+    try {
+      if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+      const rows = await db('tasks as t')
+        .join('projects as p', 't.project_id', 'p.id')
+        .where('p.status', 'active')
+        .whereNotNull('t.assigned_to')
+        .whereNot('t.status', 'done')
+        .select('t.assigned_to', 't.status')
+        .count('* as count')
+        .groupBy('t.assigned_to', 't.status');
+      const byUser = {};
+      for (const r of rows) {
+        byUser[r.assigned_to] ??= {};
+        byUser[r.assigned_to][r.status] = Number(r.count);
+      }
+      res.json(byUser);
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
   router.get('/api/projects/:projectId/tasks', auth, requireProjectAccess(), async (req, res) => {
     try {
       let query = db('tasks as t')
