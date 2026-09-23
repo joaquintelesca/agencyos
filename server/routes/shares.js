@@ -44,21 +44,14 @@ module.exports = function sharesRoutes({ db, auth, serveFile, safeJsonParse, emi
   // ── Lógica compartida sobre un video_id ya resuelto (por cualquiera de los dos tipos de link) ──
 
   async function getVideoForReview(videoId) {
-    const video = await db('videos as v')
+    return db('videos as v')
       .join('projects as p', 'v.project_id', 'p.id')
       .leftJoin('clients as c', 'p.client_id', 'c.id')
       .leftJoin('users as av', 'v.approved_by', 'av.id')
       .where('v.id', videoId)
       .select('v.id', 'v.title', 'v.version', 'p.name as project_name', 'p.color as project_color', 'c.name as client_name',
-        'v.approved_at', db.raw('COALESCE(av.name, v.approved_by_guest_name) as approved_by_name'), 'p.client_paid')
+        'v.approved_at', db.raw('COALESCE(av.name, v.approved_by_guest_name) as approved_by_name'))
       .first();
-    if (!video) return video;
-    // Nunca se expone el monto ni el estado interno de facturación acá — un booleano nada más, para
-    // el watermark de "sin cobrar" (ver client/src/components/VideoReviewPane.jsx). client_paid es
-    // el único campo interno que se filtra hasta acá, y se borra apenas se deriva el booleano.
-    video.paid = video.client_paid === 'cobrado';
-    delete video.client_paid;
-    return video;
   }
 
   // Solo comentarios de invitados (guest_name IS NOT NULL) — la conversación interna admin↔editor
@@ -235,7 +228,10 @@ module.exports = function sharesRoutes({ db, auth, serveFile, safeJsonParse, emi
       if (error) return res.status(error).end();
       const video = await db('videos').where({ id: share.video_id }).first();
       if (!video) return res.status(404).end();
-      await serveFile(res, video.filename);
+      // ?download=1 fuerza la descarga con el nombre real del archivo en vez de solo reproducirlo
+      // inline — decisión explícita del usuario: descarga siempre disponible, sin condición de
+      // pago, porque solo comparte estos links con clientes de confianza.
+      await serveFile(res, video.filename, req.query.download === '1' ? video.original_name : null);
     } catch (e) { console.error(e); res.status(500).end(); }
   });
 
@@ -333,7 +329,7 @@ module.exports = function sharesRoutes({ db, auth, serveFile, safeJsonParse, emi
       if (!owned) return res.status(404).end();
       const video = await db('videos').where({ id: req.params.videoId }).first();
       if (!video) return res.status(404).end();
-      await serveFile(res, video.filename);
+      await serveFile(res, video.filename, req.query.download === '1' ? video.original_name : null);
     } catch (e) { console.error(e); res.status(500).end(); }
   });
 

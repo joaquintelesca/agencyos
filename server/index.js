@@ -111,12 +111,21 @@ const s3 = useR2 ? new S3Client({
 console.log(useR2 ? `📦 Storage: Cloudflare R2 (bucket "${R2_BUCKET}")` : `📦 Storage: disco local (${uploadsDir})`);
 
 // Sirve un archivo ya autorizado: redirige a una URL firmada de R2 (expira en 5 min, no hace
-// falta que el bucket sea público) o lo sirve directo desde disco en desarrollo.
-async function serveFile(res, filename) {
+// falta que el bucket sea público) o lo sirve directo desde disco en desarrollo. `downloadName`,
+// si viene, fuerza al navegador a bajar el archivo con ese nombre en vez de reproducirlo inline
+// — usado por el botón de descarga del link de revisión (ver server/routes/shares.js). Para R2 va
+// como ResponseContentDisposition en la propia URL firmada: el header real lo pone R2 al responder,
+// así que aplica aunque el navegador ignore el atributo `download` de un link cruzando de origen.
+// Para disco local, res.download() hace lo mismo directo.
+async function serveFile(res, filename, downloadName) {
   if (useR2) {
-    const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: R2_BUCKET, Key: filename }), { expiresIn: 300 });
+    const url = await getSignedUrl(s3, new GetObjectCommand({
+      Bucket: R2_BUCKET, Key: filename,
+      ...(downloadName ? { ResponseContentDisposition: `attachment; filename="${downloadName.replace(/"/g, '')}"` } : {}),
+    }), { expiresIn: 300 });
     return res.redirect(url);
   }
+  if (downloadName) return res.download(path.join(uploadsDir, filename), downloadName);
   return res.sendFile(path.join(uploadsDir, filename));
 }
 

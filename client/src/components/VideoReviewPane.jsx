@@ -112,7 +112,7 @@ export default function VideoReviewPane({ apiBase, onBack }) {
           onChange={e => setGuestName(e.target.value)} maxLength={60} style={{ width: 240 }} />
       </div>
 
-      <div style={{ position: 'relative', height: 560, display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', marginBottom: 20 }}>
+      <div style={{ position: 'relative', height: 560, display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', marginBottom: 8 }}>
         <VideoPlayerAnnotator
           ref={playerRef}
           src={`${apiBase}/file`}
@@ -126,22 +126,18 @@ export default function VideoReviewPane({ apiBase, onBack }) {
           onUnapprove={handleUnapprove}
           onSubmit={handleSubmit}
         />
-        {/* Mientras el proyecto no esté cobrado, marca de agua sobre el video que ve el cliente —
-            mitiga que circule la entrega final en calidad completa antes de pagar. No bloquea nada
-            (pointerEvents: none): es solo visual, el cliente puede seguir reproduciendo/comentando
-            con normalidad. video.paid viene del servidor ya reducido a booleano (ver
-            getVideoForReview en shares.js) — nunca un monto ni el estado interno de facturación. */}
-        {video.paid === false && (
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 56, transform: 'rotate(-22deg) scale(1.7)', opacity: 0.16, whiteSpace: 'nowrap' }}>
-              {Array.from({ length: 9 }).map((_, i) => (
-                <span key={i} style={{ fontSize: 20, fontWeight: 800, letterSpacing: '0.08em', color: '#fff', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>
-                  Borrador · sin cobrar
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+      </div>
+
+      {/* Descarga del archivo final, siempre disponible — decisión explícita del usuario: sin
+          marca de agua ni condición de pago, porque solo comparte este link con clientes de
+          confianza. `?download=1` hace que el servidor fuerce Content-Disposition: attachment
+          (ver serveFile en server/index.js) en vez de sólo redirigir al mismo stream que usa el
+          <video> de arriba. */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <a href={`${apiBase}/file?download=1`}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--accent2)', background: 'var(--accent-glow)', padding: '6px 12px', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>
+          ⬇ Descargar video
+        </a>
       </div>
 
       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
