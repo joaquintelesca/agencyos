@@ -8,6 +8,7 @@ import Icon from '../components/Icon';
 // mismo perfil de uso (se mira poco, no hace falta tenerlo siempre a la vista).
 const SECTIONS = [
   { to: '/storage', icon: 'database', label: 'Almacenamiento', description: 'Ver qué ocupa lugar y liberar espacio' },
+  { to: '/settings/branding', icon: 'palette', label: 'Branding del portal', description: 'Tu logo, nombre y color en el link de revisión' },
 ];
 
 export default function Settings() {

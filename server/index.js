@@ -240,6 +240,9 @@ async function verifyAndPersistFiles(files, mimeExtMap) {
 // exportado como JPEG) — nunca hace falta procesar el video en el servidor.
 const THUMBNAIL_MIME_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 const thumbnailUpload = makeUploader(THUMBNAIL_MIME_EXT, { fileSize: 3 * 1024 * 1024 });
+// El logo del portal (branding) es la misma clase de archivo que una miniatura — mismos tipos
+// permitidos, tamaño chico — pero es un solo archivo para toda la agencia, no uno por video.
+const logoUpload = makeUploader(THUMBNAIL_MIME_EXT, { fileSize: 2 * 1024 * 1024 });
 
 const attachmentUpload = makeUploader(SAFE_ATTACHMENT_MIME_EXT);
 function attachmentUploadMiddleware(req, res, next) {
@@ -1042,6 +1045,7 @@ app.use(require('./routes/messages')({ db, auth, requireProjectAccess }));
 
 // ─── VIDEOS ──────────────────────────────────────────────────────────────────
 app.use(require('./routes/videos')({ db, auth, requireProjectAccess, thumbnailUpload, isProjectMember, verifyAndPersistFiles, THUMBNAIL_MIME_EXT, emitToProject }));
+app.use(require('./routes/settings')({ db, auth, serveFile, safeUnlink, verifyAndPersistFiles, THUMBNAIL_MIME_EXT, logoUpload }));
 
 // ─── SUBIDA DE VIDEO POR PARTES ──────────────────────────────────────────────
 // (Sesiones de subida, escaneo de storage y limpieza de huérfanos viven en lib/storage.js;

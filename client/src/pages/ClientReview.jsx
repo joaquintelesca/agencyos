@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import VideoReviewPane from '../components/VideoReviewPane';
+import useBranding from '../hooks/useBranding';
 
 // Página pública, sin sesión — igual que PublicReview.jsx (el link por video), pero acá el token
 // es de un CLIENTE (client_shares, ver server/routes/shares.js), no de un video puntual: un solo
@@ -12,6 +13,7 @@ export default function ClientReview() {
   const [status, setStatus] = useState('loading'); // loading | ok | notfound | gone
   const [data, setData] = useState(null);
   const [selectedVideoId, setSelectedVideoId] = useState(null);
+  const { name: agencyName, hasLogo, accentStyle } = useBranding();
 
   useEffect(() => {
     fetch(`/api/client-review/${token}`)
@@ -45,10 +47,13 @@ export default function ClientReview() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', justifyContent: 'center', padding: '24px 16px' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', justifyContent: 'center', padding: '24px 16px', ...accentStyle }}>
       <div style={{ width: '100%', maxWidth: 900 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, color: 'var(--text3)', fontSize: 'var(--fs-sm)' }}>
-          <span>📁</span><span>Portal de {data.client.name}</span>
+          {hasLogo
+            ? <img src="/api/settings/branding/logo" alt={agencyName || 'Logo'} style={{ height: 22, objectFit: 'contain' }} />
+            : <span>📁</span>}
+          <span>Portal de {data.client.name}</span>
         </div>
 
         {selectedVideoId ? (
