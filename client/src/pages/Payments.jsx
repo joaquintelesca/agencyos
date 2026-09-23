@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { initials, monthKey, downloadCSV } from '../utils/format';
@@ -417,6 +417,7 @@ export default function Payments() {
 
 function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }) {
   const { confirm } = useAlert();
+  const navigate = useNavigate();
   const isSelfEditor = p.editor_is_owner;
   // Las horas alimentan el cálculo de LOS DOS lados (editor y cliente) cuando es por hora — si se
   // dejaran editar después de que cualquiera de los dos ya se congeló, no cambia el monto YA
@@ -479,7 +480,12 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }
       {/* Proyecto */}
       <td style={{ padding: '9px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{p.name}</span>
+          {/* Doble click (no simple) para no dispararlo sin querer mientras se opera la fila, que
+              está llena de controles — y para poder seguir seleccionando el nombre con el mouse.
+              /project/:id abre la pestaña Kanban por default. */}
+          <span onDoubleClick={() => navigate(`/project/${p.id}`)}
+            title="Doble click para abrir el proyecto"
+            style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', cursor: 'pointer' }}>{p.name}</span>
           <button className="icon-btn" onClick={() => onEdit(p)} title="Editar proyecto" aria-label={`Editar proyecto ${p.name}`}
             style={{ color: 'var(--text3)', padding: 2, display: 'flex' }}><Icon.pencil /></button>
         </div>
