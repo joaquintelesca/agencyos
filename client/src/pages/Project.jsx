@@ -45,6 +45,7 @@ export default function Project() {
   const [dragTask, setDragTask] = useState(null);
   const [reviewReminderTask, setReviewReminderTask] = useState(null);
   const [showPriceModal, setShowPriceModal] = useState(false);
+  const [confirmComplete, setConfirmComplete] = useState(false);
   const [priceForm, setPriceForm] = useState({ payment_type: 'fixed', payment_amount: '', payment_rate: '', payment_hours: '', client_amount: '', client_rate: '', payment_editor_id: '', upwork_status: 'No', upwork_fee_pct: '', client_paid: 'unpaid' });
   const [uploadForTaskId, setUploadForTaskId] = useState(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -308,12 +309,29 @@ export default function Project() {
       setShowPriceModal(true);
       return;
     }
-    const newStatus = project.status === 'completed' ? 'active' : 'completed';
+    // Reabrir se hace directo (deshacer no es riesgoso), pero completar con editor+precio ya
+    // cargados era un solo click sin ninguna confirmación — bastaba un click de más para que el
+    // proyecto pasara a Pagos sin querer. Acá no, se pide confirmar antes.
+    if (project.status !== 'completed') {
+      setConfirmComplete(true);
+      return;
+    }
     try {
-      const updated = await api(`/api/projects/${id}/status`, { method: 'PATCH', body: { status: newStatus } });
+      const updated = await api(`/api/projects/${id}/status`, { method: 'PATCH', body: { status: 'active' } });
       setProject(updated);
     } catch (e) {
       await alert('Error al actualizar el estado del proyecto: ' + e.message);
+    }
+  };
+
+  const confirmCompleteProject = async () => {
+    try {
+      const updated = await api(`/api/projects/${id}/status`, { method: 'PATCH', body: { status: 'completed' } });
+      setProject(updated);
+    } catch (e) {
+      await alert('Error al actualizar el estado del proyecto: ' + e.message);
+    } finally {
+      setConfirmComplete(false);
     }
   };
 
@@ -403,6 +421,7 @@ export default function Project() {
   const taskModalRef = useModalA11y(showTaskModal, () => setShowTaskModal(false));
   const reviewReminderModalRef = useModalA11y(!!reviewReminderTask, () => setReviewReminderTask(null));
   const priceModalRef = useModalA11y(showPriceModal, () => setShowPriceModal(false));
+  const confirmCompleteModalRef = useModalA11y(confirmComplete, () => setConfirmComplete(false));
 
   if (notFound) return (
     <div className="empty" style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
@@ -704,6 +723,22 @@ export default function Project() {
               }}>
                 Ir a Videos
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmComplete && (
+        <div className="modal-overlay">
+          <div className="modal" onClick={e => e.stopPropagation()} ref={confirmCompleteModalRef} role="dialog" aria-modal="true" aria-labelledby="confirm-complete-modal-title">
+            <button className="modal-close" onClick={() => setConfirmComplete(false)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="confirm-complete-modal-title">¿Marcar como terminado?</h2>
+            <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
+              El proyecto va a pasar a Pagos. Marcalo solo si no vas a agregar más tareas — si después seguís trabajándolo, "Reabrir proyecto" lo devuelve al Kanban.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setConfirmComplete(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={confirmCompleteProject}>Sí, marcar como terminado</button>
             </div>
           </div>
         </div>

@@ -240,13 +240,23 @@ module.exports = function projectsRoutes({ db, auth, io, requireProjectAccess, w
       }
       const update = { status };
       if (status === 'completed') {
-        update.ever_completed = true; // nunca se vuelve a poner en false
+        update.ever_completed = true;
         // Arranca (o reinicia) el reloj del recordatorio de cobro pendiente — ver
         // server/lib/payment-reminders.js. Se pisa cada vez, no solo si estaba vacío: si el
         // proyecto se reabrió y se vuelve a completar, es un ciclo de cobro nuevo.
         update.pending_collection_since = new Date().toISOString();
       } else {
         update.pending_collection_since = null;
+        // ever_completed normalmente NO se vuelve a poner en false al reabrir — es lo que evita
+        // que un proyecto ya pagado (reabierto para un retoque) desaparezca en silencio de Pagos
+        // y del Balance mensual. Pero si en este momento NINGÚN lado tiene plata real registrada
+        // (ni cobrado al cliente ni pagado al editor), no hay nada que proteger — completar fue
+        // un click de más (o el proyecto se completó y se deshizo antes de cobrar nada), y dejarlo
+        // pegado en Pagos para siempre por eso es puro ruido. Sacarlo acá hace que "Reabrir
+        // proyecto" alcance para corregirlo solo, sin tener que ir a la base a mano.
+        if (existing.client_paid !== 'cobrado' && existing.editor_paid !== 'paid') {
+          update.ever_completed = false;
+        }
       }
       await db('projects').where({ id: req.params.id }).update(update);
       const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color', 'eu.email as _editor_email').first());
