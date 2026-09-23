@@ -10,9 +10,29 @@ const SOCKET_URL = import.meta.env.VITE_API_URL || window.location.origin;
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
+  const [mediaToken, setMediaToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [socket, setSocket] = useState(null);
+
+  // Token corto y de un solo propósito para /uploads (ver server/index.js `authMedia`) — separado
+  // del token de sesión de 7 días para que mediaUrl() ya no tenga que poner ESE en la URL de cada
+  // <img>/<video>/<audio>. Se pide una vez al restaurar sesión/loguearse (esperado por `loading`,
+  // así que mediaUrl() ya lo tiene disponible para el primer render de contenido autenticado) y se
+  // renueva antes de vencer mientras la sesión siga abierta.
+  const fetchMediaToken = async (currentToken) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/media-token`, {
+        headers: { 'Authorization': `Bearer ${currentToken}`, 'ngrok-skip-browser-warning': 'true' }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setMediaToken(data.token);
+    } catch {
+      // Sin red o el server caído un instante: mediaUrl() sigue funcionando con el token viejo
+      // hasta el próximo intento (el intervalo de abajo reintenta solo, no hace falta reintento acá).
+    }
+  };
 
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
@@ -21,8 +41,19 @@ export function AuthProvider({ children }) {
       setToken(savedToken);
       setUser(JSON.parse(savedUser));
     }
-    setLoading(false);
+    (async () => {
+      if (savedToken && savedUser) await fetchMediaToken(savedToken);
+      setLoading(false);
+    })();
   }, []);
+
+  // Token de media emitido por 30 minutos — se renueva cada 20 para no dejar una ventana donde
+  // ya venció pero todavía no se pidió uno nuevo (que rompería imágenes/video a mitad de sesión).
+  useEffect(() => {
+    if (!user || !token) return;
+    const interval = setInterval(() => fetchMediaToken(token), 20 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [user, token]);
 
   useEffect(() => {
     if (user && token && !socket) {
@@ -76,6 +107,7 @@ export function AuthProvider({ children }) {
     setUser(data.user);
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
+    await fetchMediaToken(data.token);
     return data;
   };
 
@@ -88,7 +120,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
-    setToken(null); setUser(null);
+    setToken(null); setUser(null); setMediaToken(null);
     localStorage.removeItem('token'); localStorage.removeItem('user');
     if (socket) { socket.disconnect(); setSocket(null); }
   };
@@ -151,15 +183,16 @@ export function AuthProvider({ children }) {
   };
 
   // /uploads ahora requiere autenticación; <video>/<img>/<audio src> no pueden mandar el header
-  // Authorization, así que el token viaja como query param en estas URLs.
+  // Authorization, así que el token viaja como query param en estas URLs — pero el de media
+  // (corto, de un solo propósito), no el de sesión completa. Ver fetchMediaToken arriba.
   const mediaUrl = (path) => {
     if (!path) return path;
     // El token solo puede viajar a nuestro propio /uploads. Sin este chequeo, cualquier campo
     // que termine acá con una URL externa (p. ej. un file_url manipulado en un mensaje de chat)
     // se lleva la sesión de quien lo abra a ese host.
     if (typeof path !== 'string' || !path.startsWith('/uploads/')) return path;
-    const currentToken = token || localStorage.getItem('token');
-    return `${path}${path.includes('?') ? '&' : '?'}token=${currentToken}`;
+    if (!mediaToken) return path;
+    return `${path}${path.includes('?') ? '&' : '?'}token=${mediaToken}`;
   };
 
   return (

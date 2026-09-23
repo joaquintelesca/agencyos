@@ -15,6 +15,16 @@ module.exports = function authRoutes({ db, auth, loginLimiter, bcrypt, jwt, JWT_
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 
+  // Token de corta duración exclusivo para /uploads/:filename (ver authMedia en index.js). El
+  // cliente lo pide una vez al loguearse y lo renueva antes de que venza — separado del token de
+  // sesión de 7 días para que una URL de imagen/video filtrada (historial del navegador, o
+  // cualquier log de acceso que registre URLs completas) no sirva para nada más que ver archivos
+  // por media hora, en vez de dar acceso de sesión completa por una semana.
+  router.get('/api/media-token', auth, async (req, res) => {
+    const token = jwt.sign({ id: req.user.id, scope: 'media' }, JWT_SECRET, { expiresIn: '30m' });
+    res.json({ token, expiresIn: 1800 });
+  });
+
   router.post('/api/auth/register', auth, async (req, res) => {
     try {
       if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });

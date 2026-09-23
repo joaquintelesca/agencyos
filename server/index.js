@@ -862,17 +862,23 @@ app.use(helmet({
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
-// El token viaja por header Authorization (fetch/XHR) o por query string (?token=...),
-// necesario para <video>/<img>/<audio src> que el navegador solicita sin poder adjuntar headers custom.
+// El token viaja SIEMPRE por header Authorization en esta ruta — el query string ?token=... se
+// sacó de acá (ver authMedia más abajo): antes cualquier endpoint autenticado, no solo /uploads,
+// aceptaba el token de sesión completo de 7 días como parámetro de URL, y esa es exactamente la
+// forma en que termina en el historial del navegador y en cualquier log que registre URLs enteras.
 // El rol se revalida contra la DB en cada request (no se confía en el rol embebido en el token):
 // si el admin fue degradado o borrado después de emitido el token, no debe seguir actuando como admin.
 const auth = async (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1] || req.query.token;
+  const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Sesión no iniciada' });
   let decoded;
   try {
     decoded = jwt.verify(token, JWT_SECRET);
   } catch { return res.status(401).json({ error: 'Token inválido' }); }
+  // Un token de media (ver authMedia) es de corta duración y solo debería viajar por query string
+  // hacia /uploads — si alguien lo manda acá por header (a mano, o por un bug de otro lado), no
+  // debe abrir el resto de la API igual que un token de sesión completo.
+  if (decoded.scope === 'media') return res.status(401).json({ error: 'Token inválido' });
   // El fallo de la query va aparte a propósito: si se devuelve 401 ante un corte transitorio de
   // la DB, el cliente lo interpreta como sesión vencida y desloguea a todo el equipo de una.
   try {
@@ -886,10 +892,34 @@ const auth = async (req, res, next) => {
   }
 };
 
+// Middleware exclusivo de /uploads/:filename. El <img>/<video>/<audio src> no puede mandar el
+// header Authorization, así que necesita ir por query string — pero ya no con el token de sesión
+// de 7 días (ver el comentario de `auth` arriba). Este exige específicamente un token de media de
+// corta duración (emitido por GET /api/media-token), que si se filtra por historial del navegador
+// o por un log de acceso no sirve para nada más que ver archivos por un rato corto.
+const authMedia = async (req, res, next) => {
+  const token = req.query.token;
+  if (!token) return res.status(401).json({ error: 'Sesión no iniciada' });
+  let decoded;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch { return res.status(401).json({ error: 'Token inválido' }); }
+  if (decoded.scope !== 'media') return res.status(401).json({ error: 'Token inválido' });
+  try {
+    const current = await db('users').where({ id: decoded.id }).select('id', 'email', 'role').first();
+    if (!current) return res.status(401).json({ error: 'Usuario no encontrado' });
+    req.user = current;
+    next();
+  } catch (e) {
+    console.error('authMedia:', e);
+    res.status(503).json({ error: 'Servicio no disponible, reintentá en unos segundos' });
+  }
+};
+
 // Sirve archivos subidos (videos, adjuntos de comentarios/chat) solo a usuarios autenticados
 // que tengan acceso real al proyecto o conversación dueña del archivo. Reemplaza el static()
 // público anterior, que permitía descargar cualquier archivo sabiendo su nombre.
-app.get('/uploads/:filename', auth, async (req, res) => {
+app.get('/uploads/:filename', authMedia, async (req, res) => {
   try {
     const { filename } = req.params;
     if (!filename || filename.includes('..') || filename.includes('/')) {
