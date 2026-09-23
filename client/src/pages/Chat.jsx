@@ -1135,21 +1135,74 @@ function SidebarItem({ label, subtitle, active, unread, online, color, isUser, i
   );
 }
 
+// Cuánto hay que mantener presionado un mensaje en celular para que aparezca la barra de
+// reacciones — el mismo gesto que WhatsApp/Telegram, ni tan corto que se dispare con un tap
+// normal ni tan largo que se sienta que no respondió.
+const LONG_PRESS_MS = 450;
+
 function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, isNarrowViewport }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  const [toolbarOpen, setToolbarOpen] = useState(false);
+  const rowRef = useRef(null);
+  const pressTimerRef = useRef(null);
+
+  const clearPressTimer = () => {
+    if (pressTimerRef.current) { clearTimeout(pressTimerRef.current); pressTimerRef.current = null; }
+  };
+  const handleTouchStart = () => {
+    if (!isNarrowViewport) return;
+    clearPressTimer();
+    pressTimerRef.current = setTimeout(() => {
+      setToolbarOpen(true);
+      // Feedback táctil de que el long-press "prendió" — no todos los navegadores lo soportan,
+      // por eso el chequeo (no rompe nada si no existe).
+      if (navigator.vibrate) navigator.vibrate(10);
+    }, LONG_PRESS_MS);
+  };
+
+  // Se cierra sola al tocar afuera del mensaje — mismo criterio que cualquier popover: el gesto
+  // que la abrió (mantener presionado) no sirve para cerrarla, hace falta uno distinto.
+  useEffect(() => {
+    if (!toolbarOpen) return;
+    const handleOutside = (e) => {
+      if (rowRef.current && !rowRef.current.contains(e.target)) setToolbarOpen(false);
+    };
+    document.addEventListener('touchstart', handleOutside);
+    return () => document.removeEventListener('touchstart', handleOutside);
+  }, [toolbarOpen]);
+
+  useEffect(() => () => clearPressTimer(), []);
+
+  const react = (emoji) => { onReact(emoji); setToolbarOpen(false); };
+
   return (
-    <div className="msg-row" style={{ display: 'flex', gap: 10, padding: compact ? '1px 0' : '8px 0 2px', alignItems: 'flex-start', position: 'relative' }}>
-      {/* Barra de reacciones rápidas: aparece al pasar el mouse (siempre visible en viewport
-          angosto, donde no hay hover real). Posicionada arriba a la derecha del mensaje, estilo Slack. */}
+    <div
+      ref={rowRef}
+      className="msg-row"
+      style={{
+        display: 'flex', gap: 10, padding: compact ? '1px 0' : '8px 0 2px', alignItems: 'flex-start', position: 'relative',
+        // En celular, mantener presionado no debe disparar el menú nativo de "copiar/compartir"
+        // ni seleccionar texto — compite visualmente con nuestra propia barra de reacciones.
+        ...(isNarrowViewport ? { WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } : {}),
+      }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={clearPressTimer}
+      onTouchMove={clearPressTimer}
+      onTouchCancel={clearPressTimer}
+      onContextMenu={isNarrowViewport ? (e) => e.preventDefault() : undefined}
+    >
+      {/* Barra de reacciones rápidas: en desktop aparece al pasar el mouse; en celular, al
+          mantener presionado el mensaje (long-press, ver handleTouchStart). Posicionada arriba
+          a la derecha del mensaje, estilo Slack. */}
       <div
-        className={`panel msg-react-toolbar${isNarrowViewport ? ' always-visible' : ''}`}
+        className={`panel msg-react-toolbar${toolbarOpen ? ' force-visible' : ''}`}
         style={{ position: 'absolute', top: -14, right: 0, display: 'flex', gap: 2, borderRadius: 20, padding: '2px 4px', boxShadow: 'var(--shadow-lg)', zIndex: 1 }}
       >
         {QUICK_REACTIONS.map(emoji => (
           <button
             key={emoji}
             className="icon-btn"
-            onClick={() => onReact(emoji)}
+            onClick={() => react(emoji)}
             title={`Reaccionar con ${emoji}`}
             style={{ borderRadius: '50%', width: 24, height: 24, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >

@@ -131,12 +131,17 @@ body {
 .video-card .video-delete-btn { opacity: 0; transition: opacity 0.15s, background 0.15s; }
 .video-card:hover .video-delete-btn { opacity: 1; }
 
-/* Barra de reacciones rápidas del chat: solo visible al pasar el mouse por el mensaje (igual que
-   .sidebar-row .reveal-btn) — en viewport angosto no hay :hover real, así que se fuerza siempre
-   visible con .always-visible en vez de depender de un gesto que no existe en touch. */
-.msg-row .msg-react-toolbar { opacity: 0; transition: opacity 0.15s; }
-.msg-row:hover .msg-react-toolbar { opacity: 1; }
-.msg-react-toolbar.always-visible { opacity: 1; }
+/* Barra de reacciones rápidas del chat: en desktop, solo visible al pasar el mouse por el mensaje.
+   El :hover queda encerrado en (hover: hover) and (pointer: fine) a propósito — sin ese gate, un
+   tap en touch deja el :hover "pegado" (comportamiento real de Chrome/Safari mobile) y la barra
+   quedaba siempre visible con cualquier toque, sin esperar el long-press. En touch/viewport angosto
+   se abre con mantener presionado el mensaje (long-press, ver Message en Chat.jsx), que le agrega
+   .force-visible por JS en vez de depender de un :hover que ahí no existe de verdad. */
+.msg-row .msg-react-toolbar { opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+@media (hover: hover) and (pointer: fine) {
+  .msg-row:hover .msg-react-toolbar { opacity: 1; pointer-events: auto; }
+}
+.msg-react-toolbar.force-visible { opacity: 1; pointer-events: auto; }
 .msg-react-toolbar button:hover { background: var(--bg3); }
 
 /* Inputs */
