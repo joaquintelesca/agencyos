@@ -40,7 +40,13 @@ export function notificationTarget(n) {
   if (n.video_id && n.project_id) return `/project/${n.project_id}?tab=videos&video=${n.video_id}`;
   // Antes esto llevaba a /project/:id a secas, que abre la pestaña Kanban por default — el
   // mensaje que la notificación anuncia quedaba igual de escondido, había que ir a buscarlo.
-  if ((n.type === 'project_message' || n.type === 'mention') && n.project_id) return `/project/${n.project_id}?tab=chat`;
+  // Con chat_message_id (agregado después de esto) va además al mensaje puntual, no solo a la
+  // pestaña — pero notificaciones viejas, creadas antes de ese fix, no lo tienen: caen sin el
+  // parámetro y el chat se abre igual, sin el scroll-to-message.
+  if ((n.type === 'project_message' || n.type === 'mention') && n.project_id) {
+    const msgParam = n.chat_message_id ? `&message=${n.chat_message_id}` : '';
+    return `/project/${n.project_id}?tab=chat${msgParam}`;
+  }
   if (n.project_id) return `/project/${n.project_id}`;
   return null;
 }

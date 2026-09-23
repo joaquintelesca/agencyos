@@ -31,6 +31,12 @@ export default function Project() {
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
   const [messages, setMessages] = useState([]);
+  // Deep link desde una notificación de chat (?message=<id>): el id que hay que buscar y scrollear
+  // apenas cargue, y el que hay que "flashear" un instante para que no quede perdido entre otros
+  // mensajes. Se consumen apenas se resuelven (encontrado o no) para no bloquear el auto-scroll al
+  // final normal en mensajes nuevos que lleguen después.
+  const [pendingHighlight, setPendingHighlight] = useState(searchParams.get('message'));
+  const [flashMessageId, setFlashMessageId] = useState(null);
   const [tab, setTab] = useState(searchParams.get('tab') || 'kanban');
   const [newMsg, setNewMsg] = useState('');
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -59,6 +65,7 @@ export default function Project() {
     setMembers(null);
     setMembersError('');
     setLoadError('');
+    setPendingHighlight(searchParams.get('message'));
     // `cancelado` evita que la respuesta de un proyecto anterior pise la del actual: clickeando
     // A y después B con conexión lenta, la de A podía llegar última y mostrar los datos de A
     // en la URL de B. Los .catch faltantes dejaban el kanban vacío, como si el proyecto no
@@ -114,14 +121,38 @@ export default function Project() {
 
   // Deep link desde una notificación (?tab=videos): si ya estamos en este proyecto, React Router
   // no remonta el componente al cambiar solo el query param, así que hay que resincronizar el tab.
+  // Lo mismo para ?message=: si ya estábamos en el chat de este mismo proyecto y llega otra
+  // notificación de otro mensaje, el efecto de [id] de más arriba no vuelve a correr (el id no
+  // cambió), así que hace falta resincronizar acá también.
   useEffect(() => {
     const t = searchParams.get('tab');
     if (t && t !== tab) setTab(t);
+    const m = searchParams.get('message');
+    if (m) setPendingHighlight(m);
   }, [searchParams]); // eslint-disable-line
 
+  // Scroll-to-message pendiente de una notificación: se resuelve apenas el mensaje buscado
+  // aparezca en la página ya cargada. Si no está (una notificación vieja de un mensaje que ya
+  // quedó varias páginas atrás), se desiste sin paginar hacia atrás a ciegas — el chat igual se
+  // abrió, solo no hace el scroll puntual.
   useEffect(() => {
+    if (!pendingHighlight || messages.length === 0) return;
+    const el = document.getElementById(`msg-${pendingHighlight}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setFlashMessageId(pendingHighlight);
+      const t = setTimeout(() => setFlashMessageId(null), 2000);
+      setPendingHighlight(null);
+      return () => clearTimeout(t);
+    }
+    setPendingHighlight(null);
+  }, [messages, pendingHighlight]);
+
+  useEffect(() => {
+    // Si hay un scroll-to-message pendiente, no lo tapemos yendo directo al final.
+    if (pendingHighlight) return;
     msgEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, pendingHighlight]);
 
   useEffect(() => {
     if (!socket) return;
@@ -565,7 +596,7 @@ export default function Project() {
               const isMine = m.sender_id === user.id;
               const showAvatar = i === 0 || messages[i-1].sender_id !== m.sender_id;
               return (
-                <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexDirection: isMine ? 'row-reverse' : 'row', marginTop: showAvatar ? 12 : 2 }}>
+                <div key={m.id} id={`msg-${m.id}`} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexDirection: isMine ? 'row-reverse' : 'row', marginTop: showAvatar ? 12 : 2 }}>
                   {!isMine && (
                     <div style={{ width: 28, flexShrink: 0 }}>
                       {showAvatar && <div className="avatar" style={{ background: m.sender_color || 'var(--accent)', fontSize: 11 }}>{initials(m.sender_name)}</div>}
@@ -576,7 +607,9 @@ export default function Project() {
                     <div style={{
                       background: isMine ? 'var(--accent)' : 'var(--bg3)',
                       color: 'var(--text)', padding: '9px 13px', borderRadius: isMine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                      fontSize: 14, lineHeight: 1.5
+                      fontSize: 14, lineHeight: 1.5,
+                      boxShadow: flashMessageId === m.id ? '0 0 0 2px var(--accent)' : 'none',
+                      transition: 'box-shadow 0.3s'
                     }}>{renderMentions(m.content)}</div>
                     <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3, textAlign: isMine ? 'right' : 'left' }}>{formatTime(m.created_at)}</div>
                   </div>

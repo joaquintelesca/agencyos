@@ -1241,7 +1241,7 @@ io.on('connection', (socket) => {
       const mentionedIds = new Set(extractMentionedUserIds(content).filter(uid => notifyIds.has(uid)));
       for (const uid of notifyIds) {
         const type = mentionedIds.has(uid) ? 'mention' : 'project_message';
-        await createNotification({ userId: uid, type, actorId: socket.userId, projectId: project_id, preview: content?.slice(0, 80) });
+        await createNotification({ userId: uid, type, actorId: socket.userId, projectId: project_id, chatMessageId: id, preview: content?.slice(0, 80) });
       }
     } catch (e) {
       console.error('socket message:send:', e);
