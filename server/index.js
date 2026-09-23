@@ -259,7 +259,12 @@ const db = process.env.DATABASE_URL
   : knex({
       client: 'sqlite3',
       connection: { filename: path.join(__dirname, '../agencyos.db') },
-      useNullAsDefault: true
+      useNullAsDefault: true,
+      // SQLite ignora las foreign keys por default en cada conexión nueva — sin este pragma, las
+      // constraints de la migración 20260923075409 quedan declaradas pero nunca se aplican acá
+      // (sí se aplican solas en Postgres/producción), y un bug de integridad pasaría inadvertido
+      // en dev/tests aunque en producción sí tirara error.
+      pool: { afterCreate: (conn, cb) => conn.run('PRAGMA foreign_keys = ON', cb) }
     });
 
 // Poblar project_members a partir de datos existentes (se ejecuta una sola vez al crear la tabla).
