@@ -9,11 +9,16 @@ const fs = require('fs');
 // a mitad de subida obligaba a reiniciar de cero. Se sube en partes de 5MB: si se
 // corta la conexión, el cliente puede reconsultar cuánto se recibió y retomar ahí,
 // sin perder lo ya subido.
-module.exports = function createStorage({ db, useR2, s3, R2_BUCKET, uploadsDir }) {
+module.exports = function createStorage({ db, useR2, s3, R2_BUCKET, uploadsDir, STORAGE_HARD_LIMIT_BYTES }) {
   const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
   const CHUNK_UPLOAD_TTL = 6 * 60 * 60 * 1000; // 6h — después de esto se considera abandonada
   const VIDEO_MAX_BYTES = 3 * 1024 * 1024 * 1024; // 3GB, igual al límite anterior de multer
-  const STORAGE_WARN_BYTES = 20 * 1024 * 1024 * 1024; // 20GB
+  // Antes era un fijo de 20GB, sin relación con STORAGE_HARD_LIMIT_BYTES (configurable por
+  // STORAGE_LIMIT_GB) — con el límite real en 9GB (como en producción hoy) el aviso nunca
+  // llegaba a dispararse: las subidas ya fallaban en 9GB, once GB antes de que el cartel
+  // apareciera. Ahora es un porcentaje del límite real, así el aviso siempre llega antes de
+  // que el límite corte las subidas, sea cual sea STORAGE_LIMIT_GB.
+  const STORAGE_WARN_BYTES = STORAGE_HARD_LIMIT_BYTES * 0.8;
   const STORAGE_CACHE_TTL = 60_000; // 60 segundos
   const chunksDir = path.join(uploadsDir, '.chunks');
   if (!useR2 && !fs.existsSync(chunksDir)) fs.mkdirSync(chunksDir, { recursive: true });
