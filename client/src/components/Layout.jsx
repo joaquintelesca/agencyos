@@ -647,6 +647,7 @@ export default function Layout() {
             <>
               <NavItem to="/videos" label="Videos" icon={Icon.video} active={isActive('/videos')} admin />
               <NavItem to="/payments" label="Pagos" icon={Icon.dollar} active={isActive('/payments')} admin />
+              <NavItem to="/storage" label="Almacenamiento" icon={Icon.database} active={isActive('/storage')} admin />
             </>
           )}
         </div>
@@ -783,7 +784,13 @@ export default function Layout() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 16 }}>⚠️</span>
               <span style={{ fontSize: 13, color: 'var(--yellow)', fontWeight: 600 }}>Almacenamiento: {storageWarning.gb} GB usados</span>
-              <span style={{ fontSize: 12, color: 'var(--text2)' }}>— Superaste los 20GB. Considerá borrar archivos viejos o migrar a la nube.</span>
+              {/* Antes el aviso solo decía "considerá borrar archivos viejos" sin dar forma de
+                  hacerlo — ahora lleva a la pantalla donde se ve qué ocupa qué y se libera. */}
+              <span style={{ fontSize: 12, color: 'var(--text2)' }}>— Superaste los 20GB.</span>
+              <button onClick={() => navigate('/storage')}
+                style={{ fontSize: 12, color: 'var(--accent2)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--font)', textDecoration: 'underline' }}>
+                Ver qué ocupa lugar
+              </button>
             </div>
             <button className="icon-btn" onClick={() => setStorageWarning(null)} title="Cerrar aviso" aria-label="Cerrar aviso de almacenamiento" style={{ color: 'var(--text3)', fontSize: 14, padding: '0 4px' }}>✕</button>
           </div>

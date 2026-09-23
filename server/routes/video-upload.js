@@ -300,5 +300,76 @@ module.exports = function videoUploadRoutes({
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 
+  // Qué está ocupando el espacio, desglosado por proyecto. Hasta ahora el aviso del sidebar decía
+  // "considerá borrar archivos viejos" sin dar ninguna forma de ver cuáles ni de borrarlos: al
+  // llegar al límite duro las subidas fallan con STORAGE_FULL y la única salida era borrar
+  // proyectos enteros (que se lleva videos, tareas y chat en cascada).
+  //
+  // SOLO LECTURA a propósito: esto no borra nada ni marca nada para borrar. Sugiere candidatos
+  // (`candidate: true`) pero la selección y el borrado los hace el usuario a mano desde la UI,
+  // reusando DELETE /api/videos/:id. Pedido explícito del usuario: nada se borra sin preguntarle.
+  router.get('/api/storage/breakdown', auth, async (req, res) => {
+    try {
+      if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+      const totalBytes = await getUploadsSize();
+
+      const videos = await db('videos as v')
+        .join('projects as p', 'v.project_id', 'p.id')
+        .leftJoin('clients as c', 'p.client_id', 'c.id')
+        .select('v.id', 'v.title', 'v.version', 'v.file_size', 'v.created_at', 'v.approved_at', 'v.project_id',
+          'p.name as project_name', 'p.status as project_status', 'p.client_paid', 'p.ever_completed',
+          'c.name as client_name', 'c.color as client_color')
+        .orderBy('v.created_at', 'desc');
+
+      const byProject = new Map();
+      for (const v of videos) {
+        if (!byProject.has(v.project_id)) {
+          byProject.set(v.project_id, {
+            project_id: v.project_id, project_name: v.project_name, project_status: v.project_status,
+            client_name: v.client_name, client_color: v.client_color,
+            // "Cerrado y cobrado" es la condición que habilita sugerir sus borradores intermedios:
+            // el trabajo terminó y la plata entró, así que las versiones viejas ya no se usan para
+            // nada. Sigue siendo solo una sugerencia visual.
+            settled: (v.project_status === 'completed' || !!v.ever_completed) && v.client_paid === 'cobrado',
+            bytes: 0, videos: [],
+          });
+        }
+        const group = byProject.get(v.project_id);
+        group.bytes += Number(v.file_size) || 0;
+        group.videos.push({
+          id: v.id, title: v.title, version: v.version, bytes: Number(v.file_size) || 0,
+          created_at: v.created_at, approved: !!v.approved_at,
+        });
+      }
+
+      const projects = [...byProject.values()].map(p => {
+        // El más reciente del proyecto es la entrega vigente — nunca se sugiere, aunque el
+        // proyecto esté cerrado y cobrado.
+        const latestId = p.videos.reduce((a, b) => (new Date(b.created_at) > new Date(a.created_at) ? b : a), p.videos[0])?.id;
+        return {
+          ...p,
+          videos: p.videos.map(v => ({
+            ...v,
+            latest: v.id === latestId,
+            candidate: p.settled && !v.approved && v.id !== latestId,
+          })),
+        };
+      }).sort((a, b) => b.bytes - a.bytes);
+
+      const videosBytes = projects.reduce((s, p) => s + p.bytes, 0);
+      res.json({
+        totalBytes,
+        limitBytes: STORAGE_HARD_LIMIT_BYTES,
+        videosBytes,
+        // El total real del bucket incluye miniaturas y adjuntos de chat/comentarios, que no se
+        // administran desde acá — se muestra la diferencia para que los números cierren en pantalla
+        // en vez de dejar un hueco sin explicar. Puede dar 0 si el escaneo está cacheado y quedó
+        // corto respecto de la DB.
+        otherBytes: Math.max(0, totalBytes - videosBytes),
+        projects,
+      });
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
   return router;
 };
