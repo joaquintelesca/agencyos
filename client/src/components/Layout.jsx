@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
-import { notificationLabel, notificationTarget } from '../utils/notifications';
+import { notificationLabel, notificationTarget, notificationText } from '../utils/notifications';
 import { renderMentions } from './MentionInput';
 import ErrorBoundary from './ErrorBoundary';
 import SearchPalette from './SearchPalette';
@@ -165,6 +165,20 @@ export default function Layout() {
       api('/api/projects').then(setProjects).catch(console.error);
       setToasts(prev => [...prev, notif]);
       toastTimers.current[notif.id] = setTimeout(() => dismissToast(notif.id), TOAST_DURATION_MS);
+      // Aviso nativo del SO solo si la pestaña NO está a la vista — si ya la estás mirando, el
+      // toast de arriba ya cumple ese rol y duplicarlo sería ruido. El permiso se pide aparte
+      // (ver Notifications.jsx), acá solo se usa si ya está concedido.
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+        try {
+          const desktopNotif = new Notification('AgencyOS', { body: notificationText(notif), tag: notif.id });
+          desktopNotif.onclick = () => {
+            window.focus();
+            const target = notificationTarget(notif);
+            if (target) navigate(target);
+            desktopNotif.close();
+          };
+        } catch { /* algunos navegadores tiran si Notification() se llama fuera de un gesto reciente en ciertos contextos — no es crítico, el toast ya avisó */ }
+      }
     };
     const onRead = () => { api('/api/chat/unread').then(setChatUnread).catch(console.error); };
     const onStorageWarn = (s) => setStorageWarning(s);

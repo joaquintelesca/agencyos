@@ -34,6 +34,25 @@ export function notificationLabel(n) {
   return <><strong>{n.actor_name}</strong> te envió un mensaje</>;
 }
 
+// Misma info que notificationLabel, pero como string plano — la Web Notification API (aviso de
+// escritorio del navegador) no acepta JSX en el body, solo texto.
+export function notificationText(n) {
+  const proj = n.project_name ? ` · ${n.project_name}` : '';
+  if (n.type === 'comment') return `${n.actor_name} comentó en un video${proj}`;
+  if (n.type === 'reply') return `${n.actor_name} respondió tu comentario${proj}`;
+  if (n.type === 'comment_resolved') return `${n.actor_name} resolvió tu comentario${proj}`;
+  if (n.type === 'task_review') return `${n.actor_name} pasó una tarea a revisión${proj}`;
+  if (n.type === 'task_feedback') return `${n.actor_name} te dejó feedback para aplicar en una tarea${proj}`;
+  if (n.type === 'task_done') return `${n.actor_name} terminó una tarea${proj}`;
+  if (n.type === 'video_uploaded') return `${n.actor_name} subió un video${n.preview ? `: "${n.preview}"` : ''}${proj}`;
+  if (n.type === 'video_approved') return `${n.actor_name} aprobó un video${n.preview ? `: "${n.preview}"` : ''}${proj}`;
+  if (n.type === 'project_assigned') return `${n.actor_name} te asignó un proyecto${proj}`;
+  if (n.type === 'task_assigned') return `${n.actor_name} te asignó una tarea${proj}`;
+  if (n.type === 'project_message') return `${n.actor_name} escribió en el chat del proyecto${proj}`;
+  if (n.type === 'mention') return `${n.actor_name} te mencionó${proj}`;
+  return `${n.actor_name} te envió un mensaje`;
+}
+
 // A dónde navegar al clickear una notificación (página completa o toast) — un solo lugar para
 // no repetir esta cadena de ifs en cada lado que necesite abrir lo que la notificación anuncia.
 export function notificationTarget(n) {

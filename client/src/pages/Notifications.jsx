@@ -14,11 +14,20 @@ export default function Notifications() {
   const [retryCount, setRetryCount] = useState(0);
   const [view, setView] = useState('general'); // general | client
   const [selectedClient, setSelectedClient] = useState('all'); // 'all' o el id de un cliente ('__none__' = sin cliente)
+  // Con historial largo, las pocas sin leer quedan mezcladas entre un montón de leídas — este
+  // filtro se aplica antes de agrupar por cliente, así que alcanza a las dos vistas por igual.
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   // Antes el límite de 50 era fijo y sin forma de pedir más — cualquier notificación más vieja
   // quedaba inalcanzable para siempre, aunque siguiera sin leer.
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  // El disparo real del aviso de escritorio vive en Layout.jsx (el único listener de socket que
+  // está montado sin importar en qué página estés) — acá solo se pide el permiso, que después se
+  // lee directo de Notification.permission (es un estado del navegador, no hace falta compartirlo
+  // por contexto/prop). Safari en iPhone no soporta esta API — el chequeo evita romper ahí.
+  const notifSupported = typeof Notification !== 'undefined';
+  const [desktopPermission, setDesktopPermission] = useState(notifSupported ? Notification.permission : 'unsupported');
   const navigate = useNavigate();
   const { setUnreadNotifs, setProjects } = useOutletContext();
 
@@ -126,6 +135,7 @@ export default function Notifications() {
   const label = notificationLabel;
 
   const unread = notifs.filter(n => !n.read).length;
+  const visibleNotifs = unreadOnly ? notifs.filter(n => !n.read) : notifs;
 
   const renderNotif = (n) => (
     <div key={n.id} onClick={() => handleClick(n)}
@@ -159,7 +169,7 @@ export default function Notifications() {
 
   const clientGroups = (() => {
     const groups = {};
-    for (const n of notifs) {
+    for (const n of visibleNotifs) {
       const key = n.client_id || '__none__';
       if (!groups[key]) groups[key] = { id: key, name: n.client_name || 'Sin cliente', color: n.client_color, notifs: [] };
       groups[key].notifs.push(n);
@@ -178,7 +188,30 @@ export default function Notifications() {
           <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'var(--fs-xl)' }}>Notificaciones</h1>
           {unread > 0 && <span className="badge badge-count">{unread}</span>}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {notifSupported && desktopPermission === 'default' && (
+            <button
+              className="btn-outline"
+              onClick={() => Notification.requestPermission().then(setDesktopPermission)}
+              style={{ borderRadius: 7, padding: '5px 12px', color: 'var(--accent2)', fontSize: 12 }}
+            >
+              Activar avisos de escritorio
+            </button>
+          )}
+          {notifSupported && desktopPermission === 'granted' && (
+            <span style={{ fontSize: 11, color: 'var(--text3)' }}>🔔 Avisos de escritorio activados</span>
+          )}
+          <button
+            onClick={() => setUnreadOnly(o => !o)}
+            style={{
+              borderRadius: 7, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)',
+              border: '1px solid var(--border)',
+              background: unreadOnly ? 'var(--accent-glow)' : 'var(--bg3)',
+              color: unreadOnly ? 'var(--accent2)' : 'var(--text2)',
+            }}
+          >
+            Solo no leídas
+          </button>
           {unread > 0 && <button className="btn-outline" onClick={markAll} style={{ borderRadius: 7, padding: '5px 12px', color: 'var(--accent2)', fontSize: 12 }}>Marcar todo como leído</button>}
           {notifs.some(n => n.read) && <button className="btn-outline" onClick={deleteRead} style={{ borderRadius: 7, padding: '5px 12px', color: 'var(--text3)', fontSize: 12 }}>Borrar leídas</button>}
         </div>
@@ -200,11 +233,14 @@ export default function Notifications() {
       {!error && notifs.length === 0 && (
         <div className="empty"><div className="empty-icon">🔔</div><p>Sin notificaciones</p></div>
       )}
+      {!error && notifs.length > 0 && visibleNotifs.length === 0 && (
+        <div className="empty"><div className="empty-icon">✅</div><p>No hay notificaciones sin leer</p></div>
+      )}
 
       {view === 'general' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {notifs.map(renderNotif)}
-          {hasMore && notifs.length > 0 && (
+          {visibleNotifs.map(renderNotif)}
+          {!unreadOnly && hasMore && notifs.length > 0 && (
             <button className="btn-outline" onClick={loadMore} disabled={loadingMore}
               style={{ alignSelf: 'center', marginTop: 10, borderRadius: 7, padding: '7px 16px', color: 'var(--text2)', fontSize: 12, cursor: loadingMore ? 'default' : 'pointer' }}>
               {loadingMore ? 'Cargando...' : 'Cargar más'}
