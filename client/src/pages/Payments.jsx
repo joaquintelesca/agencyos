@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
-import { initials, monthKey } from '../utils/format';
+import { initials, monthKey, downloadCSV } from '../utils/format';
 import useModalA11y from '../hooks/useModalA11y';
 import useNarrowViewport from '../hooks/useNarrowViewport';
 import Icon from '../components/Icon';
@@ -135,6 +135,20 @@ export default function Payments() {
   const totalReceivedMonth = receivedThisMonth.reduce((s, p) => s + p.computed_client_net, 0);
   const totalPaidEditorsMonth = paidToEditorsThisMonth.reduce((s, p) => s + p.computed_editor_total, 0);
   const totalUpworkFeeMonth = receivedThisMonth.reduce((s, p) => s + (p.computed_client_gross - p.computed_client_net), 0);
+
+  // Un solo CSV con las dos direcciones de plata del mes (cobrado a clientes + pagado a editores),
+  // para pasarle al contador o reconciliar contra Upwork sin transcribir a mano desde la pantalla.
+  const exportMonthCSV = () => {
+    const rows = [['Tipo', 'Fecha', 'Cliente', 'Editor', 'Proyecto', 'Monto bruto', 'Comisión Upwork', 'Monto neto']];
+    receivedThisMonth.forEach(p => {
+      const fee = isUpworkBilled(p) ? p.computed_client_gross - p.computed_client_net : 0;
+      rows.push(['Cobro cliente', p.client_paid_at ? p.client_paid_at.slice(0, 10) : '', p.client_name || '', p.editor_name || '', p.name, p.computed_client_gross.toFixed(2), fee.toFixed(2), p.computed_client_net.toFixed(2)]);
+    });
+    paidToEditorsThisMonth.forEach(p => {
+      rows.push(['Pago editor', p.editor_paid_at ? p.editor_paid_at.slice(0, 10) : '', p.client_name || '', p.editor_name || '', p.name, '', '', p.computed_editor_total.toFixed(2)]);
+    });
+    downloadCSV(`agencyos_balance_${selectedMonth}.csv`, rows);
+  };
 
   const pendingCompleteModalRef = useModalA11y(!!pendingComplete, () => setPendingComplete(null));
 
@@ -313,6 +327,11 @@ export default function Payments() {
               <span style={{ fontSize: 13, color: 'var(--text3)', textTransform: 'capitalize' }}>
                 {new Date(`${selectedMonth}-02`).toLocaleDateString('es', { month: 'long', year: 'numeric' })}
               </span>
+              <button className="btn-outline" onClick={exportMonthCSV}
+                disabled={receivedThisMonth.length === 0 && paidToEditorsThisMonth.length === 0}
+                style={{ marginLeft: 'auto', borderRadius: 7, padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                ⬇ Exportar CSV
+              </button>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: isNarrowViewport ? '1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 24 }}>

@@ -28,6 +28,27 @@ export function monthKey(ts) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// Convierte filas (array de arrays) a texto CSV y dispara la descarga — sin librería, el caso de
+// uso acá es siempre "unas pocas columnas de texto/números para el contador", no CSV genérico con
+// casos raros de encoding. Escapa comillas/comas/saltos de línea envolviendo en comillas dobles
+// cuando hace falta, que es lo único que Excel/Sheets requieren para no romper el parseo de columnas.
+function csvCell(v) {
+  const s = v == null ? '' : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+export function downloadCSV(filename, rows) {
+  // ﻿ (BOM) para que Excel abra los acentos bien en vez de mojibake — Sheets lo ignora sin
+  // problema, así que no hay downside en dejarlo siempre.
+  const csv = '﻿' + rows.map(row => row.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function deadlineLabel(d) {
   if (!d) return null;
   const diff = daysUntil(d);
