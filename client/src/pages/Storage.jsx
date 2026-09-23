@@ -68,6 +68,10 @@ export default function Storage() {
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
       <div style={{ marginBottom: 20 }}>
+        <button onClick={() => navigate('/settings')}
+          style={{ background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+          ← Configuración
+        </button>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-xl)', fontWeight: 800, marginBottom: 4 }}>Almacenamiento</h1>
         <p style={{ color: 'var(--text2)', fontSize: 14 }}>
           Qué está ocupando lugar y qué podés liberar. Nada se borra automáticamente.

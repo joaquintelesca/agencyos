@@ -647,7 +647,6 @@ export default function Layout() {
             <>
               <NavItem to="/videos" label="Videos" icon={Icon.video} active={isActive('/videos')} admin />
               <NavItem to="/payments" label="Pagos" icon={Icon.dollar} active={isActive('/payments')} admin />
-              <NavItem to="/storage" label="Almacenamiento" icon={Icon.database} active={isActive('/storage')} admin />
             </>
           )}
         </div>
@@ -756,6 +755,9 @@ export default function Layout() {
             <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>{user?.role}</div>
           </div>
+          {user?.role === 'admin' && (
+            <button className="icon-btn" onClick={() => navigate('/settings')} title="Configuración" aria-label="Configuración" style={{ color: isActive('/settings') ? 'var(--accent2)' : 'var(--text3)', display: 'flex' }}><Icon.settings /></button>
+          )}
           <button className="icon-btn" onClick={openChangePassword} title="Cambiar contraseña" aria-label="Cambiar contraseña" style={{ color: 'var(--text3)', display: 'flex' }}><Icon.key /></button>
           <button className="icon-btn" onClick={logout} title="Cerrar sesión" aria-label="Cerrar sesión" style={{ color: 'var(--text3)', display: 'flex' }}><Icon.power /></button>
         </div>
