@@ -457,18 +457,14 @@ async function initDB() {
   }
   // Comentarios de un invitado externo (link de revisión para clientes, ver video_shares más
   // abajo) — no tienen user_id porque quien comenta no tiene cuenta. user_id era NOT NULL desde
-  // que se creó la tabla, así que además de agregar guest_name hay que aflojar esa restricción en
-  // la columna existente. Se prueba en un try/catch propio (no en el catch general de initDB)
-  // porque un ALTER que ya se aplicó en un boot anterior no debería poder tumbar el arranque del
-  // servidor si algo en el motor de DB se comporta distinto a lo esperado.
+  // que se creó la tabla; ya se aflojó a nullable hace tiempo (confirmado en el schema real) y no
+  // hace falta reintentarlo en cada boot. El propio intento de re-aflojarla vía .alter() (que en
+  // SQLite reconstruye la tabla entera) empezó a fallar con "FOREIGN KEY constraint failed" desde
+  // que esta tabla tiene FKs reales (ver la migración de foreign keys) — inofensivo porque ya
+  // estaba en el estado correcto, pero seguía imprimiendo un warning en cada arranque para siempre.
   const hasGuestName = await db.schema.hasColumn('video_comments', 'guest_name');
   if (!hasGuestName) {
     await db.schema.table('video_comments', t => { t.string('guest_name').nullable(); });
-  }
-  try {
-    await db.schema.alterTable('video_comments', t => { t.string('user_id').nullable().alter(); });
-  } catch (e) {
-    console.error('⚠️  No se pudo aflojar video_comments.user_id a nullable (¿ya lo está?):', e.message);
   }
   const hasShares = await db.schema.hasTable('video_shares');
   if (!hasShares) {
@@ -521,15 +517,11 @@ async function initDB() {
   // Un comentario de un invitado externo (link de revisión para clientes) dispara notificaciones
   // sin un actor humano en `users` — actor_id era NOT NULL y todas las lecturas usaban INNER JOIN
   // contra users, así que esas notificaciones directamente desaparecían de la lista (el INNER
-  // JOIN las filtra) en vez de solo faltarles el nombre. Mismo tratamiento que video_comments.user_id.
+  // JOIN las filtra) en vez de solo faltarles el nombre. Mismo tratamiento (y mismo motivo para
+  // ya no reintentar el .alter() en cada boot) que video_comments.user_id, ver el comentario ahí.
   const hasNotifGuestName = await db.schema.hasColumn('notifications', 'guest_name');
   if (!hasNotifGuestName) {
     await db.schema.table('notifications', t => { t.string('guest_name').nullable(); });
-  }
-  try {
-    await db.schema.alterTable('notifications', t => { t.string('actor_id').nullable().alter(); });
-  } catch (e) {
-    console.error('⚠️  No se pudo aflojar notifications.actor_id a nullable (¿ya lo está?):', e.message);
   }
   const hasMsgRead = await db.schema.hasColumn('chat_messages', 'read_by');
   if (!hasMsgRead) {
@@ -1054,6 +1046,7 @@ app.use(require('./routes/video-upload')({
   useR2, s3, R2_BUCKET, uploadsDir, VIDEO_MIME_EXT, verifyFileSignature, STORAGE_HARD_LIMIT_BYTES,
   CHUNK_SIZE, VIDEO_MAX_BYTES, chunksDir, uploadSessions, discardUploadSession, getUploadsSize, STORAGE_WARN_BYTES,
 }));
+require('./lib/review-reminders')({ db, createNotification });
 
 // ─── STORAGE CHECK ───────────────────────────────────────────────────────────
 // (GET /api/storage está en routes/video-upload.js; el resto de esta sección se movió a lib/storage.js.)

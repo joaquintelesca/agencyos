@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { useAlert } from '../context/AlertContext';
 import { initials } from '../utils/format';
-import { notificationLabel, notificationTarget, notificationText } from '../utils/notifications';
+import { notificationLabel, notificationTarget, notificationText, notificationIcon } from '../utils/notifications';
 import { renderMentions } from './MentionInput';
 import ErrorBoundary from './ErrorBoundary';
 import SearchPalette from './SearchPalette';
@@ -1359,8 +1359,8 @@ export default function Layout() {
           {toasts.map(t => (
             <div key={t.id} onClick={() => openToast(t)}
               style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--bg2)', border: '1px solid var(--accent)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
-              <div style={{ width: 30, height: 30, borderRadius: '50%', background: t.actor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                {t.actor_name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+              <div style={{ width: 30, height: 30, borderRadius: '50%', background: t.actor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: t.actor_id ? 11 : 14, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                {t.actor_id ? t.actor_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : notificationIcon(t.type)}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.4 }}>{notificationLabel(t)}</div>

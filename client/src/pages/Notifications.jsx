@@ -142,8 +142,13 @@ export default function Notifications() {
       style={{ display: 'flex', gap: 12, padding: '12px 16px', borderRadius: 10, background: n.read ? 'var(--bg2)' : 'var(--accent-glow)', border: `1px solid ${n.read ? 'var(--border)' : 'var(--accent)'}`, cursor: 'pointer', transition: 'all 0.15s', borderLeft: n.read ? '1px solid var(--border)' : '3px solid var(--accent)' }}
       onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
       onMouseLeave={e => e.currentTarget.style.borderColor = n.read ? 'var(--border)' : 'var(--accent)'}>
-      <div style={{ width: 36, height: 36, borderRadius: '50%', background: n.actor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-        {n.actor_name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+      {/* n.actor_name viene con COALESCE(a.name, n.guest_name, 'Cliente') del servidor — nunca es
+          falsy, así que no sirve para saber si hay un actor de verdad (el 'Cliente' genérico es
+          para invitados sin cuenta, no para esto). n.actor_id sí queda null de verdad cuando la
+          notificación la generó un chequeo automático (ver review_pending), sin ninguna persona
+          detrás. */}
+      <div style={{ width: 36, height: 36, borderRadius: '50%', background: n.actor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: n.actor_id ? 13 : 16, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+        {n.actor_id ? n.actor_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : icon(n.type)}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.4, marginBottom: 4 }}>{label(n)}</div>

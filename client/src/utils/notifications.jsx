@@ -14,6 +14,7 @@ export function notificationIcon(type) {
   if (type === 'task_assigned') return '✅';
   if (type === 'project_message') return '💬';
   if (type === 'mention') return '📣';
+  if (type === 'review_pending') return '⏰';
   return '✉️';
 }
 
@@ -31,6 +32,8 @@ export function notificationLabel(n) {
   if (n.type === 'task_assigned') return <><strong>{n.actor_name}</strong> te asignó una tarea{proj}</>;
   if (n.type === 'project_message') return <><strong>{n.actor_name}</strong> escribió en el chat del proyecto{proj}</>;
   if (n.type === 'mention') return <><strong>{n.actor_name}</strong> te mencionó{proj}</>;
+  // La única notificación sin actor — la genera un chequeo periódico del servidor, no una persona.
+  if (n.type === 'review_pending') return <>El video{n.preview ? <> "{n.preview}"</> : ''} lleva 2 días hábiles compartido sin que el cliente lo apruebe ni comente{proj}</>;
   return <><strong>{n.actor_name}</strong> te envió un mensaje</>;
 }
 
@@ -50,6 +53,7 @@ export function notificationText(n) {
   if (n.type === 'task_assigned') return `${n.actor_name} te asignó una tarea${proj}`;
   if (n.type === 'project_message') return `${n.actor_name} escribió en el chat del proyecto${proj}`;
   if (n.type === 'mention') return `${n.actor_name} te mencionó${proj}`;
+  if (n.type === 'review_pending') return `El video${n.preview ? ` "${n.preview}"` : ''} lleva 2 días hábiles compartido sin que el cliente lo apruebe ni comente${proj}`;
   return `${n.actor_name} te envió un mensaje`;
 }
 
