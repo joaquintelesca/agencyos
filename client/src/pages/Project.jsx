@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { useAlert } from '../context/AlertContext';
 import VideoReview from '../components/VideoReview';
+import ActivityTimeline from '../components/ActivityTimeline';
 import MentionInput, { renderMentions } from '../components/MentionInput';
 import { initials } from '../utils/format';
 import Icon from '../components/Icon';
@@ -522,14 +523,14 @@ export default function Project() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          {['kanban', 'chat', 'videos'].map(t => (
+          {['kanban', 'chat', 'videos', 'activity'].map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '6px 14px', borderRadius: 8, border: 'none', fontFamily: 'var(--font)', fontSize: 13,
               cursor: 'pointer', fontWeight: tab === t ? 600 : 400,
               background: tab === t ? 'var(--bg3)' : 'transparent',
               color: tab === t ? 'var(--text)' : 'var(--text2)',
             }}>
-              {t === 'kanban' ? '📋 Tareas' : t === 'chat' ? '💬 Chat' : '🎬 Videos'}
+              {t === 'kanban' ? '📋 Tareas' : t === 'chat' ? '💬 Chat' : t === 'videos' ? '🎬 Videos' : '🕓 Actividad'}
             </button>
           ))}
         </div>
@@ -655,6 +656,8 @@ export default function Project() {
           initialVideoId={searchParams.get('video')}
         />
       )}
+
+      {tab === 'activity' && <ActivityTimeline projectId={id} />}
 
       {/* Task Modal */}
       {showTaskModal && (

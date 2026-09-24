@@ -1,7 +1,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 
-module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjectMember, addProjectMember, removeProjectMemberIfOrphaned, emitToProject, createNotification, TASK_STATUSES }) {
+module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjectMember, addProjectMember, removeProjectMemberIfOrphaned, emitToProject, createNotification, TASK_STATUSES, logActivity }) {
   const router = express.Router();
 
   // Cuántas tareas activas tiene cada integrante AHORA MISMO — hoy, para asignar una tarea nueva
@@ -70,6 +70,7 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
       if (assigned_to) await addProjectMember(req.params.projectId, assigned_to);
       const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
       await emitToProject(req.params.projectId, 'task:created', task);
+      await logActivity({ projectId: req.params.projectId, type: 'task_created', actorId: req.user.id, data: { title } });
       if (assigned_to) {
         const project = await db('projects').where({ id: req.params.projectId }).first();
         await createNotification({ userId: assigned_to, type: 'task_assigned', actorId: req.user.id, projectId: req.params.projectId, preview: `"${title}" en ${project?.name || 'proyecto'}` });
@@ -128,6 +129,12 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
       }
       const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', req.params.id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
       await emitToProject(existing.project_id, 'task:updated', task);
+      if (status !== undefined && status !== existing.status) {
+        await logActivity({ projectId: existing.project_id, type: 'task_status_changed', actorId: req.user.id, data: { title: existing.title, from: existing.status, to: status } });
+      }
+      if (assigned_to && assigned_to !== existing.assigned_to) {
+        await logActivity({ projectId: existing.project_id, type: 'task_assigned', actorId: req.user.id, data: { title: task.title, assignee_name: task.assignee_name } });
+      }
       if (status === 'review' && existing.status !== 'review') {
         const admins = await db('users').where({ role: 'admin' }).select('id');
         const project = await db('projects').where({ id: existing.project_id }).first();

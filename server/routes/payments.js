@@ -1,6 +1,6 @@
 const express = require('express');
 
-module.exports = function paymentsRoutes({ db, auth, io, withDeletedEditorFallback, withComputedTotals, computeEditorAmount, computeClientGrossAmount, computeClientNetAmount, OWNER_EMAIL }) {
+module.exports = function paymentsRoutes({ db, auth, io, withDeletedEditorFallback, withComputedTotals, computeEditorAmount, computeClientGrossAmount, computeClientNetAmount, OWNER_EMAIL, logActivity }) {
   const router = express.Router();
 
   // Un proyecto pasa a Pagos cuando el admin lo marca "terminado" a mano (ver PATCH
@@ -61,6 +61,7 @@ module.exports = function paymentsRoutes({ db, auth, io, withDeletedEditorFallba
       if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
       let found = false;
       let badValue = false;
+      const activityEvents = [];
       await db.transaction(async trx => {
         // Mismo lock de fila que PUT /api/projects/:id (ver comentario ahí): todo lo que compone el
         // monto (horas, tarifa, tipo de pago) se lee DESPUÉS de tomar el lock y dentro de la misma
@@ -90,10 +91,12 @@ module.exports = function paymentsRoutes({ db, auth, io, withDeletedEditorFallba
         if (req.body.editor_paid !== undefined) {
           update.editor_paid = req.body.editor_paid;
           update.editor_paid_at = req.body.editor_paid === 'paid' ? new Date().toISOString() : null;
+          if (req.body.editor_paid !== existing.editor_paid) activityEvents.push({ side: 'editor', value: req.body.editor_paid });
         }
         if (req.body.client_paid !== undefined) {
           update.client_paid = req.body.client_paid;
           update.client_paid_at = req.body.client_paid === 'cobrado' ? new Date().toISOString() : null;
+          if (req.body.client_paid !== existing.client_paid) activityEvents.push({ side: 'client', value: req.body.client_paid });
         }
         if (Object.keys(update).length) await trx('projects').where({ id: req.params.projectId }).update(update);
         const current = await trx('projects').where({ id: req.params.projectId }).first();
@@ -131,6 +134,9 @@ module.exports = function paymentsRoutes({ db, auth, io, withDeletedEditorFallba
       });
       if (!found) return res.status(404).json({ error: 'Proyecto no encontrado' });
       if (badValue) return res.status(400).json({ error: 'Valor de estado de pago inválido' });
+      for (const ev of activityEvents) {
+        await logActivity({ projectId: req.params.projectId, type: 'payment_marked', actorId: req.user.id, data: ev });
+      }
       const project = withDeletedEditorFallback(await db('projects as p')
         .leftJoin('users as u', 'p.payment_editor_id', 'u.id')
         .leftJoin('clients as c', 'p.client_id', 'c.id')

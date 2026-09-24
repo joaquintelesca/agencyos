@@ -1001,12 +1001,14 @@ const {
   TASK_STATUSES, stripProjectFinancials, withDeletedEditorFallback,
   emitToProject, requireProjectAccess, loginLimiter, uploadLimiter,
 } = require('./lib/project-access')({ db, io });
+const { logActivity } = require('./lib/activity')({ db });
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 app.use(require('./routes/auth')({ db, auth, loginLimiter, bcrypt, jwt, JWT_SECRET, pickUnusedAvatarColor, safeUnlink }));
 
 // ─── PROJECTS ────────────────────────────────────────────────────────────────
-app.use(require('./routes/projects')({ db, auth, io, requireProjectAccess, withDeletedEditorFallback, withComputedTotals, stripProjectFinancials, addProjectMember, emitToProject, createNotification, parseUpworkFeePct, removeProjectMemberIfOrphaned, OWNER_EMAIL, safeUnlink }));
+app.use(require('./routes/projects')({ db, auth, io, requireProjectAccess, withDeletedEditorFallback, withComputedTotals, stripProjectFinancials, addProjectMember, emitToProject, createNotification, parseUpworkFeePct, removeProjectMemberIfOrphaned, OWNER_EMAIL, safeUnlink, logActivity }));
+app.use(require('./routes/activity')({ db, auth, requireProjectAccess }));
 
 // ─── PROJECT MEMBERS CRUD ───────────────────────────────────────────────────
 // Extraído a routes/project-members.js.
@@ -1034,10 +1036,10 @@ app.use(require('./routes/calendar')({ db, auth }));
 app.use(require('./routes/earnings')({ db, auth, computeEditorAmount }));
 
 // ─── PAYMENTS ────────────────────────────────────────────────────────────────
-app.use(require('./routes/payments')({ db, auth, io, withDeletedEditorFallback, withComputedTotals, computeEditorAmount, computeClientGrossAmount, computeClientNetAmount, OWNER_EMAIL }));
+app.use(require('./routes/payments')({ db, auth, io, withDeletedEditorFallback, withComputedTotals, computeEditorAmount, computeClientGrossAmount, computeClientNetAmount, OWNER_EMAIL, logActivity }));
 
 // ─── TASKS ───────────────────────────────────────────────────────────────────
-app.use(require('./routes/tasks')({ db, auth, requireProjectAccess, isProjectMember, addProjectMember, removeProjectMemberIfOrphaned, emitToProject, createNotification, TASK_STATUSES }));
+app.use(require('./routes/tasks')({ db, auth, requireProjectAccess, isProjectMember, addProjectMember, removeProjectMemberIfOrphaned, emitToProject, createNotification, TASK_STATUSES, logActivity }));
 
 // ─── MESSAGES ────────────────────────────────────────────────────────────────
 // Extraído a routes/messages.js.
@@ -1059,6 +1061,7 @@ app.use(require('./routes/video-upload')({
   db, auth, io, requireProjectAccess, uploadLimiter, isProjectMember, emitToProject, createNotification, safeUnlink,
   useR2, s3, R2_BUCKET, uploadsDir, VIDEO_MIME_EXT, verifyFileSignature, STORAGE_HARD_LIMIT_BYTES,
   CHUNK_SIZE, VIDEO_MAX_BYTES, chunksDir, uploadSessions, discardUploadSession, getUploadsSize, STORAGE_WARN_BYTES,
+  logActivity,
 }));
 require('./lib/review-reminders')({ db, createNotification });
 require('./lib/payment-reminders')({ db, createNotification });
@@ -1067,10 +1070,10 @@ require('./lib/payment-reminders')({ db, createNotification });
 // (GET /api/storage está en routes/video-upload.js; el resto de esta sección se movió a lib/storage.js.)
 
 // ─── VIDEO COMMENTS ──────────────────────────────────────────────────────────
-app.use(require('./routes/video-comments')({ db, auth, isProjectMember, safeJsonParse, attachmentUploadMiddleware, emitToProject, extractMentionedUserIds, createNotification, safeUnlink }));
+app.use(require('./routes/video-comments')({ db, auth, isProjectMember, safeJsonParse, attachmentUploadMiddleware, emitToProject, extractMentionedUserIds, createNotification, safeUnlink, logActivity }));
 
 // ─── SHARES (links de revisión sin cuenta para clientes: por video y por cliente) ────────────
-app.use(require('./routes/shares')({ db, auth, serveFile, safeJsonParse, emitToProject, createNotification }));
+app.use(require('./routes/shares')({ db, auth, serveFile, safeJsonParse, emitToProject, createNotification, logActivity }));
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
 

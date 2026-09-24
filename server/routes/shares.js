@@ -16,7 +16,7 @@ const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 // comentar de invitado, aprobar/desaprobar) es EXACTAMENTE la misma para los dos — solo cambia
 // cómo se llega a ese video_id. Por eso vive una sola vez en las funciones de abajo, y cada grupo
 // de rutas públicas solo se encarga de resolver su propio token hasta un video_id válido.
-module.exports = function sharesRoutes({ db, auth, serveFile, safeJsonParse, emitToProject, createNotification }) {
+module.exports = function sharesRoutes({ db, auth, serveFile, safeJsonParse, emitToProject, createNotification, logActivity }) {
   const router = express.Router();
 
   const reviewLimiter = rateLimit({
@@ -89,6 +89,7 @@ module.exports = function sharesRoutes({ db, auth, serveFile, safeJsonParse, emi
     if (video) {
       await emitToProject(video.project_id, 'comment:created', { ...full, video_id: videoId, attachments: [], replies: [] });
       await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
+      await logActivity({ projectId: video.project_id, type: 'comment_added', guestName: guest_name.trim(), data: { video_title: video.title } });
       // Mismo criterio de destinatarios que un comentario interno: admins + quien subió el video
       // + el asignado de su tarea. No hace falta excluir a "quien comenta" porque el invitado no
       // tiene cuenta que notificar.
@@ -119,6 +120,7 @@ module.exports = function sharesRoutes({ db, auth, serveFile, safeJsonParse, emi
       approved_at: new Date().toISOString(), approved_by: null, approved_by_guest_name: guestName.trim().slice(0, 60),
     });
     await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
+    await logActivity({ projectId: video.project_id, type: 'video_approved', guestName: guestName.trim(), data: { title: video.title, version: video.version } });
     const notifyIds = new Set((await db('users').where({ role: 'admin' }).pluck('id')));
     if (video.uploaded_by) notifyIds.add(video.uploaded_by);
     for (const uid of notifyIds) {

@@ -10,6 +10,7 @@ module.exports = function videoUploadRoutes({
   db, auth, io, requireProjectAccess, uploadLimiter, isProjectMember, emitToProject, createNotification, safeUnlink,
   useR2, s3, R2_BUCKET, uploadsDir, VIDEO_MIME_EXT, verifyFileSignature, STORAGE_HARD_LIMIT_BYTES,
   CHUNK_SIZE, VIDEO_MAX_BYTES, chunksDir, uploadSessions, discardUploadSession, getUploadsSize, STORAGE_WARN_BYTES,
+  logActivity,
 }) {
   const router = express.Router();
 
@@ -139,6 +140,7 @@ module.exports = function videoUploadRoutes({
       await db('videos').insert({ id, project_id: session.projectId, title, filename, original_name: originalName || title, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: session.totalSize, task_id: task_id || null, group_id: groupId });
       const video = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id').leftJoin('tasks as tk', 'v.task_id', 'tk.id').where('v.id', id).select('v.*', 'u.name as uploader_name', 'tk.title as task_title').first();
       await emitToProject(session.projectId, 'video:uploaded', video);
+      await logActivity({ projectId: session.projectId, type: 'video_uploaded', actorId: req.user.id, data: { title, version: video.version } });
       // Subir un video no cambia el estado de ninguna tarea por sí solo (eso es una acción aparte
       // del usuario), así que sin esto un admin podía no enterarse nunca de que hay contenido
       // nuevo para revisar si nadie tocaba el kanban.
@@ -218,6 +220,7 @@ module.exports = function videoUploadRoutes({
         approved_at: new Date().toISOString(), approved_by: req.user.id, approved_by_guest_name: null,
       });
       await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
+      await logActivity({ projectId: video.project_id, type: 'video_approved', actorId: req.user.id, data: { title: video.title, version: video.version } });
       // Antes solo se avisaba a los admins — si un editor subió el video, nunca se enteraba de que
       // se aprobó salvo que volviera a mirar el proyecto a mano. Mismo criterio de destinatarios
       // que un comentario nuevo: admins + quien subió el video (sin duplicar si es la misma persona

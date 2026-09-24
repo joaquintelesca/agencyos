@@ -1,7 +1,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 
-module.exports = function projectsRoutes({ db, auth, io, requireProjectAccess, withDeletedEditorFallback, withComputedTotals, stripProjectFinancials, addProjectMember, emitToProject, createNotification, parseUpworkFeePct, removeProjectMemberIfOrphaned, OWNER_EMAIL, safeUnlink }) {
+module.exports = function projectsRoutes({ db, auth, io, requireProjectAccess, withDeletedEditorFallback, withComputedTotals, stripProjectFinancials, addProjectMember, emitToProject, createNotification, parseUpworkFeePct, removeProjectMemberIfOrphaned, OWNER_EMAIL, safeUnlink, logActivity }) {
   const router = express.Router();
 
   router.get('/api/projects', auth, async (req, res) => {
@@ -259,6 +259,9 @@ module.exports = function projectsRoutes({ db, auth, io, requireProjectAccess, w
         }
       }
       await db('projects').where({ id: req.params.id }).update(update);
+      if (status !== existing.status) {
+        await logActivity({ projectId: req.params.id, type: status === 'completed' ? 'project_completed' : 'project_reopened', actorId: req.user.id });
+      }
       const project = withDeletedEditorFallback(await db('projects as p').leftJoin('clients as c', 'p.client_id', 'c.id').leftJoin('users as eu', 'p.payment_editor_id', 'eu.id').where('p.id', req.params.id).select('p.*', 'c.name as client_name', 'c.color as client_color', 'eu.name as payment_editor_name', 'eu.avatar_color as payment_editor_color', 'eu.email as _editor_email').first());
       // Sin esto, editor_is_owner/computed_* faltaban en la respuesta de este endpoint en
       // particular (los demás sí lo aplicaban) — no rompía nada visible hoy porque Payments.jsx/

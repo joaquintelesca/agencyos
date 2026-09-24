@@ -1,7 +1,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 
-module.exports = function videoCommentsRoutes({ db, auth, isProjectMember, safeJsonParse, attachmentUploadMiddleware, emitToProject, extractMentionedUserIds, createNotification, safeUnlink }) {
+module.exports = function videoCommentsRoutes({ db, auth, isProjectMember, safeJsonParse, attachmentUploadMiddleware, emitToProject, extractMentionedUserIds, createNotification, safeUnlink, logActivity }) {
   const router = express.Router();
 
   router.get('/api/videos/:videoId/comments', auth, async (req, res) => {
@@ -87,7 +87,10 @@ module.exports = function videoCommentsRoutes({ db, auth, isProjectMember, safeJ
       const attachments = await db('comment_attachments').where({ comment_id: id });
       const full = { ...comment, attachments, annotation: safeJsonParse(annotation) };
       const video = await db('videos').where({ id: req.params.videoId }).first();
-      if (video) await emitToProject(video.project_id, 'comment:created', full);
+      if (video) {
+        await emitToProject(video.project_id, 'comment:created', full);
+        await logActivity({ projectId: video.project_id, type: 'comment_added', actorId: req.user.id, data: { video_title: video.title } });
+      }
       if (video) await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
       if (video) {
         // El editor que subió el video (y el asignado de su tarea) tienen que enterarse sí o sí:
