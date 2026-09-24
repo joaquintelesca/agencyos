@@ -5,7 +5,7 @@ const { rateLimit } = require('express-rate-limit');
 // logo) en vez del genérico "🎬 Revisión de video" que veía el cliente en /review y en el portal
 // por cliente. Guardado en una tabla clave/valor (ver migración create_settings) para no necesitar
 // una migración nueva cada vez que se sume un ajuste más.
-module.exports = function settingsRoutes({ db, auth, serveFile, safeUnlink, verifyAndPersistFiles, THUMBNAIL_MIME_EXT, logoUpload }) {
+module.exports = function settingsRoutes({ db, auth, serveFile, safeUnlink, verifyAndPersistFiles, THUMBNAIL_MIME_EXT, logoUpload, runBackup, listBackups }) {
   const router = express.Router();
 
   // GET /api/settings/branding lo pegan las páginas públicas (/review, portal por cliente) en
@@ -87,6 +87,24 @@ module.exports = function settingsRoutes({ db, auth, serveFile, safeUnlink, veri
       const next = await saveBranding({ logo_filename: null });
       if (current.logo_filename) safeUnlink(current.logo_filename);
       res.json(publicShape(next));
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // Solo visibilidad de que el backup diario existe y anda — no hay restore desde acá, eso es
+  // deliberadamente más grande/riesgoso y no se pidió.
+  router.get('/api/settings/backups', auth, async (req, res) => {
+    try {
+      if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+      const backups = await listBackups();
+      res.json(backups.map(b => ({ key: b.key, size: b.size, modified: b.modified })).reverse()); // más reciente primero
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  router.post('/api/settings/backups/run', auth, async (req, res) => {
+    try {
+      if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+      await runBackup();
+      res.json({ success: true });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 

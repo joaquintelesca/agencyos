@@ -19,6 +19,7 @@ const VideosDashboard = lazy(() => import('./pages/VideosDashboard'));
 const Storage = lazy(() => import('./pages/Storage'));
 const Settings = lazy(() => import('./pages/Settings'));
 const BrandingSettings = lazy(() => import('./pages/BrandingSettings'));
+const BackupSettings = lazy(() => import('./pages/BackupSettings'));
 const Team = lazy(() => import('./pages/Team'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -71,6 +72,7 @@ export default function App() {
                     <Route path="storage" element={<AdminRoute><Storage /></AdminRoute>} />
                     <Route path="settings" element={<AdminRoute><Settings /></AdminRoute>} />
                     <Route path="settings/branding" element={<AdminRoute><BrandingSettings /></AdminRoute>} />
+                    <Route path="settings/backups" element={<AdminRoute><BackupSettings /></AdminRoute>} />
                   </Route>
                 </Routes>
               </Suspense>

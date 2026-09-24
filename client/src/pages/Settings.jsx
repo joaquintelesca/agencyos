@@ -9,6 +9,7 @@ import Icon from '../components/Icon';
 const SECTIONS = [
   { to: '/storage', icon: 'database', label: 'Almacenamiento', description: 'Ver qué ocupa lugar y liberar espacio' },
   { to: '/settings/branding', icon: 'palette', label: 'Branding del portal', description: 'Tu logo, nombre y color en el link de revisión' },
+  { to: '/settings/backups', icon: 'shield', label: 'Backups', description: 'Copia diaria de la base, últimos 30 días' },
 ];
 
 export default function Settings() {

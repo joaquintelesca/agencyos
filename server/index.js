@@ -1045,7 +1045,8 @@ app.use(require('./routes/messages')({ db, auth, requireProjectAccess }));
 
 // ─── VIDEOS ──────────────────────────────────────────────────────────────────
 app.use(require('./routes/videos')({ db, auth, requireProjectAccess, thumbnailUpload, isProjectMember, verifyAndPersistFiles, THUMBNAIL_MIME_EXT, emitToProject }));
-app.use(require('./routes/settings')({ db, auth, serveFile, safeUnlink, verifyAndPersistFiles, THUMBNAIL_MIME_EXT, logoUpload }));
+const { runBackup, listBackups } = require('./lib/backup')({ db, useR2, s3, R2_BUCKET, uploadsDir });
+app.use(require('./routes/settings')({ db, auth, serveFile, safeUnlink, verifyAndPersistFiles, THUMBNAIL_MIME_EXT, logoUpload, runBackup, listBackups }));
 
 // ─── SUBIDA DE VIDEO POR PARTES ──────────────────────────────────────────────
 // (Sesiones de subida, escaneo de storage y limpieza de huérfanos viven en lib/storage.js;
