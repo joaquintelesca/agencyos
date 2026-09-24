@@ -6,9 +6,10 @@ import useModalA11y from '../hooks/useModalA11y';
 
 const VIDEOS_PREVIEW_LIMIT = 5;
 const PAYMENTS_PREVIEW_LIMIT = 5;
+const DEADLINES_PREVIEW_LIMIT = 5;
 const TASK_STATUS_LABELS = { todo: 'Por hacer', in_progress: 'En progreso', review: 'En revisión', feedback: 'Aplicar feedback', done: 'Listo' };
 const TASK_STATUS_COLORS = { todo: 'var(--text3)', in_progress: 'var(--blue)', review: 'var(--yellow)', feedback: 'var(--red)', done: 'var(--green)' };
-const STAT_MODAL_TITLES = { projects: 'Proyectos activos', tasks: 'Tareas pendientes', deadlines: 'Deadlines esta semana', clients: 'Clientes activos' };
+const STAT_MODAL_TITLES = { projects: 'Proyectos activos', tasks: 'Tareas pendientes', deadlines: 'Deadlines esta semana', clients: 'Clientes activos', all_deadlines: 'Próximos deadlines' };
 
 export default function Dashboard() {
   const { api, user } = useAuth();
@@ -159,6 +160,25 @@ export default function Dashboard() {
               );
             }))}
 
+          {statModal === 'all_deadlines' && (deadlineSoon.length === 0
+            ? <div className="empty"><div className="empty-icon">📅</div><p>Sin deadlines cargados</p></div>
+            : deadlineSoon.map(p => {
+              const dl = deadlineLabel(p.deadline);
+              return (
+                <div key={p.id} onClick={() => goToProject(p.id)} className="list-row">
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
+                  {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
+                  {p.payment_editor_name && (
+                    <div className="avatar" style={{ width: 22, height: 22, background: p.payment_editor_color, fontSize: 9, fontWeight: 700 }}>
+                      {initials(p.payment_editor_name)}
+                    </div>
+                  )}
+                  {dl && <span className="badge" style={{ fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
+                </div>
+              );
+            }))}
+
           {statModal === 'clients' && (clients.length === 0
             ? <div className="empty"><div className="empty-icon">👥</div><p>Sin clientes todavía</p></div>
             : clients.map(c => (
@@ -175,9 +195,14 @@ export default function Dashboard() {
 
   const deadlinesSection = deadlineSoon.length > 0 && (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ ...sectionTitleStyle, marginBottom: 8 }}>Próximos deadlines</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={sectionTitleStyle}>Próximos deadlines</div>
+        {deadlineSoon.length > DEADLINES_PREVIEW_LIMIT && (
+          <span onClick={() => setStatModal('all_deadlines')} style={sectionLinkStyle}>Ver todos ({deadlineSoon.length}) →</span>
+        )}
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {deadlineSoon.slice(0, 5).map(p => {
+        {deadlineSoon.slice(0, DEADLINES_PREVIEW_LIMIT).map(p => {
           const dl = deadlineLabel(p.deadline);
           return (
             <div key={p.id} onClick={() => navigate(`/project/${p.id}`)} className="list-row">
