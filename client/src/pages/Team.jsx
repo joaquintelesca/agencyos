@@ -281,8 +281,12 @@ export default function Team() {
                   const review = t.filter(x => x.status === 'review').length;
                   const p = detailData.projects;
                   const projectTotal = x => x.payment_type === 'hourly' ? (parseFloat(x.payment_amount) || 0) * (parseFloat(x.payment_hours) || 0) : (parseFloat(x.payment_amount) || 0);
-                  const totalPaid = p.filter(x => x.editor_paid === 'paid').reduce((s, x) => s + projectTotal(x), 0);
-                  const totalPending = p.filter(x => x.editor_paid !== 'paid').reduce((s, x) => s + projectTotal(x), 0);
+                  // Cuando el editor es el dueño de la agencia no hay pago real que marcar —
+                  // editor_paid se queda en 'unpaid' para siempre, así que sin esta excepción un
+                  // proyecto suyo ya saldado se contaba como deuda eterna en "Pendiente".
+                  const editorSettled = x => x.editor_is_owner || x.editor_paid === 'paid';
+                  const totalPaid = p.filter(editorSettled).reduce((s, x) => s + projectTotal(x), 0);
+                  const totalPending = p.filter(x => !editorSettled(x)).reduce((s, x) => s + projectTotal(x), 0);
                   return (
                     <>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 20 }}>
@@ -340,14 +344,17 @@ export default function Team() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             {p.map(proj => {
                               const amount = projectTotal(proj);
-                              const paid = proj.editor_paid === 'paid';
+                              const paid = editorSettled(proj);
+                              // "No aplica" (no "Pagado") cuando el editor es el dueño — no hubo
+                              // ningún pago real, mismo texto que ya usa Payments.jsx para este caso.
+                              const label = proj.editor_is_owner ? 'No aplica' : paid ? 'Pagado' : 'Pendiente';
                               return (
                                 <div key={proj.id} className="panel" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, fontSize: 13 }}>
                                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: proj.color || 'var(--text3)', flexShrink: 0 }} />
                                   <span style={{ flex: 1, color: 'var(--text)' }}>{proj.client_name ? `${proj.client_name} · ` : ''}{proj.name}</span>
                                   <span style={{ fontSize: 12, fontWeight: 600, color: paid ? 'var(--green)' : 'var(--text)' }}>${amount.toFixed(0)}</span>
                                   <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, fontWeight: 500, color: paid ? 'var(--green)' : 'var(--red)', background: paid ? 'rgba(34,201,122,0.12)' : 'rgba(240,92,92,0.12)' }}>
-                                    {paid ? 'Pagado' : 'Pendiente'}
+                                    {label}
                                   </span>
                                 </div>
                               );

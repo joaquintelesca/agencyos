@@ -1,6 +1,6 @@
 const express = require('express');
 
-module.exports = function earningsRoutes({ db, auth, computeEditorAmount }) {
+module.exports = function earningsRoutes({ db, auth, computeEditorAmount, OWNER_EMAIL }) {
   const router = express.Router();
 
   router.get('/api/users/:id/detail', auth, async (req, res) => {
@@ -10,16 +10,34 @@ module.exports = function earningsRoutes({ db, auth, computeEditorAmount }) {
       const editor = await db('users').where({ id: editorId }).select('id', 'name', 'email', 'role', 'avatar_color', 'created_at').first();
       if (!editor) return res.status(404).json({ error: 'Usuario no encontrado' });
 
+      // Mismo criterio que "carga de trabajo" (GET /api/team/workload): el backlog de un proyecto
+      // ya terminado no es trabajo pendiente real — sin este filtro, una tarea suelta sin mover a
+      // "done" en un proyecto cerrado hace meses seguía contando acá como si fuera actual.
       const tasks = await db('tasks as t')
         .join('projects as p', 't.project_id', 'p.id')
         .leftJoin('clients as c', 'p.client_id', 'c.id')
         .where('t.assigned_to', editorId)
+        .where('p.status', 'active')
         .select('t.*', 'p.name as project_name', 'p.color as project_color', 'c.name as client_name');
 
-      const projects = await db('projects as p')
+      // Dos bugs reales acá, encontrados al reportar que un proyecto ya terminado (con el cliente
+      // ya cobrado) seguía mostrando "Pendiente" en Pagos:
+      // 1. Sin filtro de status: traía CUALQUIER proyecto asignado, incluidos los todavía activos
+      //    (donde no hay nada "cobrable" todavía, es trabajo en curso) — mismo criterio que ya
+      //    aplica /api/me/earnings y /api/payments.
+      // 2. Cuando el editor es el dueño de la agencia (OWNER_EMAIL), no hay pago real que marcar
+      //    — editor_paid se queda en 'unpaid' para siempre porque nunca hay nada que marcar, así
+      //    que sin la excepción un proyecto suyo ya saldado (cliente cobrado, nada pendiente de
+      //    verdad) se mostraba como deuda eterna. Mismo criterio que editor_is_owner en
+      //    withComputedTotals (server/lib/payments.js) — acá se recalcula con una sola comparación
+      //    porque ya se tiene el email del editor a mano, no hace falta traerlo nuevo.
+      const isOwner = editor.email === OWNER_EMAIL;
+      const projectsRaw = await db('projects as p')
         .leftJoin('clients as c', 'p.client_id', 'c.id')
         .where('p.payment_editor_id', editorId)
+        .where(function() { this.where('p.status', 'completed').orWhere('p.ever_completed', true); })
         .select('p.id', 'p.name', 'p.color', 'p.editor_paid', 'p.client_paid', 'p.payment_amount', 'p.payment_type', 'p.payment_hours', 'c.name as client_name');
+      const projects = projectsRaw.map(p => ({ ...p, editor_is_owner: isOwner }));
 
       res.json({ editor, tasks, projects });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }

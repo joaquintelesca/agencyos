@@ -1033,7 +1033,7 @@ app.use(require('./routes/calendar')({ db, auth }));
 
 // ─── EDITOR DETAIL (admin only) ─────────────────────────────────────────────
 // Extraído a routes/earnings.js.
-app.use(require('./routes/earnings')({ db, auth, computeEditorAmount }));
+app.use(require('./routes/earnings')({ db, auth, computeEditorAmount, OWNER_EMAIL }));
 
 // ─── PAYMENTS ────────────────────────────────────────────────────────────────
 app.use(require('./routes/payments')({ db, auth, io, withDeletedEditorFallback, withComputedTotals, computeEditorAmount, computeClientGrossAmount, computeClientNetAmount, OWNER_EMAIL, logActivity }));
