@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import VideoPlayerAnnotator, { formatTime } from './VideoPlayerAnnotator';
+import ClickableRow from './ClickableRow';
 
 // Extraído de PublicReview.jsx para que el portal por cliente (ClientReview.jsx) pueda mostrar
 // el mismo reproductor+comentarios+aprobar sobre CUALQUIER video, sin duplicar esta lógica —
@@ -148,7 +149,7 @@ export default function VideoReviewPane({ apiBase, onBack }) {
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {comments.map(c => (
-          <div key={c.id} className="list-row" onClick={() => playerRef.current?.jumpToComment(c)}>
+          <ClickableRow key={c.id} onClick={() => playerRef.current?.jumpToComment(c)}>
             <span className="badge" style={{ fontWeight: 700, background: 'var(--accent-glow)', color: 'var(--accent2)', flexShrink: 0 }}>
               {c.timestamp_end != null ? `${formatTime(c.timestamp_sec)}–${formatTime(c.timestamp_end)}` : formatTime(c.timestamp_sec)}
             </span>
@@ -158,7 +159,7 @@ export default function VideoReviewPane({ apiBase, onBack }) {
               </div>
               <div style={{ fontSize: 13, color: 'var(--text)' }}>{c.content}</div>
             </div>
-          </div>
+          </ClickableRow>
         ))}
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import VideoReviewPane from '../components/VideoReviewPane';
 import useBranding from '../hooks/useBranding';
+import ClickableRow from '../components/ClickableRow';
 
 // Página pública, sin sesión — igual que PublicReview.jsx (el link por video), pero acá el token
 // es de un CLIENTE (client_shares, ver server/routes/shares.js), no de un video puntual: un solo
@@ -81,7 +82,7 @@ export default function ClientReview() {
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {p.videos.map(v => (
-                        <div key={v.id} className="list-row" onClick={() => setSelectedVideoId(v.id)}>
+                        <ClickableRow key={v.id} onClick={() => setSelectedVideoId(v.id)}>
                           <span style={{ fontSize: 20, flexShrink: 0 }}>🎬</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{v.title} <span style={{ color: 'var(--text3)', fontWeight: 400 }}>v{v.version}</span></div>
@@ -98,7 +99,7 @@ export default function ClientReview() {
                               Pendiente de revisión
                             </span>
                           )}
-                        </div>
+                        </ClickableRow>
                       ))}
                     </div>
                   )}

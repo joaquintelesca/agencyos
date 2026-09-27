@@ -124,8 +124,8 @@ export default function Storage() {
           const isOpen = expanded[p.project_id];
           return (
             <div key={p.project_id} className="panel" style={{ borderRadius: 12, overflow: 'hidden' }}>
-              <div onClick={() => setExpanded(prev => ({ ...prev, [p.project_id]: !prev[p.project_id] }))}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', background: 'var(--bg3)', flexWrap: isNarrowViewport ? 'wrap' : 'nowrap' }}>
+              <button type="button" aria-expanded={!!isOpen} onClick={() => setExpanded(prev => ({ ...prev, [p.project_id]: !prev[p.project_id] }))}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', background: 'var(--bg3)', flexWrap: isNarrowViewport ? 'wrap' : 'nowrap', border: 'none', width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit' }}>
                 <span style={{ fontSize: 11, color: 'var(--text3)', width: 10 }}>{isOpen ? '▼' : '▶'}</span>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.client_color || 'var(--text3)', flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: isNarrowViewport ? 140 : 0 }}>
@@ -137,7 +137,7 @@ export default function Storage() {
                 </div>
                 {p.settled && <span className="badge" style={{ fontSize: 10, background: 'rgba(34,201,122,0.12)', color: 'var(--green)' }}>cerrado y cobrado</span>}
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{formatBytes(p.bytes)}</span>
-              </div>
+              </button>
 
               {isOpen && (
                 <div style={{ padding: '6px 14px 12px' }}>

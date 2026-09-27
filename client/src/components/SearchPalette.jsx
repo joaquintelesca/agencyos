@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import useModalA11y from '../hooks/useModalA11y';
+import ClickableRow from './ClickableRow';
 
 // Antes la única forma de encontrar un proyecto/tarea/video era expandir cliente por cliente en
 // el sidebar a mano — insostenible pasados unos pocos proyectos. Debounce de 250ms para no
@@ -42,11 +43,11 @@ export default function SearchPalette({ open, onClose }) {
   const total = results ? Object.values(results).reduce((s, arr) => s + arr.length, 0) : 0;
 
   const Row = ({ color, title, subtitle, onClick }) => (
-    <div className="list-row" onClick={onClick} style={{ padding: '8px 12px' }}>
+    <ClickableRow onClick={onClick} style={{ padding: '8px 12px' }}>
       <div style={{ width: 8, height: 8, borderRadius: '50%', background: color || 'var(--text3)', flexShrink: 0 }} />
       <span style={{ fontSize: 13, color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
       {subtitle && <span style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>{subtitle}</span>}
-    </div>
+    </ClickableRow>
   );
 
   const Group = ({ label, children }) => (

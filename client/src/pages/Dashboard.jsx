@@ -3,6 +3,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { initials, deadlineLabel, daysUntil } from '../utils/format';
 import useModalA11y from '../hooks/useModalA11y';
+import ClickableRow from '../components/ClickableRow';
 
 const VIDEOS_PREVIEW_LIMIT = 5;
 const PAYMENTS_PREVIEW_LIMIT = 5;
@@ -110,7 +111,7 @@ export default function Dashboard() {
           {statModal === 'projects' && (activeProjectsList.length === 0
             ? <div className="empty"><div className="empty-icon">📁</div><p>Sin proyectos activos</p></div>
             : activeProjectsList.map(p => (
-              <div key={p.id} onClick={() => goToProject(p.id)} className="list-row">
+              <ClickableRow key={p.id} onClick={() => goToProject(p.id)}>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                 <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
                 {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
@@ -119,7 +120,7 @@ export default function Dashboard() {
                     {initials(p.payment_editor_name)}
                   </div>
                 )}
-              </div>
+              </ClickableRow>
             )))}
 
           {statModal === 'tasks' && (pendingTasks.length === 0
@@ -127,7 +128,7 @@ export default function Dashboard() {
             : pendingTasks.map(t => {
               const proj = projects.find(p => p.id === t.project_id);
               return (
-                <div key={t.id} onClick={() => goToProject(t.project_id)} className="list-row">
+                <ClickableRow key={t.id} onClick={() => goToProject(t.project_id)}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: proj?.color || 'var(--text3)', flexShrink: 0 }} />
                   <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{t.title}</span>
                   {proj && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{proj.client_name ? `${proj.client_name} · ` : ''}{proj.name}</span>}
@@ -142,7 +143,7 @@ export default function Dashboard() {
                   <span className="badge" style={{ fontWeight: 500, background: `${TASK_STATUS_COLORS[t.status] || 'var(--text3)'}18`, color: TASK_STATUS_COLORS[t.status] || 'var(--text3)' }}>
                     {TASK_STATUS_LABELS[t.status] || t.status}
                   </span>
-                </div>
+                </ClickableRow>
               );
             }))}
 
@@ -151,12 +152,12 @@ export default function Dashboard() {
             : deadlinesThisWeek.map(p => {
               const dl = deadlineLabel(p.deadline);
               return (
-                <div key={p.id} onClick={() => goToProject(p.id)} className="list-row">
+                <ClickableRow key={p.id} onClick={() => goToProject(p.id)}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
                   {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
                   {dl && <span className="badge" style={{ fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
-                </div>
+                </ClickableRow>
               );
             }))}
 
@@ -165,7 +166,7 @@ export default function Dashboard() {
             : deadlineSoon.map(p => {
               const dl = deadlineLabel(p.deadline);
               return (
-                <div key={p.id} onClick={() => goToProject(p.id)} className="list-row">
+                <ClickableRow key={p.id} onClick={() => goToProject(p.id)}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
                   {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
@@ -175,18 +176,18 @@ export default function Dashboard() {
                     </div>
                   )}
                   {dl && <span className="badge" style={{ fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
-                </div>
+                </ClickableRow>
               );
             }))}
 
           {statModal === 'clients' && (clients.length === 0
             ? <div className="empty"><div className="empty-icon">👥</div><p>Sin clientes todavía</p></div>
             : clients.map(c => (
-              <div key={c.id} onClick={() => { setStatModal(null); navigate(`/client/${c.id}`); }} className="list-row">
+              <ClickableRow key={c.id} onClick={() => { setStatModal(null); navigate(`/client/${c.id}`); }}>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
                 <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{c.name}</span>
                 {c.email && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{c.email}</span>}
-              </div>
+              </ClickableRow>
             )))}
         </div>
       </div>
@@ -198,14 +199,14 @@ export default function Dashboard() {
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={sectionTitleStyle}>Próximos deadlines</div>
         {deadlineSoon.length > DEADLINES_PREVIEW_LIMIT && (
-          <span onClick={() => setStatModal('all_deadlines')} style={sectionLinkStyle}>Ver todos ({deadlineSoon.length}) →</span>
+          <button type="button" onClick={() => setStatModal('all_deadlines')} style={{ ...sectionLinkStyle, background: 'none', border: 'none', font: 'inherit' }}>Ver todos ({deadlineSoon.length}) →</button>
         )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {deadlineSoon.slice(0, DEADLINES_PREVIEW_LIMIT).map(p => {
           const dl = deadlineLabel(p.deadline);
           return (
-            <div key={p.id} onClick={() => navigate(`/project/${p.id}`)} className="list-row">
+            <ClickableRow key={p.id} onClick={() => navigate(`/project/${p.id}`)}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
               <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{p.name}</span>
               {p.client_name && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{p.client_name}</span>}
@@ -215,7 +216,7 @@ export default function Dashboard() {
                 </div>
               )}
               {dl && <span className="badge" style={{ fontWeight: 500, background: dl.bg, color: dl.color }}>{dl.label}</span>}
-            </div>
+            </ClickableRow>
           );
         })}
       </div>
@@ -229,7 +230,7 @@ export default function Dashboard() {
         {reviewTasks.map(t => {
           const proj = projects.find(p => p.id === t.project_id);
           return (
-            <div key={t.id} onClick={() => navigate(`/project/${t.project_id}`)} className="list-row">
+            <ClickableRow key={t.id} onClick={() => navigate(`/project/${t.project_id}`)}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: proj?.color || 'var(--text3)', flexShrink: 0 }} />
               <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{t.title}</span>
               {proj && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{proj.client_name ? `${proj.client_name} · ` : ''}{proj.name}</span>}
@@ -242,7 +243,7 @@ export default function Dashboard() {
                 </div>
               )}
               <span className="badge" style={{ fontWeight: 500, background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)' }}>En revisión</span>
-            </div>
+            </ClickableRow>
           );
         })}
       </div>
@@ -254,12 +255,12 @@ export default function Dashboard() {
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={sectionTitleStyle}>Videos pendientes de revisión</div>
         {isAdmin && pendingVideos.length > VIDEOS_PREVIEW_LIMIT && (
-          <span onClick={() => navigate('/videos')} style={sectionLinkStyle}>Ver todos en Videos →</span>
+          <button type="button" onClick={() => navigate('/videos')} style={{ ...sectionLinkStyle, background: 'none', border: 'none', font: 'inherit' }}>Ver todos en Videos →</button>
         )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {(isAdmin ? pendingVideos.slice(0, VIDEOS_PREVIEW_LIMIT) : pendingVideos).map(v => (
-          <div key={v.id} onClick={() => navigate(`/project/${v.project_id}?tab=videos`)} className="list-row">
+          <ClickableRow key={v.id} onClick={() => navigate(`/project/${v.project_id}?tab=videos`)}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: v.project_color || 'var(--text3)', flexShrink: 0 }} />
             <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{v.title} <span style={{ fontSize: 11, color: 'var(--text3)' }}>v{v.version}</span></span>
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.client_name ? `${v.client_name} · ` : ''}{v.project_name}</span>
@@ -275,7 +276,7 @@ export default function Dashboard() {
               ? <span className="badge" style={{ fontWeight: 500, background: 'rgba(240,168,58,0.12)', color: 'var(--yellow)' }}>En revisión</span>
               : <span className="badge" style={{ fontWeight: 500, background: 'rgba(240,92,92,0.12)', color: 'var(--red)' }}>{v.unresolved_count} comentario{v.unresolved_count !== 1 ? 's' : ''}</span>
             }
-          </div>
+          </ClickableRow>
         ))}
       </div>
     </div>
@@ -305,8 +306,8 @@ export default function Dashboard() {
           // que no seguía ninguna lógica compartida con el resto de la app.
           const chipColor = missingEditor && missingClient ? 'var(--yellow)' : missingEditor ? 'var(--red)' : 'var(--lavender)';
           return (
-            <div key={p.id} onClick={() => navigate('/payments')}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 4px', borderTop: i === 0 ? 'none' : '1px solid var(--border)', cursor: 'pointer' }}>
+            <ClickableRow key={p.id} onClick={() => navigate('/payments')}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 4px', borderTop: i === 0 ? 'none' : '1px solid var(--border)', border: 'none', borderRadius: 0, background: 'none' }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
               <span style={{ fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {p.client_name ? `${p.client_name} · ` : ''}{p.name}
@@ -319,12 +320,12 @@ export default function Dashboard() {
               <span className="badge" style={{ borderRadius: 7, whiteSpace: 'nowrap', background: `${chipColor}22`, color: chipColor }}>
                 {missingEditor && missingClient ? 'Falta pagar y cobrar' : missingEditor ? 'Falta pagar editor' : 'Falta cobrar cliente'}
               </span>
-            </div>
+            </ClickableRow>
           );
         })}
         {unpaidPayments.length > PAYMENTS_PREVIEW_LIMIT && (
           <div style={{ textAlign: 'right', padding: '8px 4px 4px' }}>
-            <span onClick={() => navigate('/payments')} style={sectionLinkStyle}>+{unpaidPayments.length - PAYMENTS_PREVIEW_LIMIT} más en Pagos →</span>
+            <button type="button" onClick={() => navigate('/payments')} style={{ ...sectionLinkStyle, background: 'none', border: 'none', font: 'inherit' }}>+{unpaidPayments.length - PAYMENTS_PREVIEW_LIMIT} más en Pagos →</button>
           </div>
         )}
       </div>
