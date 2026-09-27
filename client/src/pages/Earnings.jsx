@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { monthKey } from '../utils/format';
+import { monthKey, formatHoursMinutes } from '../utils/format';
 
 const MONTH_LABELS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
@@ -44,7 +44,7 @@ export default function Earnings() {
   });
   const monthKeys = Object.keys(paidByMonth).sort().reverse();
 
-  const amountLabel = (p) => p.payment_type === 'hourly' ? `${p.payment_hours}h × $${p.payment_amount}` : 'Monto fijo';
+  const amountLabel = (p) => p.payment_type === 'hourly' ? `${formatHoursMinutes(p.payment_hours)} × $${p.payment_amount}` : 'Monto fijo';
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>

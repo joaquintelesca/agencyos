@@ -8,6 +8,7 @@ import ActivityTimeline from '../components/ActivityTimeline';
 import MentionInput, { renderMentions } from '../components/MentionInput';
 import { initials } from '../utils/format';
 import Icon from '../components/Icon';
+import HoursMinutesInput from '../components/HoursMinutesInput';
 import useNarrowViewport from '../hooks/useNarrowViewport';
 import useModalA11y from '../hooks/useModalA11y';
 
@@ -837,8 +838,8 @@ export default function Project() {
                 </div>
                 <div className="form-group">
                   <label>Horas estimadas</label>
-                  <input className="input" type="number" min="0" value={priceForm.payment_hours}
-                    onChange={e => setPriceForm(p => ({ ...p, payment_hours: e.target.value }))} placeholder="Ej: 20" />
+                  <HoursMinutesInput value={priceForm.payment_hours}
+                    onChange={h => setPriceForm(p => ({ ...p, payment_hours: h }))} />
                 </div>
               </>
             )}

@@ -49,6 +49,29 @@ export function downloadCSV(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+// Proyectos por hora guardan payment_hours como decimal (5.33 = 5h20m) — el usuario pidió poder
+// cargar minutos sueltos (de a 10) además de horas enteras, en vez de forzar a redondear a la hora
+// más cercana. `parts` decompone para mostrar/editar de a dos campos; `toDecimal` los vuelve a
+// juntar para guardar/calcular (el resto del código — cálculo de montos, DB — sigue trabajando con
+// el mismo decimal de siempre, esto es solo la UI de entrada/salida).
+export function decimalHoursToParts(decimal) {
+  const totalMinutes = Math.round((parseFloat(decimal) || 0) * 60);
+  let hours = Math.floor(totalMinutes / 60);
+  let minutes = Math.round((totalMinutes % 60) / 10) * 10;
+  if (minutes === 60) { minutes = 0; hours += 1; } // redondeo de minutos "sueltos" (ej. :55) hacia la hora siguiente
+  return { hours, minutes };
+}
+export function partsToDecimalHours(hours, minutes) {
+  return (parseFloat(hours) || 0) + (parseFloat(minutes) || 0) / 60;
+}
+export function formatHoursMinutes(decimal) {
+  const { hours, minutes } = decimalHoursToParts(decimal);
+  if (hours === 0 && minutes === 0) return '0h';
+  if (minutes === 0) return `${hours}h`;
+  if (hours === 0) return `${minutes}min`;
+  return `${hours}h ${minutes}min`;
+}
+
 export function deadlineLabel(d) {
   if (!d) return null;
   const diff = daysUntil(d);

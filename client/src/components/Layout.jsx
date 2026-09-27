@@ -11,6 +11,7 @@ import SearchPalette from './SearchPalette';
 import useNarrowViewport, { MOBILE_BREAKPOINT } from '../hooks/useNarrowViewport';
 import useModalA11y from '../hooks/useModalA11y';
 import Icon from './Icon';
+import HoursMinutesInput from './HoursMinutesInput';
 
 const TOAST_DURATION_MS = 6000;
 
@@ -986,7 +987,7 @@ export default function Layout() {
                         </div>
                         <div className="form-group">
                           <label>Horas estimadas</label>
-                          <input className="input" type="number" min="0" value={paymentForm.payment_hours} onChange={e => setPaymentForm(p => ({ ...p, payment_hours: e.target.value }))} placeholder="Ej: 20" />
+                          <HoursMinutesInput value={paymentForm.payment_hours} onChange={h => setPaymentForm(p => ({ ...p, payment_hours: h }))} />
                         </div>
                       </>
                     )}
@@ -1189,9 +1190,9 @@ export default function Layout() {
                   {editProjectForm.payment_type === 'hourly' && (
                     <div className="form-group">
                       <label>Horas estimadas</label>
-                      <input className="input" type="number" min="0" value={editProjectForm.payment_hours} disabled={clientAmountLocked || editorAmountLocked}
+                      <HoursMinutesInput value={editProjectForm.payment_hours} disabled={clientAmountLocked || editorAmountLocked}
                         title={(clientAmountLocked || editorAmountLocked) ? 'Ya se congeló un monto con estas horas — desmarcá el pago correspondiente para poder corregirlas' : undefined}
-                        onChange={e => setEditProjectForm(p => ({ ...p, payment_hours: e.target.value }))} placeholder="Ej: 20" />
+                        onChange={h => setEditProjectForm(p => ({ ...p, payment_hours: h }))} />
                     </div>
                   )}
                 </div>

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
-import { initials, monthKey, downloadCSV } from '../utils/format';
+import { initials, monthKey, downloadCSV, decimalHoursToParts, partsToDecimalHours } from '../utils/format';
 import useModalA11y from '../hooks/useModalA11y';
 import useNarrowViewport from '../hooks/useNarrowViewport';
 import Icon from '../components/Icon';
@@ -489,17 +489,26 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }
           <button className="icon-btn" onClick={() => onEdit(p)} title="Editar proyecto" aria-label={`Editar proyecto ${p.name}`}
             style={{ color: 'var(--text3)', padding: 2, display: 'flex' }}><Icon.pencil /></button>
         </div>
-        {p.payment_type === 'hourly' && (
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
-            ${p.payment_amount}/h ·{' '}
-            <input type="number" min="0" value={hours} disabled={hoursLocked}
-              title={hoursLocked ? 'Ya se congeló un monto con estas horas — desmarcá el pago para poder corregirlas' : undefined}
-              onChange={e => { const v = e.target.value; setHours(v === '' ? '' : Math.max(0, parseFloat(v) || 0)); }}
-              onBlur={() => { const h = hours === '' ? 0 : hours; setHours(h); onUpdate(p.id, { payment_hours: h }); }}
-              style={{ width: 40, background: 'var(--bg4)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '1px 4px', textAlign: 'center', opacity: hoursLocked ? 0.5 : 1, cursor: hoursLocked ? 'not-allowed' : 'text' }} />
-            {' '}h
-          </div>
-        )}
+        {p.payment_type === 'hourly' && (() => {
+          const { hours: hPart, minutes: mPart } = decimalHoursToParts(hours);
+          const lockTitle = hoursLocked ? 'Ya se congeló un monto con estas horas — desmarcá el pago para poder corregirlas' : undefined;
+          const smallInputStyle = { background: 'var(--bg4)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '1px 4px', textAlign: 'center', opacity: hoursLocked ? 0.5 : 1, cursor: hoursLocked ? 'not-allowed' : 'text' };
+          return (
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+              <span>${p.payment_amount}/h ·</span>
+              <input type="number" min="0" step="1" value={hours === '' ? '' : hPart} disabled={hoursLocked} title={lockTitle}
+                onChange={e => { const v = e.target.value; setHours(v === '' ? '' : partsToDecimalHours(v, mPart)); }}
+                onBlur={() => { const h = hours === '' ? 0 : hours; setHours(h); onUpdate(p.id, { payment_hours: h }); }}
+                style={{ ...smallInputStyle, width: 32 }} />
+              <span>h</span>
+              <select value={mPart} disabled={hoursLocked} title={lockTitle}
+                onChange={e => { const combined = partsToDecimalHours(hPart, e.target.value); setHours(combined); onUpdate(p.id, { payment_hours: combined }); }}
+                style={{ ...smallInputStyle, width: 54, cursor: hoursLocked ? 'not-allowed' : 'pointer' }}>
+                {[0, 10, 20, 30, 40, 50].map(m => <option key={m} value={m}>{m}m</option>)}
+              </select>
+            </div>
+          );
+        })()}
       </td>
 
       {/* Editor */}
