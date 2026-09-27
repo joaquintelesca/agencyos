@@ -61,6 +61,7 @@ module.exports = function paymentsRoutes({ db, auth, io, withDeletedEditorFallba
       if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
       let found = false;
       let badValue = false;
+      let upworkNotLoaded = false;
       const activityEvents = [];
       await db.transaction(async trx => {
         // Mismo lock de fila que PUT /api/projects/:id (ver comentario ahí): todo lo que compone el
@@ -81,6 +82,17 @@ module.exports = function paymentsRoutes({ db, auth, io, withDeletedEditorFallba
           || invalid(req.body.client_paid, ['cobrado', 'unpaid'])
           || invalid(upwork_status, ['No', 'Pendiente de carga', 'Cargado', 'pending'])) {
           badValue = true;
+          return;
+        }
+        // Un proyecto facturado por Upwork no se puede dar por cobrado hasta que la plata
+        // efectivamente esté cargada ahí — "Pendiente de carga" significa que todavía no se subió
+        // la factura a la plataforma, así que marcar "Cobrado" en esa situación sería un cobro que
+        // en Upwork ni siquiera existe todavía. `upwork_status` puede venir en el mismo request
+        // (el select de Upwork y el de Cobrado están separados en la UI, pero por las dudas) — se
+        // usa el valor que quede vigente después de este update, no el viejo.
+        const effectiveUpworkStatus = upwork_status !== undefined ? upwork_status : existing.upwork_status;
+        if (req.body.client_paid === 'cobrado' && effectiveUpworkStatus === 'Pendiente de carga') {
+          upworkNotLoaded = true;
           return;
         }
         const update = {};
@@ -134,6 +146,7 @@ module.exports = function paymentsRoutes({ db, auth, io, withDeletedEditorFallba
       });
       if (!found) return res.status(404).json({ error: 'Proyecto no encontrado' });
       if (badValue) return res.status(400).json({ error: 'Valor de estado de pago inválido' });
+      if (upworkNotLoaded) return res.status(409).json({ error: 'Este proyecto factura por Upwork — marcá "Cargado" en el desplegable de Upwork antes de poder cobrarlo al cliente.' });
       for (const ev of activityEvents) {
         await logActivity({ projectId: req.params.projectId, type: 'payment_marked', actorId: req.user.id, data: ev });
       }
