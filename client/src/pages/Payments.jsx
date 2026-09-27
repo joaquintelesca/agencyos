@@ -428,13 +428,28 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }
   // Si otra sesión/socket actualiza payment_hours mientras esta fila está montada (misma key={p.id}),
   // hay que reflejarlo — si no, un blur posterior pisa ese cambio con el valor local desactualizado.
   useEffect(() => { setHours(p.payment_hours || 0); }, [p.payment_hours]);
+
+  // Excepción puntual: a veces lo que se le factura al cliente (payment_hours, arriba) no es lo
+  // que se le termina pagando al editor (ej. Upwork redondeó el tracker para arriba, o se negoció
+  // pagarle menos tiempo). `editor_payment_hours` es NULL en el 99% de los proyectos — ahí el
+  // editor sigue cobrando lo mismo que se le factura al cliente, sin ningún control extra visible.
+  // Recién cuando se activa la excepción (ver `editingEditorHours`) aparece un segundo campo de
+  // horas, propio del editor y desacoplado del de arriba.
+  const hasEditorOverride = p.editor_payment_hours != null;
+  const editorHoursLocked = p.editor_paid === 'paid';
+  const [editingEditorHours, setEditingEditorHours] = useState(false);
+  const [editorOverrideDraft, setEditorOverrideDraft] = useState(p.editor_payment_hours);
+  useEffect(() => { setEditorOverrideDraft(p.editor_payment_hours); }, [p.editor_payment_hours]);
+  const showEditorHoursEditor = hasEditorOverride || editingEditorHours;
+  const editorHours = showEditorHoursEditor ? editorOverrideDraft : hours;
+
   // Única cuenta que sigue haciéndose acá en vez de leer computed_editor_total/computed_client_*
-  // del servidor: `hours` es un borrador local sin guardar todavía (se guarda recién al blur del
-  // input), así que el total en pantalla mientras se edita tiene que reflejar ese valor en vivo, no
-  // el que ya quedó persistido. Esta fórmula tiene que coincidir con computeEditorAmount/
-  // computeClientGrossAmount/computeClientNetAmount en server/index.js.
+  // del servidor: `hours`/`editorHours` son borradores locales sin guardar todavía (se guardan
+  // recién al blur del input), así que el total en pantalla mientras se edita tiene que reflejar
+  // ese valor en vivo, no el que ya quedó persistido. Esta fórmula tiene que coincidir con
+  // computeEditorAmount/computeClientGrossAmount/computeClientNetAmount en server/lib/payments.js.
   const liveTotal = p.payment_type === 'hourly'
-    ? (parseFloat(p.payment_amount) || 0) * (parseFloat(hours) || 0)
+    ? (parseFloat(p.payment_amount) || 0) * (parseFloat(editorHours) || 0)
     : (parseFloat(p.payment_amount) || 0);
   const liveClientTotal = p.payment_type === 'hourly'
     ? (parseFloat(p.client_amount) || 0) * (parseFloat(hours) || 0)
@@ -548,7 +563,44 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }
 
       {/* Monto editor */}
       <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: isSelfEditor ? 'var(--text3)' : 'var(--text)', background: 'rgba(236,72,153,0.03)' }}>
-        {isSelfEditor ? '—' : `$${total.toFixed(0)}`}
+        {isSelfEditor ? '—' : (
+          <>
+            <div>${total.toFixed(0)}</div>
+            {p.payment_type === 'hourly' && !showEditorHoursEditor && (
+              <button type="button" className="icon-btn"
+                onClick={() => { setEditorOverrideDraft(hours); setEditingEditorHours(true); }}
+                title="Pagarle al editor una cantidad de horas distinta a la facturada al cliente"
+                style={{ fontSize: 9, fontWeight: 400, color: 'var(--text3)', padding: 0, marginTop: 2 }}>
+                ✎ horas propias
+              </button>
+            )}
+            {p.payment_type === 'hourly' && showEditorHoursEditor && (() => {
+              const { hours: ehPart, minutes: emPart } = decimalHoursToParts(editorOverrideDraft);
+              const lockTitle = editorHoursLocked ? 'Ya se congeló un monto con estas horas — desmarcá "Pagado al editor" para poder corregirlas' : undefined;
+              const smallInputStyle = { background: 'var(--bg4)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '1px 4px', textAlign: 'center', opacity: editorHoursLocked ? 0.5 : 1, cursor: editorHoursLocked ? 'not-allowed' : 'text' };
+              return (
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <input type="number" min="0" step="1" value={editorOverrideDraft === '' ? '' : ehPart} disabled={editorHoursLocked} title={lockTitle}
+                    onChange={e => { const v = e.target.value; setEditorOverrideDraft(v === '' ? '' : partsToDecimalHours(v, emPart)); }}
+                    onBlur={() => { const h = editorOverrideDraft === '' ? 0 : editorOverrideDraft; setEditorOverrideDraft(h); onUpdate(p.id, { editor_payment_hours: h }); }}
+                    style={{ ...smallInputStyle, width: 30 }} />
+                  <span>h</span>
+                  <select value={emPart} disabled={editorHoursLocked} title={lockTitle}
+                    onChange={e => { const combined = partsToDecimalHours(ehPart, e.target.value); setEditorOverrideDraft(combined); onUpdate(p.id, { editor_payment_hours: combined }); }}
+                    style={{ ...smallInputStyle, width: 46, cursor: editorHoursLocked ? 'not-allowed' : 'pointer' }}>
+                    {[0, 10, 20, 30, 40, 50].map(m => <option key={m} value={m}>{m}m</option>)}
+                  </select>
+                  {!editorHoursLocked && (
+                    <button type="button" className="icon-btn"
+                      onClick={() => { if (hasEditorOverride) onUpdate(p.id, { editor_payment_hours: null }); setEditingEditorHours(false); }}
+                      title="Volver a pagarle al editor las mismas horas que el cliente"
+                      style={{ color: 'var(--text3)', fontSize: 11, padding: 0 }}>↺</button>
+                  )}
+                </div>
+              );
+            })()}
+          </>
+        )}
       </td>
 
       {/* Pagado al editor */}

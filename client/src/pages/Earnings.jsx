@@ -44,7 +44,10 @@ export default function Earnings() {
   });
   const monthKeys = Object.keys(paidByMonth).sort().reverse();
 
-  const amountLabel = (p) => p.payment_type === 'hourly' ? `${formatHoursMinutes(p.payment_hours)} × $${p.payment_amount}` : 'Monto fijo';
+  // editor_payment_hours pisa a payment_hours cuando el admin cargó una excepción en Pagos (se le
+  // paga al editor una cantidad de horas distinta a la facturada al cliente) — el editor tiene que
+  // ver acá las horas por las que realmente cobra, no las que se le facturaron al cliente.
+  const amountLabel = (p) => p.payment_type === 'hourly' ? `${formatHoursMinutes(p.editor_payment_hours ?? p.payment_hours)} × $${p.payment_amount}` : 'Monto fijo';
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>

@@ -42,6 +42,18 @@ describe('computeEditorAmount', () => {
     expect(computeEditorAmount({ payment_type: 'fixed', payment_amount: null })).toBe(0);
     expect(computeEditorAmount({ payment_type: 'hourly', payment_amount: 20, payment_hours: undefined })).toBe(0);
   });
+
+  it('sin editor_payment_hours (null, el default), usa las mismas horas que el cliente', () => {
+    expect(computeEditorAmount({ payment_type: 'hourly', payment_amount: 20, payment_hours: 8, editor_payment_hours: null })).toBe(160);
+  });
+
+  it('con editor_payment_hours cargado, ese valor pisa a payment_hours para el pago al editor', () => {
+    expect(computeEditorAmount({ payment_type: 'hourly', payment_amount: 20, payment_hours: 7.67, editor_payment_hours: 7 })).toBe(140);
+  });
+
+  it('editor_payment_hours en 0 es una excepción válida (0 horas pagadas), no "sin excepción"', () => {
+    expect(computeEditorAmount({ payment_type: 'hourly', payment_amount: 20, payment_hours: 8, editor_payment_hours: 0 })).toBe(0);
+  });
 });
 
 describe('computeClientGrossAmount', () => {

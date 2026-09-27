@@ -72,7 +72,7 @@ module.exports = function paymentsRoutes({ db, auth, io, withDeletedEditorFallba
         const existing = await trx('projects').where({ id: req.params.projectId }).forUpdate().first();
         if (!existing) return;
         found = true;
-        const { payment_hours, payment_status, upwork_status, payment_amount } = req.body;
+        const { payment_hours, payment_status, upwork_status, payment_amount, editor_payment_hours } = req.body;
         // Sin whitelist, un valor como 'Paid' se guardaba igual pero fallaba el === 'paid' de
         // withComputedTotals: el monto congelado se descartaba y el proyecto volvía a un total
         // calculado en vivo, con editor_paid_at ya en null. Plata mal reportada en silencio.
@@ -97,6 +97,10 @@ module.exports = function paymentsRoutes({ db, auth, io, withDeletedEditorFallba
         }
         const update = {};
         if (payment_hours !== undefined) update.payment_hours = Math.max(0, parseFloat(payment_hours) || 0);
+        // null = "sin excepción, el editor cobra las mismas horas que se le facturan al cliente"
+        // (comportamiento de siempre); cualquier otro valor es una excepción puntual de este
+        // proyecto. Ver effectiveEditorHours en server/lib/payments.js.
+        if (editor_payment_hours !== undefined) update.editor_payment_hours = editor_payment_hours === null ? null : Math.max(0, parseFloat(editor_payment_hours) || 0);
         if (payment_status !== undefined) update.payment_status = payment_status;
         if (upwork_status !== undefined) update.upwork_status = upwork_status;
         if (payment_amount !== undefined) update.payment_amount = Math.max(0, parseFloat(payment_amount) || 0);

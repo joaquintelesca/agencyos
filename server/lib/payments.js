@@ -18,8 +18,14 @@ function parseUpworkFeePct(value) {
   const n = parseFloat(value);
   return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 15;
 }
+// Horas efectivas para el pago al editor: por default las mismas que se le facturan al cliente
+// (payment_hours), salvo que se haya cargado una excepción puntual en Pagos (editor_payment_hours,
+// ver la migración que lo agrega) — ahí gana ese valor aunque payment_hours sea otro.
+function effectiveEditorHours(p) {
+  return p.editor_payment_hours != null ? p.editor_payment_hours : p.payment_hours;
+}
 function computeEditorAmount(p) {
-  if (p.payment_type === 'hourly') return (parseFloat(p.payment_amount) || 0) * (parseFloat(p.payment_hours) || 0);
+  if (p.payment_type === 'hourly') return (parseFloat(p.payment_amount) || 0) * (parseFloat(effectiveEditorHours(p)) || 0);
   return parseFloat(p.payment_amount) || 0;
 }
 function computeClientGrossAmount(p) {

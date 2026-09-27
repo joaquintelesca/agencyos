@@ -49,7 +49,7 @@ module.exports = function createProjectAccess({ db, io }) {
   // Ocultarlos solo en la UI no alcanza (el JSON crudo de /api/projects sigue viajando entero al
   // navegador): tiene que ser el servidor el que no los mande.
   const PROJECT_FINANCIAL_FIELDS = [
-    'payment_amount', 'client_amount', 'payment_type', 'payment_hours', 'payment_status',
+    'payment_amount', 'client_amount', 'payment_type', 'payment_hours', 'editor_payment_hours', 'payment_status',
     'editor_paid', 'client_paid', 'editor_paid_at', 'client_paid_at',
     'editor_paid_amount', 'client_paid_amount_gross', 'client_paid_amount_net',
     'upwork_status', 'upwork_fee_pct',

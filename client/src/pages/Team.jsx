@@ -280,7 +280,10 @@ export default function Team() {
                   const done = t.filter(x => x.status === 'done').length;
                   const review = t.filter(x => x.status === 'review').length;
                   const p = detailData.projects;
-                  const projectTotal = x => x.payment_type === 'hourly' ? (parseFloat(x.payment_amount) || 0) * (parseFloat(x.payment_hours) || 0) : (parseFloat(x.payment_amount) || 0);
+                  // editor_payment_hours pisa a payment_hours cuando el admin cargó una excepción en
+                  // Pagos (el editor cobra una cantidad de horas distinta a la facturada al cliente) —
+                  // ver effectiveEditorHours en server/lib/payments.js, misma cuenta acá en el cliente.
+                  const projectTotal = x => x.payment_type === 'hourly' ? (parseFloat(x.payment_amount) || 0) * (parseFloat(x.editor_payment_hours ?? x.payment_hours) || 0) : (parseFloat(x.payment_amount) || 0);
                   // Cuando el editor es el dueño de la agencia no hay pago real que marcar —
                   // editor_paid se queda en 'unpaid' para siempre, así que sin esta excepción un
                   // proyecto suyo ya saldado se contaba como deuda eterna en "Pendiente".

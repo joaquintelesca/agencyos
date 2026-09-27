@@ -36,7 +36,7 @@ module.exports = function earningsRoutes({ db, auth, computeEditorAmount, OWNER_
         .leftJoin('clients as c', 'p.client_id', 'c.id')
         .where('p.payment_editor_id', editorId)
         .where(function() { this.where('p.status', 'completed').orWhere('p.ever_completed', true); })
-        .select('p.id', 'p.name', 'p.color', 'p.editor_paid', 'p.client_paid', 'p.payment_amount', 'p.payment_type', 'p.payment_hours', 'c.name as client_name');
+        .select('p.id', 'p.name', 'p.color', 'p.editor_paid', 'p.client_paid', 'p.payment_amount', 'p.payment_type', 'p.payment_hours', 'p.editor_payment_hours', 'c.name as client_name');
       const projects = projectsRaw.map(p => ({ ...p, editor_is_owner: isOwner }));
 
       res.json({ editor, tasks, projects });
@@ -59,7 +59,7 @@ module.exports = function earningsRoutes({ db, auth, computeEditorAmount, OWNER_
         .where(function() { this.where('p.status', 'completed').orWhere('p.ever_completed', true); })
         .select(
           'p.id', 'p.name', 'p.color', 'c.name as client_name',
-          'p.payment_type', 'p.payment_amount', 'p.payment_hours',
+          'p.payment_type', 'p.payment_amount', 'p.payment_hours', 'p.editor_payment_hours',
           'p.editor_paid', 'p.editor_paid_at', 'p.editor_paid_amount'
         )
         .orderBy('p.created_at', 'desc');
