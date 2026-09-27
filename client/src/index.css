@@ -98,10 +98,16 @@ body {
    cada instancia los sigue definiendo con su propio inline style. */
 .icon-btn { background: transparent; border: none; cursor: pointer; }
 
-/* Variante con borde de .icon-btn — mismo criterio: solo fija lo 100% constante en las ~12
-   instancias que lo reimplementaban (fondo transparente, borde, cursor). Radio, padding, color y
-   tamaño de fuente siguen siendo overrides por instancia, varían según densidad del contexto. */
-.btn-outline { background: transparent; border: 1px solid var(--border); cursor: pointer; }
+/* Variante con borde de .icon-btn — mismo criterio: solo fija lo 100% constante en las ~16
+   instancias que lo reimplementaban (fondo transparente, borde, cursor). Radio, padding y
+   tamaño de fuente siguen siendo overrides por instancia, varían según densidad del contexto.
+   `color` SÍ se fija acá (a diferencia de esos otros): sin él, el botón cae al negro por default
+   del navegador, ilegible sobre el fondo oscuro de la app — pasó con "Exportar CSV" en Pagos
+   porque a ese uso puntual nunca se le agregó un color inline a mano. Cualquier instancia que
+   necesite un color semántico distinto (ej. rojo en un botón de borrar) lo sigue pisando con su
+   propio inline style, como ya hacían varias antes de este fix. */
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text2); cursor: pointer; }
+.btn-outline:hover { color: var(--text); border-color: var(--border2); }
 
 /* Superficie elevada básica: fondo + borde que ~30 cards/filas/paneles repetían a mano en vez de
    usar esto. Border-radius, padding y demás siguen siendo overrides por instancia — es la única
