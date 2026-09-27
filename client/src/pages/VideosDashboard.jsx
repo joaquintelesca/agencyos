@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { initials } from '../utils/format';
+import ClickableRow from '../components/ClickableRow';
 
 const CATEGORIES = [
   { key: 'unreviewed', label: 'Sin revisar', color: 'var(--blue)', bg: 'rgba(58,158,240,0.12)' },
@@ -14,7 +15,7 @@ const categoryMeta = (key) => CATEGORIES.find(c => c.key === key);
 function VideoRow({ v, navigate, showClient }) {
   const meta = categoryMeta(v.category);
   return (
-    <div className="panel" onClick={() => navigate(`/project/${v.project_id}?tab=videos`)}
+    <ClickableRow className="panel" onClick={() => navigate(`/project/${v.project_id}?tab=videos`)}
       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 9, cursor: 'pointer', transition: 'all 0.1s' }}
       onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
       onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
@@ -32,7 +33,7 @@ function VideoRow({ v, navigate, showClient }) {
       <span className="badge" style={{ fontWeight: 500, background: meta.bg, color: meta.color }}>
         {v.category === 'editing' ? `${v.unresolved_count} comentario${v.unresolved_count !== 1 ? 's' : ''}` : meta.label}
       </span>
-    </div>
+    </ClickableRow>
   );
 }
 
@@ -79,17 +80,17 @@ export default function VideosDashboard() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <div onClick={() => setFilter('all')}
-          style={{ padding: 16, borderRadius: 12, cursor: 'pointer', background: 'var(--bg2)', border: `1px solid ${filter === 'all' ? 'var(--accent)' : 'var(--border)'}` }}>
+        <button type="button" onClick={() => setFilter('all')}
+          style={{ margin: 0, font: 'inherit', textAlign: 'left', display: 'block', padding: 16, borderRadius: 12, cursor: 'pointer', background: 'var(--bg2)', border: `1px solid ${filter === 'all' ? 'var(--accent)' : 'var(--border)'}` }}>
           <div style={{ fontSize: 24, fontWeight: 700 }}>{videos.length}</div>
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>Todos los videos</div>
-        </div>
+        </button>
         {CATEGORIES.map(c => (
-          <div key={c.key} onClick={() => setFilter(c.key)}
-            style={{ padding: 16, borderRadius: 12, cursor: 'pointer', background: 'var(--bg2)', border: `1px solid ${filter === c.key ? c.color : 'var(--border)'}` }}>
+          <button type="button" key={c.key} onClick={() => setFilter(c.key)}
+            style={{ margin: 0, font: 'inherit', textAlign: 'left', display: 'block', padding: 16, borderRadius: 12, cursor: 'pointer', background: 'var(--bg2)', border: `1px solid ${filter === c.key ? c.color : 'var(--border)'}` }}>
             <div style={{ fontSize: 24, fontWeight: 700, color: c.color }}>{counts[c.key] || 0}</div>
             <div style={{ fontSize: 12, color: 'var(--text3)' }}>{c.label}</div>
-          </div>
+          </button>
         ))}
       </div>
 

@@ -274,7 +274,7 @@ export default function CalendarPage() {
   const renderChip = (p) => {
     const dl = deadlineLabel(p.deadline);
     return (
-      <div key={p.id}
+      <button type="button" key={p.id}
         draggable={isAdmin}
         {...touchDragProps(p.id)}
         onDragStart={() => setDraggedProjectId(p.id)}
@@ -282,26 +282,28 @@ export default function CalendarPage() {
         onClick={() => openProjectChip(p)}
         title={p.name}
         style={{
+          border: 'none', margin: 0, width: '100%', font: 'inherit', textAlign: 'left', display: 'block',
           fontSize: 10.5, padding: '2px 6px', borderRadius: 5, background: `${p.color}2a`, color: p.color,
           borderLeft: dl ? `3px solid ${dl.color}` : '3px solid transparent',
           cursor: isAdmin ? 'grab' : 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           touchAction: draggedProjectId ? 'none' : 'auto',
         }}>
         📌 {p.name}
-      </div>
+      </button>
     );
   };
 
   const renderEventChip = (ev) => (
-    <div key={ev.id}
+    <button type="button" key={ev.id}
       onClick={() => { if (!justDraggedRef.current) setChipModal({ type: 'event', data: ev }); }}
       title={ev.title}
       style={{
+        border: 'none', margin: 0, width: '100%', font: 'inherit', textAlign: 'left', display: 'block',
         fontSize: 10.5, padding: '2px 6px', borderRadius: 5, background: `${ev.color}2a`, color: ev.color,
         cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>
       📅 {ev.title}
-    </div>
+    </button>
   );
 
   const maxVisible = viewMode === 'week' ? MAX_VISIBLE_PER_DAY_WEEK : MAX_VISIBLE_PER_DAY_MONTH;
@@ -397,7 +399,10 @@ export default function CalendarPage() {
                   {visibleEvents.map(renderEventChip)}
                   {visibleProjects.map(renderChip)}
                   {extra > 0 && (
-                    <div onClick={() => setDayModal(key)} style={{ fontSize: 10, color: 'var(--accent2)', cursor: 'pointer', fontWeight: 600 }}>+{extra} más</div>
+                    <button type="button" onClick={() => setDayModal(key)}
+                      style={{ border: 'none', background: 'none', padding: 0, margin: 0, font: 'inherit', textAlign: 'left', width: '100%', display: 'block', fontSize: 10, color: 'var(--accent2)', cursor: 'pointer', fontWeight: 600 }}>
+                      +{extra} más
+                    </button>
                   )}
                 </div>
               );

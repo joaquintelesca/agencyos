@@ -137,9 +137,15 @@ export default function Notifications() {
   const unread = notifs.filter(n => !n.read).length;
   const visibleNotifs = unreadOnly ? notifs.filter(n => !n.read) : notifs;
 
+  // La fila entera solía ser un <div onClick> — inalcanzable con Tab. No se puede simplemente
+  // convertirla en un <button> porque adentro ya hay dos botones reales (marcar leído, borrar): un
+  // <button> no puede contener otro <button> (HTML lo prohíbe, y el navegador rompe ese anidado).
+  // Se envuelve solo el bloque de texto (lo que antes disparaba handleClick) en su propio botón —
+  // foco y Enter/Espacio ya funcionan solos, sin agregar tabIndex/onKeyDown a mano — y los dos
+  // botones de acción quedan afuera, como hermanos, nunca anidados.
   const renderNotif = (n) => (
-    <div key={n.id} onClick={() => handleClick(n)}
-      style={{ display: 'flex', gap: 12, padding: '12px 16px', borderRadius: 10, background: n.read ? 'var(--bg2)' : 'var(--accent-glow)', border: `1px solid ${n.read ? 'var(--border)' : 'var(--accent)'}`, cursor: 'pointer', transition: 'all 0.15s', borderLeft: n.read ? '1px solid var(--border)' : '3px solid var(--accent)' }}
+    <div key={n.id}
+      style={{ display: 'flex', gap: 12, padding: '12px 16px', borderRadius: 10, background: n.read ? 'var(--bg2)' : 'var(--accent-glow)', border: `1px solid ${n.read ? 'var(--border)' : 'var(--accent)'}`, transition: 'all 0.15s', borderLeft: n.read ? '1px solid var(--border)' : '3px solid var(--accent)' }}
       onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
       onMouseLeave={e => e.currentTarget.style.borderColor = n.read ? 'var(--border)' : 'var(--accent)'}>
       {/* n.actor_name viene con COALESCE(a.name, n.guest_name, 'Cliente') del servidor — nunca es
@@ -150,11 +156,12 @@ export default function Notifications() {
       <div style={{ width: 36, height: 36, borderRadius: '50%', background: n.actor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: n.actor_id ? 13 : 16, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
         {n.actor_id ? n.actor_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : icon(n.type)}
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <button type="button" onClick={() => handleClick(n)}
+        style={{ flex: 1, minWidth: 0, border: 'none', background: 'none', padding: 0, margin: 0, font: 'inherit', textAlign: 'left', color: 'inherit', cursor: 'pointer' }}>
         <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.4, marginBottom: 4 }}>{label(n)}</div>
         {n.preview && <div style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--bg3)', borderRadius: 6, padding: '3px 8px', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{renderMentions(n.preview)}"</div>}
         <div style={{ fontSize: 11, color: 'var(--text3)' }}>{icon(n.type)} {timeAgo(n.created_at)}</div>
-      </div>
+      </button>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
         {!n.read && (
           <button className="btn-outline" onClick={e => markOne(e, n)} title="Marcar como leído"
