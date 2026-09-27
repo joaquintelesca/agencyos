@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import useModalA11y from '../hooks/useModalA11y';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 import Icon from '../components/Icon';
 
 // Nada acá borra solo. El servidor sugiere candidatos (proyecto cerrado y cobrado, video que no es
@@ -21,6 +22,7 @@ export default function Storage() {
   const { api } = useAuth();
   const { alert } = useAlert();
   const navigate = useNavigate();
+  const isNarrowViewport = useNarrowViewport();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState({});
@@ -66,7 +68,7 @@ export default function Storage() {
   };
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: isNarrowViewport ? '20px 16px' : 28 }}>
       <div style={{ marginBottom: 20 }}>
         <button onClick={() => navigate('/settings')}
           style={{ background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -123,10 +125,10 @@ export default function Storage() {
           return (
             <div key={p.project_id} className="panel" style={{ borderRadius: 12, overflow: 'hidden' }}>
               <div onClick={() => setExpanded(prev => ({ ...prev, [p.project_id]: !prev[p.project_id] }))}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', background: 'var(--bg3)' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', background: 'var(--bg3)', flexWrap: isNarrowViewport ? 'wrap' : 'nowrap' }}>
                 <span style={{ fontSize: 11, color: 'var(--text3)', width: 10 }}>{isOpen ? '▼' : '▶'}</span>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.client_color || 'var(--text3)', flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ flex: 1, minWidth: isNarrowViewport ? 140 : 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.project_name}
                     {p.client_name && <span style={{ color: 'var(--text3)', fontWeight: 400 }}> · {p.client_name}</span>}
@@ -169,7 +171,13 @@ export default function Storage() {
       </div>
 
       {selectedVideos.length > 0 && (
-        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 900, display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg2)', border: '1px solid var(--accent)', borderRadius: 12, padding: '12px 18px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+        <div style={{
+          position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 900,
+          display: 'flex', alignItems: 'center', gap: isNarrowViewport ? 8 : 14, background: 'var(--bg2)',
+          border: '1px solid var(--accent)', borderRadius: 12, padding: isNarrowViewport ? '10px 14px' : '12px 18px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)', width: isNarrowViewport ? 'calc(100vw - 32px)' : 'auto',
+          flexWrap: isNarrowViewport ? 'wrap' : 'nowrap', justifyContent: isNarrowViewport ? 'center' : 'flex-start',
+        }}>
           <span style={{ fontSize: 13, color: 'var(--text)' }}>
             <strong>{selectedVideos.length}</strong> video(s) · liberás <strong style={{ color: 'var(--green)' }}>{formatBytes(selectedBytes)}</strong>
           </span>

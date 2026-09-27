@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 
 // Mismo set que Team.jsx usa para el avatar del usuario — reusar la paleta en vez de un color
 // picker libre mantiene todo el branding (interno y el del portal) dentro de tonos que ya se ven
@@ -12,6 +13,7 @@ export default function BrandingSettings() {
   const { api } = useAuth();
   const { alert, confirm } = useAlert();
   const navigate = useNavigate();
+  const isNarrowViewport = useNarrowViewport();
   const [branding, setBranding] = useState(null);
   const [name, setName] = useState('');
   const [accentColor, setAccentColor] = useState('');
@@ -61,7 +63,7 @@ export default function BrandingSettings() {
   if (!branding) return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" /></div>;
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: isNarrowViewport ? '20px 16px' : 28 }}>
       <button onClick={() => navigate('/settings')}
         style={{ background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
         ← Configuración

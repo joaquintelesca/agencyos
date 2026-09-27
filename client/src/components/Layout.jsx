@@ -780,7 +780,12 @@ export default function Layout() {
         }}>▶</button>
       )}
 
-      <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      {/* El botón flotante "▶ Mostrar sidebar" (fixed, top-left) vive siempre arriba del contenido
+          (zIndex alto) para poder reabrir el drawer en angosto — sin este padding, cualquier
+          página cuyo primer elemento cayera justo en esa esquina quedaba tapada por el botón (le
+          pasó a los links "← Configuración" nuevos de Almacenamiento/Branding/Backups, pero es un
+          problema general de layout, no de esas pantallas puntuales). */}
+      <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', paddingTop: (isNarrowViewport && !sidebarVisible) ? 44 : 0 }}>
         {storageWarning && user?.role === 'admin' && (
           <div style={{ background: 'rgba(240,168,58,0.08)', borderBottom: '1px solid rgba(240,168,58,0.31)', padding: '8px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

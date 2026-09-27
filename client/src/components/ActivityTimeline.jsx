@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { activityIcon, activityLabel } from '../utils/activity';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 
 const PAGE_SIZE = 50;
 
@@ -10,6 +11,7 @@ const PAGE_SIZE = 50;
 // estado actual, no el historial de cambios.
 export default function ActivityTimeline({ projectId }) {
   const { api } = useAuth();
+  const isNarrowViewport = useNarrowViewport();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -40,7 +42,7 @@ export default function ActivityTimeline({ projectId }) {
   }
 
   return (
-    <div style={{ padding: '20px 24px', maxWidth: 640 }}>
+    <div style={{ padding: isNarrowViewport ? '16px 16px' : '20px 24px', maxWidth: 640 }}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {items.map((a, i) => (
           <div key={a.id} style={{ display: 'flex', gap: 12 }}>

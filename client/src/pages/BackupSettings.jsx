@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 
 // Solo visibilidad de que el backup diario existe y anda — no hay restore desde acá (ver
 // server/routes/settings.js), eso es deliberadamente más grande/riesgoso y no se pidió.
@@ -16,6 +17,7 @@ export default function BackupSettings() {
   const { api } = useAuth();
   const { alert } = useAlert();
   const navigate = useNavigate();
+  const isNarrowViewport = useNarrowViewport();
   const [backups, setBackups] = useState(null);
   const [running, setRunning] = useState(false);
 
@@ -39,7 +41,7 @@ export default function BackupSettings() {
   const latest = backups[0];
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: isNarrowViewport ? '20px 16px' : 28 }}>
       <button onClick={() => navigate('/settings')}
         style={{ background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
         ← Configuración

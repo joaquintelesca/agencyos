@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import Icon from '../components/Icon';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 
 // Home para pantallas admin de uso ocasional que no justifican un lugar fijo en el sidebar
 // principal (pedido explícito del usuario: "Almacenamiento" ocupaba un lugar importante ahí para
@@ -14,9 +15,10 @@ const SECTIONS = [
 
 export default function Settings() {
   const navigate = useNavigate();
+  const isNarrowViewport = useNarrowViewport();
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: isNarrowViewport ? '20px 16px' : 28 }}>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-xl)', fontWeight: 800, marginBottom: 4 }}>Configuración</h1>
         <p style={{ color: 'var(--text2)', fontSize: 14 }}>Ajustes y herramientas de uso ocasional.</p>
