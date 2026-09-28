@@ -4,6 +4,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom';
 import { notificationIcon, notificationLabel, notificationTarget } from '../utils/notifications';
 import { renderMentions } from '../components/MentionInput';
 import Icon from '../components/Icon';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 
 const PAGE_SIZE = 50;
 
@@ -29,6 +30,7 @@ export default function Notifications() {
   const notifSupported = typeof Notification !== 'undefined';
   const [desktopPermission, setDesktopPermission] = useState(notifSupported ? Notification.permission : 'unsupported');
   const navigate = useNavigate();
+  const isNarrowViewport = useNarrowViewport();
   const { setUnreadNotifs, setProjects } = useOutletContext();
 
   // El puntito de "revisión pendiente" del sidebar sale de notificaciones sin leer (ver
@@ -194,13 +196,13 @@ export default function Notifications() {
   })();
 
   return (
-    <div style={{ flex: 1, padding: 28, overflowY: 'auto', maxWidth: 640 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+    <div style={{ flex: 1, padding: isNarrowViewport ? '20px 16px' : 28, overflowY: 'auto', maxWidth: 640 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: isNarrowViewport ? 'wrap' : 'nowrap', rowGap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'var(--fs-xl)' }}>Notificaciones</h1>
           {unread > 0 && <span className="badge badge-count">{unread}</span>}
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: isNarrowViewport ? 'wrap' : 'nowrap' }}>
           {notifSupported && desktopPermission === 'default' && (
             <button
               className="btn-outline"

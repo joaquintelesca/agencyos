@@ -3,6 +3,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { initials, deadlineLabel, daysUntil } from '../utils/format';
 import useModalA11y from '../hooks/useModalA11y';
+import useNarrowViewport from '../hooks/useNarrowViewport';
 import ClickableRow from '../components/ClickableRow';
 
 const VIDEOS_PREVIEW_LIMIT = 5;
@@ -17,6 +18,7 @@ export default function Dashboard() {
   const { projects } = useOutletContext();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
+  const isNarrowViewport = useNarrowViewport();
   const [tasks, setTasks] = useState({}); // { projectId: [tasks] }
   const [clients, setClients] = useState([]);
   const [pendingVideos, setPendingVideos] = useState([]);
@@ -80,7 +82,7 @@ export default function Dashboard() {
   const sectionLinkStyle = { fontSize: 12, color: 'var(--accent2)', fontWeight: 600, cursor: 'pointer' };
 
   const statsSection = (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: isNarrowViewport ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>
       {[
         { type: 'projects', label: 'Proyectos activos', val: activeProjectsList.length, color: 'var(--text)' },
         { type: 'tasks', label: 'Tareas pendientes', val: pendingTasks.length, color: pendingTasks.length > 0 ? 'var(--yellow)' : 'var(--green)' },
@@ -335,7 +337,7 @@ export default function Dashboard() {
   const nothingToShow = !paymentsSection && !videosSection && !reviewSection && !deadlinesSection;
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: isNarrowViewport ? '16px' : 24 }}>
       <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-xl)', fontWeight: 800 }}>Hola, {user?.name?.split(' ')[0]} 👋</h1>
       </div>

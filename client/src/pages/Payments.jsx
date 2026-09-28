@@ -320,16 +320,16 @@ export default function Payments() {
 
         {tab === 'monthly' && (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, rowGap: 10, marginBottom: 20, flexWrap: isNarrowViewport ? 'wrap' : 'nowrap' }}>
               <label style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 600 }}>Mes:</label>
               <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
-                className="input" style={{ width: 210, flexShrink: 0 }} />
+                className="input" style={{ width: isNarrowViewport ? 170 : 210, flexShrink: 0 }} />
               <span style={{ fontSize: 13, color: 'var(--text3)', textTransform: 'capitalize' }}>
                 {new Date(`${selectedMonth}-02`).toLocaleDateString('es', { month: 'long', year: 'numeric' })}
               </span>
               <button className="btn-outline" onClick={exportMonthCSV}
                 disabled={receivedThisMonth.length === 0 && paidToEditorsThisMonth.length === 0}
-                style={{ marginLeft: 'auto', borderRadius: 7, padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                style={{ marginLeft: isNarrowViewport ? 0 : 'auto', borderRadius: 7, padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
                 ⬇ Exportar CSV
               </button>
             </div>
