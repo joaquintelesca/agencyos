@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { initials as initialsBase } from '../utils/format';
@@ -120,6 +121,16 @@ export default function Chat() {
   const [hasMore, setHasMore] = useState(true);
   const [dmTabs, setDmTabs] = useState([]);
   const [activeTab, setActiveTab] = useState(null);
+  // Deep link desde el buscador global (?type=dm|channel&id=&message=&client=): se resuelve una
+  // sola vez, cuando ya están cargadas las conversaciones/canales (antes de eso no hay con qué
+  // matchear el id de la URL). `pendingHighlight`/`flashMessageId` son el mismo patrón ya usado en
+  // Project.jsx para el chat de proyecto — si el mensaje buscado ya quedó varias páginas atrás
+  // (fuera de los últimos 50 cargados), se desiste sin paginar hacia atrás a ciegas: la
+  // conversación igual se abre, solo no hace el scroll puntual.
+  const [searchParams] = useSearchParams();
+  const deepLinkHandledRef = useRef(false);
+  const [pendingHighlight, setPendingHighlight] = useState(null);
+  const [flashMessageId, setFlashMessageId] = useState(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -291,9 +302,49 @@ export default function Chat() {
   // corriendo el alto del mensaje hacia abajo) el scroll quedaba "corto", a mitad de camino en vez
   // de llegar al final real. El onLoad de las imágenes (más abajo) corrige ese caso además de esto.
   useEffect(() => {
+    if (pendingHighlight) return; // no tapar el scroll-al-mensaje de abajo yendo directo al final
     messagesEndRef.current?.scrollIntoView({ behavior: justLoadedRef.current ? 'auto' : 'smooth' });
     justLoadedRef.current = false;
-  }, [messages]);
+  }, [messages, pendingHighlight]);
+
+  // Scroll-to-message pendiente de un deep link (buscador global): se resuelve apenas el mensaje
+  // buscado aparezca en la página ya cargada.
+  useEffect(() => {
+    if (!pendingHighlight || messages.length === 0) return;
+    const el = document.getElementById(`chat-msg-${pendingHighlight}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setFlashMessageId(pendingHighlight);
+      const t = setTimeout(() => setFlashMessageId(null), 2000);
+      setPendingHighlight(null);
+      return () => clearTimeout(t);
+    }
+    setPendingHighlight(null);
+  }, [messages, pendingHighlight]);
+
+  // Resuelve el deep link una sola vez, cuando ya hay conversaciones/canales para matchear.
+  useEffect(() => {
+    if (deepLinkHandledRef.current) return;
+    const type = searchParams.get('type');
+    const id = searchParams.get('id');
+    if (!type || !id) return;
+    if (conversations.length === 0 && channels.length === 0) return;
+    deepLinkHandledRef.current = true;
+    const msg = searchParams.get('message');
+    const clientId = searchParams.get('client');
+    (async () => {
+      if (type === 'dm') {
+        const conv = conversations.find(c => c.id === id);
+        if (!conv) return;
+        await openConv({ type: 'dm', id: conv.id, name: conv.name, color: conv.color, isSelf: conv.is_self });
+        if (clientId) await switchTab(clientId);
+      } else if (type === 'channel') {
+        const conv = channels.find(c => c.id === id);
+        if (conv) await openConv({ type: 'channel', id: conv.id, name: conv.name, color: conv.color });
+      }
+      if (msg) setPendingHighlight(msg);
+    })();
+  }, [searchParams, conversations, channels]); // eslint-disable-line
 
   // Si una imagen recién cargada empuja el contenido hacia abajo y ya estábamos cerca del final,
   // reajusta el scroll — sin el chequeo de distancia, esto tironearía la vista de alguien que
@@ -898,6 +949,7 @@ export default function Chat() {
                   userId={user?.id}
                   onReact={(emoji) => toggleReaction(msg.id, emoji)}
                   isNarrowViewport={isNarrowViewport}
+                  highlighted={flashMessageId === msg.id}
                 />
               );
             })}
@@ -1140,7 +1192,7 @@ function SidebarItem({ label, subtitle, active, unread, online, color, isUser, i
 // normal ni tan largo que se sienta que no respondió.
 const LONG_PRESS_MS = 450;
 
-function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, isNarrowViewport }) {
+function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, isNarrowViewport, highlighted }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const rowRef = useRef(null);
@@ -1178,9 +1230,13 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
   return (
     <div
       ref={rowRef}
+      id={`chat-msg-${msg.id}`}
       className="msg-row"
       style={{
         display: 'flex', gap: 10, padding: compact ? '1px 0' : '8px 0 2px', alignItems: 'flex-start', position: 'relative',
+        borderRadius: 8,
+        boxShadow: highlighted ? '0 0 0 2px var(--accent)' : 'none',
+        transition: 'box-shadow 0.2s',
         // En celular, mantener presionado no debe disparar el menú nativo de "copiar/compartir"
         // ni seleccionar texto — compite visualmente con nuestra propia barra de reacciones.
         ...(isNarrowViewport ? { WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } : {}),

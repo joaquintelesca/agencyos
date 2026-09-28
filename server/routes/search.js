@@ -14,7 +14,7 @@ module.exports = function searchRoutes({ db, auth }) {
   router.get('/api/search', auth, async (req, res) => {
     try {
       const q = (req.query.q || '').trim();
-      if (q.length < 2) return res.json({ projects: [], clients: [], tasks: [], videos: [], comments: [] });
+      if (q.length < 2) return res.json({ projects: [], clients: [], tasks: [], videos: [], comments: [], projectMessages: [], chatMessages: [] });
       const like = `%${q.toLowerCase()}%`;
       const isAdmin = req.user.role === 'admin';
 
@@ -65,8 +65,51 @@ module.exports = function searchRoutes({ db, auth }) {
         .limit(10);
       if (!isAdmin) commentsQ.whereIn('v.project_id', memberProjectIds);
 
-      const [projects, clients, tasks, videos, comments] = await Promise.all([projectsQ, clientsQ, tasksQ, videosQ, commentsQ]);
-      res.json({ projects, clients, tasks, videos, comments });
+      // Chat del proyecto (tabla `messages`, la pestaña "Chat" dentro de un proyecto) — mismo
+      // alcance por membresía que el resto: un editor solo busca en los proyectos donde participa.
+      const projectMessagesQ = db('messages as m')
+        .join('projects as p', 'm.project_id', 'p.id')
+        .join('users as u', 'm.sender_id', 'u.id')
+        .whereRaw('LOWER(m.content) LIKE ?', [like])
+        .select('m.id', 'm.content', 'm.project_id', 'p.name as project_name', 'p.color as project_color', 'u.name as sender_name')
+        .orderBy('m.created_at', 'desc')
+        .limit(10);
+      if (!isAdmin) projectMessagesQ.whereIn('m.project_id', memberProjectIds);
+
+      // Chat general (DMs + canales, tabla `chat_messages` — la pestaña "Chat" del sidebar, un
+      // sistema totalmente separado del de arriba). Un DM solo lo puede buscar quien es una de las
+      // dos partes; un canal, un admin (ve todos) o quien ya es miembro — mismo criterio de acceso
+      // que ya aplican GET /api/chat/conversations y GET /api/chat/messages, nunca "cualquier admin
+      // ve todo" para los DMs, porque un DM ajeno es una conversación privada aunque el que busca
+      // sea admin.
+      let myChannelIds = [];
+      if (!isAdmin) myChannelIds = await db('chat_channel_members').where({ user_id: req.user.id }).pluck('channel_id');
+      const chatMessagesQ = db('chat_messages as m')
+        .join('users as u', 'm.sender_id', 'u.id')
+        .leftJoin('users as ru', 'm.receiver_id', 'ru.id')
+        .leftJoin('chat_channels as ch', 'm.channel_id', 'ch.id')
+        .whereRaw('LOWER(m.content) LIKE ?', [like])
+        .where(function() {
+          this.where(function() {
+            this.where('m.type', 'dm').andWhere(function() {
+              this.where('m.sender_id', req.user.id).orWhere('m.receiver_id', req.user.id);
+            });
+          });
+          if (isAdmin) {
+            this.orWhere('m.type', 'channel');
+          } else if (myChannelIds.length) {
+            this.orWhere(function() { this.where('m.type', 'channel').whereIn('m.channel_id', myChannelIds); });
+          }
+        })
+        .select('m.id', 'm.content', 'm.type', 'm.sender_id', 'm.receiver_id', 'm.channel_id', 'm.client_id',
+          'u.name as sender_name', 'ru.name as receiver_name', 'ch.name as channel_name')
+        .orderBy('m.created_at', 'desc')
+        .limit(10);
+
+      const [projects, clients, tasks, videos, comments, projectMessages, chatMessages] = await Promise.all([
+        projectsQ, clientsQ, tasksQ, videosQ, commentsQ, projectMessagesQ, chatMessagesQ,
+      ]);
+      res.json({ projects, clients, tasks, videos, comments, projectMessages, chatMessages });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 

@@ -10,6 +10,7 @@ import ErrorBoundary from './ErrorBoundary';
 import SearchPalette from './SearchPalette';
 import useNarrowViewport, { MOBILE_BREAKPOINT } from '../hooks/useNarrowViewport';
 import useModalA11y from '../hooks/useModalA11y';
+import useInstallPrompt from '../hooks/useInstallPrompt';
 import Icon from './Icon';
 import HoursMinutesInput from './HoursMinutesInput';
 
@@ -27,6 +28,7 @@ export default function Layout() {
   const { user, logout, api, socket } = useAuth();
   const { scheduleDelete } = useUndo();
   const { alert, confirm } = useAlert();
+  const { canInstall, promptInstall } = useInstallPrompt();
   const navigate = useNavigate();
   const location = useLocation();
   const [projects, setProjects] = useState([]);
@@ -756,6 +758,9 @@ export default function Layout() {
             <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>{user?.role}</div>
           </div>
+          {canInstall && (
+            <button className="icon-btn" onClick={promptInstall} title="Instalar app" aria-label="Instalar app" style={{ color: 'var(--text3)', display: 'flex' }}><Icon.download /></button>
+          )}
           {user?.role === 'admin' && (
             <button className="icon-btn" onClick={() => navigate('/settings')} title="Configuración" aria-label="Configuración" style={{ color: isActive('/settings') ? 'var(--accent2)' : 'var(--text3)', display: 'flex' }}><Icon.settings /></button>
           )}
