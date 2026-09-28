@@ -82,7 +82,7 @@ export default function VideosDashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
         <button type="button" onClick={() => setFilter('all')}
           style={{ margin: 0, font: 'inherit', textAlign: 'left', display: 'block', padding: 16, borderRadius: 12, cursor: 'pointer', background: 'var(--bg2)', border: `1px solid ${filter === 'all' ? 'var(--accent)' : 'var(--border)'}` }}>
-          <div style={{ fontSize: 24, fontWeight: 700 }}>{videos.length}</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)' }}>{videos.length}</div>
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>Todos los videos</div>
         </button>
         {CATEGORIES.map(c => (
