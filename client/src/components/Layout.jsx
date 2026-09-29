@@ -885,7 +885,9 @@ export default function Layout() {
                   <label>Color</label>
                   <div style={{ display: 'flex', gap: 8 }}>
                     {COLORS.map(c => (
-                      <div key={c} onClick={() => setProjectForm(p => ({ ...p, color: c }))} style={{ width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer', border: projectForm.color === c ? '2px solid white' : '2px solid transparent', boxShadow: projectForm.color === c ? '0 0 0 2px ' + c : 'none', transition: 'all 0.15s' }} />
+                      <button type="button" key={c} onClick={() => setProjectForm(p => ({ ...p, color: c }))}
+                        aria-label={`Color ${c}`} aria-pressed={projectForm.color === c}
+                        style={{ padding: 0, width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer', border: projectForm.color === c ? '2px solid white' : '2px solid transparent', boxShadow: projectForm.color === c ? '0 0 0 2px ' + c : 'none', transition: 'all 0.15s' }} />
                     ))}
                   </div>
                 </div>
@@ -926,11 +928,13 @@ export default function Layout() {
                       <label>Tipo de pago</label>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                         {[['fixed', '💵', 'Precio fijo', 'Monto total del proyecto'], ['hourly', '⏱', 'Por horas', 'Precio × horas trabajadas']].map(([val, icon, label, sub]) => (
-                          <div key={val} onClick={() => setPaymentForm(p => ({ ...p, payment_type: val }))} style={{ padding: 12, borderRadius: 8, border: `1px solid ${paymentForm.payment_type === val ? 'var(--accent)' : 'var(--border)'}`, background: paymentForm.payment_type === val ? 'var(--accent-glow)' : 'var(--bg3)', cursor: 'pointer', textAlign: 'center' }}>
+                          <button type="button" key={val} onClick={() => setPaymentForm(p => ({ ...p, payment_type: val }))}
+                            aria-pressed={paymentForm.payment_type === val}
+                            style={{ width: '100%', fontFamily: 'var(--font)', padding: 12, borderRadius: 8, border: `1px solid ${paymentForm.payment_type === val ? 'var(--accent)' : 'var(--border)'}`, background: paymentForm.payment_type === val ? 'var(--accent-glow)' : 'var(--bg3)', cursor: 'pointer', textAlign: 'center' }}>
                             <div style={{ fontSize: 20, marginBottom: 4 }}>{icon}</div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: paymentForm.payment_type === val ? 'var(--accent2)' : 'var(--text)' }}>{label}</div>
                             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{sub}</div>
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -1066,7 +1070,9 @@ export default function Layout() {
               <label>Color</label>
               <div style={{ display: 'flex', gap: 8 }}>
                 {COLORS.map(c => (
-                  <div key={c} onClick={() => setClientForm(p => ({ ...p, color: c }))} style={{ width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer', border: clientForm.color === c ? '2px solid white' : '2px solid transparent', boxShadow: clientForm.color === c ? '0 0 0 2px ' + c : 'none', transition: 'all 0.15s' }} />
+                  <button type="button" key={c} onClick={() => setClientForm(p => ({ ...p, color: c }))}
+                    aria-label={`Color ${c}`} aria-pressed={clientForm.color === c}
+                    style={{ padding: 0, width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer', border: clientForm.color === c ? '2px solid white' : '2px solid transparent', boxShadow: clientForm.color === c ? '0 0 0 2px ' + c : 'none', transition: 'all 0.15s' }} />
                 ))}
               </div>
             </div>
@@ -1207,7 +1213,9 @@ export default function Layout() {
               <label>Color</label>
               <div style={{ display: 'flex', gap: 8 }}>
                 {COLORS.map(c => (
-                  <div key={c} onClick={() => setEditProjectForm(p => ({ ...p, color: c }))} style={{ width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer', border: editProjectForm.color === c ? '2px solid white' : '2px solid transparent', boxShadow: editProjectForm.color === c ? '0 0 0 2px ' + c : 'none', transition: 'all 0.15s' }} />
+                  <button type="button" key={c} onClick={() => setEditProjectForm(p => ({ ...p, color: c }))}
+                    aria-label={`Color ${c}`} aria-pressed={editProjectForm.color === c}
+                    style={{ padding: 0, width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer', border: editProjectForm.color === c ? '2px solid white' : '2px solid transparent', boxShadow: editProjectForm.color === c ? '0 0 0 2px ' + c : 'none', transition: 'all 0.15s' }} />
                 ))}
               </div>
             </div>
@@ -1286,7 +1294,9 @@ export default function Layout() {
               <label>Color</label>
               <div style={{ display: 'flex', gap: 8 }}>
                 {COLORS.map(c => (
-                  <div key={c} onClick={() => setEditClientForm(p => ({ ...p, color: c }))} style={{ width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer', border: editClientForm.color === c ? '2px solid white' : '2px solid transparent', boxShadow: editClientForm.color === c ? '0 0 0 2px ' + c : 'none', transition: 'all 0.15s' }} />
+                  <button type="button" key={c} onClick={() => setEditClientForm(p => ({ ...p, color: c }))}
+                    aria-label={`Color ${c}`} aria-pressed={editClientForm.color === c}
+                    style={{ padding: 0, width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer', border: editClientForm.color === c ? '2px solid white' : '2px solid transparent', boxShadow: editClientForm.color === c ? '0 0 0 2px ' + c : 'none', transition: 'all 0.15s' }} />
                 ))}
               </div>
             </div>
@@ -1377,16 +1387,19 @@ export default function Layout() {
       {toasts.length > 0 && (
         <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 340 }}>
           {toasts.map(t => (
-            <div key={t.id} onClick={() => openToast(t)}
-              style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--bg2)', border: '1px solid var(--accent)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
-              <div style={{ width: 30, height: 30, borderRadius: '50%', background: t.actor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: t.actor_id ? 11 : 14, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                {t.actor_id ? t.actor_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : notificationIcon(t.type)}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.4 }}>{notificationLabel(t)}</div>
-                {t.preview && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{renderMentions(t.preview)}"</div>}
-              </div>
-              <button className="icon-btn" onClick={e => { e.stopPropagation(); dismissToast(t.id); }} title="Cerrar" aria-label="Cerrar notificación"
+            <div key={t.id}
+              style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--bg2)', border: '1px solid var(--accent)', borderRadius: 10, padding: '12px 14px', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
+              <button type="button" onClick={() => openToast(t)}
+                style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flex: 1, minWidth: 0, border: 'none', background: 'none', padding: 0, margin: 0, font: 'inherit', textAlign: 'left', color: 'inherit', cursor: 'pointer' }}>
+                <div style={{ width: 30, height: 30, borderRadius: '50%', background: t.actor_color || 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: t.actor_id ? 11 : 14, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                  {t.actor_id ? t.actor_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : notificationIcon(t.type)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.4 }}>{notificationLabel(t)}</div>
+                  {t.preview && <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{renderMentions(t.preview)}"</div>}
+                </div>
+              </button>
+              <button className="icon-btn" onClick={() => dismissToast(t.id)} title="Cerrar" aria-label="Cerrar notificación"
                 style={{ color: 'var(--text3)', fontSize: 14, flexShrink: 0, lineHeight: 1 }}>
                 ✕
               </button>

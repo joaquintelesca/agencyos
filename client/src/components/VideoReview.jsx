@@ -698,7 +698,12 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
             {[...comments].sort((a, b) => a.timestamp_sec - b.timestamp_sec)
               .filter(c => filter === 'all' ? true : filter === 'resolved' ? c.resolved : !c.resolved)
               .map(c => (
+              // No es un <button> porque ya tiene varios adentro (resolver/responder/editar/borrar)
+              // y un <button> no puede contener otro — role="button" + tabIndex + Enter/Espacio a
+              // mano en su lugar, mismo compromiso que TaskCard en Project.jsx.
               <div key={c.id} onClick={() => playerRef.current?.jumpToComment(c)}
+                role="button" tabIndex={0}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playerRef.current?.jumpToComment(c); } }}
                 style={{ padding: '8px 12px', borderBottom: `1px solid var(--bg3)`, cursor: 'pointer', background: activeComment === c.id ? 'var(--bg3)' : 'transparent', borderLeft: activeComment === c.id ? `2px solid var(--accent)` : c.resolved ? `2px solid #10b981` : '2px solid transparent', opacity: c.resolved ? 0.6 : 1, transition: 'all 0.1s' }}
                 onMouseEnter={e => { if (activeComment !== c.id) e.currentTarget.style.background = 'var(--bg3)'; }}
                 onMouseLeave={e => { if (activeComment !== c.id) e.currentTarget.style.background = 'transparent'; }}>

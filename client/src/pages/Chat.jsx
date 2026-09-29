@@ -42,6 +42,21 @@ function VoiceNotePlayer({ src, knownDuration }) {
     setCurrentTime(audio.currentTime);
   };
 
+  // La barra era un <div onClick> puro — ni tabbeable ni operable con flechas. Mismos pasos que
+  // cualquier <input type="range"> nativo (Home/End a los extremos, flechas de a 5s).
+  const seekBy = (deltaSec) => {
+    const audio = audioRef.current;
+    if (!audio || !total) return;
+    audio.currentTime = Math.min(total, Math.max(0, audio.currentTime + deltaSec));
+    setCurrentTime(audio.currentTime);
+  };
+  const onSeekKeyDown = (e) => {
+    if (e.key === 'ArrowRight') { e.preventDefault(); seekBy(5); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); seekBy(-5); }
+    else if (e.key === 'Home') { e.preventDefault(); seekBy(-total); }
+    else if (e.key === 'End') { e.preventDefault(); seekBy(total); }
+  };
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 190 }}>
       <audio
@@ -67,7 +82,11 @@ function VoiceNotePlayer({ src, knownDuration }) {
       }}>
         {playing ? '⏸' : '▶'}
       </button>
-      <div onClick={seek} style={{ flex: 1, height: 4, background: 'var(--border)', borderRadius: 2, cursor: total ? 'pointer' : 'default', position: 'relative' }}>
+      <div onClick={seek} onKeyDown={onSeekKeyDown}
+        role="slider" tabIndex={total ? 0 : -1} aria-label="Progreso de la nota de voz"
+        aria-valuemin={0} aria-valuemax={total || 0} aria-valuenow={currentTime}
+        aria-valuetext={`${formatRecordingTime(currentTime)} de ${total ? formatRecordingTime(total) : '0:00'}`}
+        style={{ flex: 1, height: 4, background: 'var(--border)', borderRadius: 2, cursor: total ? 'pointer' : 'default', position: 'relative' }}>
         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 2, background: 'var(--accent)', width: `${total ? Math.min(100, (currentTime / total) * 100) : 0}%` }} />
       </div>
       <span style={{ fontSize: 11, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>

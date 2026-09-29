@@ -889,8 +889,18 @@ export default function Project() {
 function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, canDrag = true, onMoveToReview }) {
   const priorityColors = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' };
   const priorityLabels = { high: 'Alta', medium: 'Media', low: 'Baja' };
+  // No se puede envolver la card entera en un <button> — ya tiene botones reales adentro ("Ver
+  // video", el de feedback) y un <button> no puede contener otro <button>. Se agrega role="button"
+  // + tabIndex + Enter/Espacio a mano en su lugar: menos prolijo a nivel ARIA que un botón real,
+  // pero es exactamente el mismo compromiso que usa cualquier tablero tipo Trello para una tarjeta
+  // con acción principal + acciones secundarias adentro. Los botones internos siguen alcanzables
+  // por Tab por separado, y su propio stopPropagation seguía haciendo falta para no disparar
+  // onEdit() al usarlos con mouse.
   return (
-    <div className="panel" draggable={canDrag} onDragStart={canDrag ? onDragStart : undefined} onClick={onEdit || undefined} style={{
+    <div className="panel" draggable={canDrag} onDragStart={canDrag ? onDragStart : undefined} onClick={onEdit || undefined}
+      role={onEdit ? 'button' : undefined} tabIndex={onEdit ? 0 : undefined}
+      onKeyDown={onEdit ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(); } }) : undefined}
+      style={{
       borderRadius: 10,
       padding: '12px 14px', cursor: canDrag || onEdit ? 'pointer' : 'default', transition: 'all 0.15s',
     }}

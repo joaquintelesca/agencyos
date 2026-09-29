@@ -195,6 +195,22 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
     if (videoRef.current) { videoRef.current.currentTime = t; setCurrentTime(t); onActiveCommentChange?.(null); }
   };
 
+  // El timeline era un <div onClick> puro — ni tabbeable ni operable con flechas. Mismos pasos que
+  // cualquier <input type="range"> nativo (Home/End a los extremos, flechas de a 5s).
+  const seekBy = (deltaSec) => {
+    if (!videoRef.current || !duration) return;
+    const t = Math.min(duration, Math.max(0, videoRef.current.currentTime + deltaSec));
+    videoRef.current.currentTime = t;
+    setCurrentTime(t);
+    onActiveCommentChange?.(null);
+  };
+  const onTimelineKeyDown = (e) => {
+    if (e.key === 'ArrowRight') { e.preventDefault(); seekBy(5); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); seekBy(-5); }
+    else if (e.key === 'Home') { e.preventDefault(); seekBy(-duration); }
+    else if (e.key === 'End') { e.preventDefault(); seekBy(duration); }
+  };
+
   const setRate = (r) => {
     setPlaybackRate(r);
     if (videoRef.current) videoRef.current.playbackRate = r;
@@ -553,7 +569,11 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
 
       {/* Timeline */}
       <div style={{ background: 'var(--bg2)', padding: '0 14px', flexShrink: 0 }}>
-        <div style={{ position: 'relative', height: 40, display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={seek}>
+        <div style={{ position: 'relative', height: 40, display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={seek}
+          onKeyDown={onTimelineKeyDown}
+          role="slider" tabIndex={duration ? 0 : -1} aria-label="Progreso del video"
+          aria-valuemin={0} aria-valuemax={duration || 0} aria-valuenow={currentTime}
+          aria-valuetext={`${formatTime(currentTime)} de ${duration ? formatTime(duration) : '0:00'}`}>
           <div style={{ width: '100%', height: 4, background: 'var(--border)', borderRadius: 2, position: 'relative' }}>
             <div style={{ width: `${progressPct}%`, height: '100%', background: 'var(--accent)', borderRadius: 2 }} />
             {rangePct != null && rangeEndPct != null && (
