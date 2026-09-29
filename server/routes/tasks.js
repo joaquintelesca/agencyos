@@ -58,8 +58,18 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
 
   router.post('/api/projects/:projectId/tasks', auth, requireProjectAccess(), async (req, res) => {
     try {
-      if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo el admin puede crear tareas' });
-      const { title, description, status, priority, assigned_to, due_date } = req.body;
+      const project = await db('projects').where({ id: req.params.projectId }).first();
+      if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' });
+      // Antes esto era admin-only. El editor que el admin asignó a este proyecto en particular
+      // (payment_editor_id, no cualquiera que tenga acceso vía una tarea puntual) ahora también
+      // puede crear tareas — pero solo para sí mismo, nunca para repartirle trabajo a otro nombre:
+      // se ignora cualquier assigned_to que mande y se fuerza al propio id.
+      const isAssignedEditor = project.payment_editor_id === req.user.id;
+      if (req.user.role !== 'admin' && !isAssignedEditor) {
+        return res.status(403).json({ error: 'Solo el admin o el editor asignado a este proyecto puede crear tareas' });
+      }
+      const { title, description, status, priority, due_date } = req.body;
+      const assigned_to = req.user.role === 'admin' ? (req.body.assigned_to || null) : req.user.id;
       if (!title?.trim()) return res.status(400).json({ error: 'El título de la tarea es obligatorio' });
       if (status !== undefined && !TASK_STATUSES.includes(status)) return res.status(400).json({ error: 'Estado de tarea inválido' });
       if (assigned_to && !await db('users').where({ id: assigned_to }).first()) {
@@ -71,8 +81,9 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
       const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
       await emitToProject(req.params.projectId, 'task:created', task);
       await logActivity({ projectId: req.params.projectId, type: 'task_created', actorId: req.user.id, data: { title } });
-      if (assigned_to) {
-        const project = await db('projects').where({ id: req.params.projectId }).first();
+      // Sin el chequeo, un editor creándose una tarea a sí mismo se auto-notificaba de su propia
+      // acción — ruido, no información.
+      if (assigned_to && assigned_to !== req.user.id) {
         await createNotification({ userId: assigned_to, type: 'task_assigned', actorId: req.user.id, projectId: req.params.projectId, preview: `"${title}" en ${project?.name || 'proyecto'}` });
       }
       res.json(task);
@@ -89,8 +100,22 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
       const { title, description, status, priority, assigned_to, due_date } = req.body;
       if (status !== undefined && !TASK_STATUSES.includes(status)) return res.status(400).json({ error: 'Estado de tarea inválido' });
       if (req.user.role !== 'admin') {
-        if (existing.assigned_to !== req.user.id) return res.status(403).json({ error: 'Solo podés cambiar el estado de tus tareas asignadas' });
-        await db('tasks').where({ id: req.params.id }).update({ status, updated_at: new Date().toISOString() });
+        // Dos permisos independientes, no uno solo: "es mi tarea asignada" deja cambiar el estado
+        // (arrastrarla en el kanban) igual que siempre; "yo la creé" deja además corregir título/
+        // descripción/prioridad/fecha — ninguno de los dos permite tocar assigned_to (reasignar
+        // sigue siendo cosa del admin, aunque la hayas creado vos).
+        const isOwnTask = existing.assigned_to === req.user.id;
+        const isCreator = existing.created_by === req.user.id;
+        if (!isOwnTask && !isCreator) return res.status(403).json({ error: 'No podés modificar esta tarea' });
+        const update = { updated_at: new Date().toISOString() };
+        if (isOwnTask && status !== undefined) update.status = status;
+        if (isCreator) {
+          if (title !== undefined) update.title = title;
+          if (description !== undefined) update.description = description;
+          if (priority !== undefined) update.priority = priority;
+          if (due_date !== undefined) update.due_date = due_date || null;
+        }
+        await db('tasks').where({ id: req.params.id }).update(update);
       } else {
         if (assigned_to && !await db('users').where({ id: assigned_to }).first()) {
           return res.status(400).json({ error: 'El usuario asignado no existe' });
@@ -170,8 +195,8 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
       if (!await isProjectMember(req.user.id, req.user.role, existing.project_id)) {
         return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
       }
-      if (req.user.role !== 'admin' && existing.assigned_to !== req.user.id) {
-        return res.status(403).json({ error: 'Solo podés eliminar tus tareas asignadas' });
+      if (req.user.role !== 'admin' && existing.assigned_to !== req.user.id && existing.created_by !== req.user.id) {
+        return res.status(403).json({ error: 'Solo podés eliminar tareas asignadas a vos o que vos mismo creaste' });
       }
       await db('videos').where({ task_id: req.params.id }).update({ task_id: null });
       await db('tasks').where({ id: req.params.id }).delete();

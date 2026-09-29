@@ -443,6 +443,13 @@ export default function Project() {
     || !project.payment_editor_id
   );
 
+  // El editor que el admin asignó a ESTE proyecto en particular (no cualquiera con acceso vía una
+  // tarea puntual) puede armar su propia lista de tareas — mismo criterio que ya aplica el
+  // servidor en POST /api/projects/:id/tasks. Quien no creó una tarea (aunque sea el editor del
+  // proyecto) solo puede cambiarle el estado arrastrándola, no editarla ni borrarla.
+  const canManageTasks = user.role === 'admin' || project.payment_editor_id === user.id;
+  const canEditTask = (task) => user.role === 'admin' || task.created_by === user.id;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Header — en angosto no entra todo en una sola fila (título+badges+botones+tabs), así
@@ -563,21 +570,21 @@ export default function Project() {
                       {tasks.filter(t => t.status === col.key).length}
                     </span>
                   </div>
-                  {user.role === 'admin' && <button className="icon-btn" onClick={() => openCreateTask(col.key)} title={`Agregar tarea a ${col.label}`} aria-label={`Agregar tarea a ${col.label}`} style={{ color: 'var(--text3)', display: 'flex' }}><Icon.plus /></button>}
+                  {canManageTasks && <button className="icon-btn" onClick={() => openCreateTask(col.key)} title={`Agregar tarea a ${col.label}`} aria-label={`Agregar tarea a ${col.label}`} style={{ color: 'var(--text3)', display: 'flex' }}><Icon.plus /></button>}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
                 {tasks.filter(t => t.status === col.key).map(task => (
                   <TaskCard key={task.id} task={task}
-                    onEdit={user.role === 'admin' ? () => openEditTask(task) : null}
-                    onDelete={user.role === 'admin' ? () => deleteTask(task.id) : null}
+                    onEdit={canEditTask(task) ? () => openEditTask(task) : null}
+                    onDelete={canEditTask(task) ? () => deleteTask(task.id) : null}
                     onDragStart={() => onDragStart(task)} initials={initials}
                     onOpenVideo={openTaskVideo}
                     canDrag={user.role === 'admin' || task.assigned_to === user.id}
                     onMoveToReview={(user.role === 'admin' || task.assigned_to === user.id) ? () => moveTaskToStatus(task, 'review') : null} />
                 ))}
               </div>
-              {user.role === 'admin' && (
+              {canManageTasks && (
                 <button onClick={() => openCreateTask(col.key)} style={{
                   marginTop: 8, padding: '8px', borderRadius: 8, border: '1px dashed var(--border)',
                   background: 'transparent', color: 'var(--text3)', fontSize: 12, cursor: 'pointer',
@@ -676,8 +683,14 @@ export default function Project() {
             </div>
             <div className="form-row">
               <div className="form-group">
+                {/* Si ya no es una tarea asignada a él (el admin la reasignó después de creada),
+                    cambiar el estado acá no se guardaría del lado del servidor — se deshabilita
+                    para no dar a entender que sí, en vez de fallar en silencio. Al crear una
+                    nueva siempre es su propia tarea (se fuerza assigned_to = él mismo), así que
+                    nunca aplica en ese caso. */}
                 <label>Estado</label>
-                <select className="input" value={taskForm.status} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value }))}>
+                <select className="input" value={taskForm.status} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value }))}
+                  disabled={user.role !== 'admin' && editingTask && editingTask.assigned_to !== user.id}>
                   {STATUSES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
               </div>
@@ -691,10 +704,20 @@ export default function Project() {
             <div className="form-row">
               <div className="form-group">
                 <label>Asignar a</label>
-                <select className="input" value={taskForm.assigned_to} onChange={e => setTaskForm(p => ({ ...p, assigned_to: e.target.value }))}>
-                  <option value="">Sin asignar</option>
-                  {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
+                {/* Un editor no-admin solo puede crear/editar tareas para sí mismo — reasignar
+                    sigue siendo cosa del admin, así que acá el campo queda fijo, no editable. */}
+                {user.role === 'admin' ? (
+                  <select className="input" value={taskForm.assigned_to} onChange={e => setTaskForm(p => ({ ...p, assigned_to: e.target.value }))}>
+                    <option value="">Sin asignar</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                ) : (
+                  // Al crear, siempre es él mismo (se fuerza en el servidor). Al editar una que
+                  // creó pero que el admin reasignó después, mostrar el nombre real del asignado
+                  // actual en vez de asumir que sigue siendo él.
+                  <input className="input" value={editingTask ? (editingTask.assignee_name || 'Sin asignar') : user.name} disabled
+                    title="Las tareas que creás quedan asignadas a vos — reasignarlas es cosa del admin" />
+                )}
               </div>
               <div className="form-group">
                 <label>Fecha límite</label>
