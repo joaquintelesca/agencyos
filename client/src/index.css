@@ -127,9 +127,17 @@ body {
 }
 .tab-switch button.active { background: var(--accent); color: #fff; }
 
-/* Botones de editar/borrar que solo se ven al pasar el mouse por la fila del sidebar */
+/* Botones de editar/borrar que solo se ven al pasar el mouse por la fila del sidebar — pensado
+   para mouse. En touch no hay ":hover" real: el navegador simula uno en el primer toque (funciona
+   en Chrome/Android, pero es un "toco para que aparezca, toco de nuevo para usarlo" confuso, y
+   Safari de iPhone es inconsistente con esto). `hover: none` le pregunta al dispositivo si tiene
+   hover de verdad en vez de adivinar por el ancho de pantalla (una tablet táctil puede ser ancha
+   igual) — sin hover real, quedan siempre visibles, mismo criterio que usa cualquier app mobile. */
 .sidebar-row .reveal-btn { background: transparent; border: none; cursor: pointer; color: var(--text3); opacity: 0; transition: opacity 0.15s, color 0.15s; }
 .sidebar-row:hover .reveal-btn { opacity: 1; }
+@media (hover: none) {
+  .sidebar-row .reveal-btn { opacity: 1; }
+}
 .reveal-btn.edit:hover { color: var(--accent2); }
 .reveal-btn.delete:hover { color: var(--red); }
 
