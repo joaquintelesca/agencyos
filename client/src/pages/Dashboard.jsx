@@ -89,13 +89,13 @@ export default function Dashboard() {
         { type: 'deadlines', label: 'Deadlines esta semana', val: deadlinesThisWeek.length, color: 'var(--red)' },
         { type: 'clients', label: 'Clientes activos', val: clients.length, color: 'var(--accent2)' },
       ].map(s => (
-        <div key={s.label} className="panel" onDoubleClick={() => setStatModal(s.type)} title="Doble click para ver el detalle"
-          style={{ borderRadius: 12, padding: '12px 16px', cursor: 'pointer', transition: 'border-color 0.15s' }}
+        <button type="button" key={s.label} className="panel" onClick={() => setStatModal(s.type)}
+          style={{ width: '100%', font: 'inherit', textAlign: 'left', display: 'block', borderRadius: 12, padding: '12px 16px', cursor: 'pointer', transition: 'border-color 0.15s' }}
           onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
           <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{s.label}</div>
           <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 700, color: s.color }}>{s.val}</div>
-        </div>
+        </button>
       ))}
     </div>
   );

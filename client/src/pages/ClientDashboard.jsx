@@ -135,9 +135,9 @@ export default function ClientDashboard() {
     const settled = isDone && isAdmin ? isPaymentSettled(p) : null;
 
     return (
-      <div key={p.id} className="card"
-        onDoubleClick={() => navigate(`/project/${p.id}`)}
-        style={{ cursor: 'pointer', transition: 'border-color 0.15s', opacity: isDone ? 0.85 : 1 }}
+      <button type="button" key={p.id} className="card"
+        onClick={() => navigate(`/project/${p.id}`)}
+        style={{ width: '100%', font: 'inherit', textAlign: 'left', display: 'block', cursor: 'pointer', transition: 'border-color 0.15s', opacity: isDone ? 0.85 : 1 }}
         onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
         onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
         {/* Top row */}
@@ -185,7 +185,7 @@ export default function ClientDashboard() {
           </div>
         )}
         {total === 0 && <span style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>Sin tareas</span>}
-      </div>
+      </button>
     );
   }
 }

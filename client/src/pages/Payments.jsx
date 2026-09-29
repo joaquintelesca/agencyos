@@ -418,6 +418,7 @@ export default function Payments() {
 function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }) {
   const { confirm } = useAlert();
   const navigate = useNavigate();
+  const isNarrowViewport = useNarrowViewport();
   const isSelfEditor = p.editor_is_owner;
   // Las horas alimentan el cálculo de LOS DOS lados (editor y cliente) cuando es por hora — si se
   // dejaran editar después de que cualquiera de los dos ya se congeló, no cambia el monto YA
@@ -497,9 +498,13 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {/* Doble click (no simple) para no dispararlo sin querer mientras se opera la fila, que
               está llena de controles — y para poder seguir seleccionando el nombre con el mouse.
-              /project/:id abre la pestaña Kanban por default. */}
+              /project/:id abre la pestaña Kanban por default. En mobile no hay mouse que
+              seleccione texto con un click (la selección táctil es con mantener presionado), así
+              que ahí sí se habilita un click simple — si no, no hay ninguna forma de abrir el
+              proyecto desde esta fila en un celular. */}
           <span onDoubleClick={() => navigate(`/project/${p.id}`)}
-            title="Doble click para abrir el proyecto"
+            onClick={isNarrowViewport ? () => navigate(`/project/${p.id}`) : undefined}
+            title={isNarrowViewport ? 'Abrir el proyecto' : 'Doble click para abrir el proyecto'}
             style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', cursor: 'pointer' }}>{p.name}</span>
           <button className="icon-btn" onClick={() => onEdit(p)} title="Editar proyecto" aria-label={`Editar proyecto ${p.name}`}
             style={{ color: 'var(--text3)', padding: 2, display: 'flex' }}><Icon.pencil /></button>

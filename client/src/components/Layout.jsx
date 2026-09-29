@@ -690,7 +690,15 @@ export default function Layout() {
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                   <span style={{ fontSize: 10, color: 'var(--text3)', transition: 'transform 0.15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 15.6, fontWeight: 900, color: 'var(--text2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                  {/* El resto de la fila expande/colapsa con un click (single click ya ocupado) —
+                      "ir al cliente" quedaba solo en doble click, un gesto sin ninguna pista visual
+                      en mobile (los title no se ven en touch). Acá sí un click simple, propio,
+                      separado del de la fila. */}
+                  <button type="button" onClick={e => { e.stopPropagation(); navigate(`/client/${c.id}`); }}
+                    title="Ir al cliente"
+                    style={{ border: 'none', background: 'none', padding: 0, margin: 0, font: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: 15.6, fontWeight: 900, color: 'var(--text2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.name}
+                  </button>
                   {user?.role === 'admin' && clientProjects.some(p => p.unread_review_count > 0) && (
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
                   )}
