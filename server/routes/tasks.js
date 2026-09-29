@@ -100,21 +100,18 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
       const { title, description, status, priority, assigned_to, due_date } = req.body;
       if (status !== undefined && !TASK_STATUSES.includes(status)) return res.status(400).json({ error: 'Estado de tarea inválido' });
       if (req.user.role !== 'admin') {
-        // Dos permisos independientes, no uno solo: "es mi tarea asignada" deja cambiar el estado
-        // (arrastrarla en el kanban) igual que siempre; "yo la creé" deja además corregir título/
-        // descripción/prioridad/fecha — ninguno de los dos permite tocar assigned_to (reasignar
-        // sigue siendo cosa del admin, aunque la hayas creado vos).
-        const isOwnTask = existing.assigned_to === req.user.id;
-        const isCreator = existing.created_by === req.user.id;
-        if (!isOwnTask && !isCreator) return res.status(403).json({ error: 'No podés modificar esta tarea' });
+        // "Es mi tarea asignada" y "yo la creé" dan exactamente los mismos permisos — estado,
+        // título, descripción, prioridad y fecha límite — sin importar cuál de las dos sea. Lo
+        // único que ninguna de las dos habilita es tocar assigned_to: reasignarla a otra persona
+        // sigue siendo cosa del admin, la hayas creado vos o no.
+        const canModify = existing.assigned_to === req.user.id || existing.created_by === req.user.id;
+        if (!canModify) return res.status(403).json({ error: 'No podés modificar esta tarea' });
         const update = { updated_at: new Date().toISOString() };
-        if (isOwnTask && status !== undefined) update.status = status;
-        if (isCreator) {
-          if (title !== undefined) update.title = title;
-          if (description !== undefined) update.description = description;
-          if (priority !== undefined) update.priority = priority;
-          if (due_date !== undefined) update.due_date = due_date || null;
-        }
+        if (title !== undefined) update.title = title;
+        if (description !== undefined) update.description = description;
+        if (status !== undefined) update.status = status;
+        if (priority !== undefined) update.priority = priority;
+        if (due_date !== undefined) update.due_date = due_date || null;
         await db('tasks').where({ id: req.params.id }).update(update);
       } else {
         if (assigned_to && !await db('users').where({ id: assigned_to }).first()) {

@@ -448,7 +448,9 @@ export default function Project() {
   // servidor en POST /api/projects/:id/tasks. Quien no creó una tarea (aunque sea el editor del
   // proyecto) solo puede cambiarle el estado arrastrándola, no editarla ni borrarla.
   const canManageTasks = user.role === 'admin' || project.payment_editor_id === user.id;
-  const canEditTask = (task) => user.role === 'admin' || task.created_by === user.id;
+  // Asignada a mí o creada por mí dan el mismo permiso — editar todo salvo a quién está asignada,
+  // eso sigue siendo del admin.
+  const canEditTask = (task) => user.role === 'admin' || task.created_by === user.id || task.assigned_to === user.id;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -683,14 +685,8 @@ export default function Project() {
             </div>
             <div className="form-row">
               <div className="form-group">
-                {/* Si ya no es una tarea asignada a él (el admin la reasignó después de creada),
-                    cambiar el estado acá no se guardaría del lado del servidor — se deshabilita
-                    para no dar a entender que sí, en vez de fallar en silencio. Al crear una
-                    nueva siempre es su propia tarea (se fuerza assigned_to = él mismo), así que
-                    nunca aplica en ese caso. */}
                 <label>Estado</label>
-                <select className="input" value={taskForm.status} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value }))}
-                  disabled={user.role !== 'admin' && editingTask && editingTask.assigned_to !== user.id}>
+                <select className="input" value={taskForm.status} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value }))}>
                   {STATUSES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
               </div>
