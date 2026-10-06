@@ -32,8 +32,6 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const [renameModalVideo, setRenameModalVideo] = useState(null);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, video }
   const [showCompareModal, setShowCompareModal] = useState(false);
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadForm, setUploadForm] = useState({ title: '', version: '', task_id: '' });
@@ -220,16 +218,6 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     } catch (e) { console.error(e); await alert('No se pudo quitar la aprobación: ' + e.message); }
   };
 
-  const renameVideo = async () => {
-    const title = titleDraft.trim();
-    if (!title || title === selectedVideo.title) { setEditingTitle(false); return; }
-    try {
-      await api(`/api/videos/${selectedVideo.id}/rename`, { method: 'PATCH', body: { title } });
-      setVideos(prev => prev.map(v => v.id === selectedVideo.id ? { ...v, title } : v));
-      setEditingTitle(false);
-    } catch (e) { console.error(e); await alert('No se pudo renombrar el video: ' + e.message); }
-  };
-
   const startEditComment = (c) => { setEditingComment(c.id); setEditText(c.content); };
   const saveEditComment = async (cid) => {
     if (!editText.trim()) return;
@@ -337,7 +325,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     const items = [];
     if (canManage) items.push({ label: 'Renombrar', icon: <Icon.pencil />, onClick: () => setRenameModalVideo(v) });
     items.push({ label: 'Descargar', icon: <Icon.download />, href: mediaUrl(`/uploads/${v.filename}?download=1`) });
-    if (user.role === 'admin') items.push({ label: 'Compartir', icon: '🔗', onClick: () => setShareModalVideoId(v.id) });
+    if (user.role === 'admin') items.push({ label: 'Compartir', icon: <Icon.link />, onClick: () => setShareModalVideoId(v.id) });
     if (canManage) items.push({ label: 'Eliminar', icon: <Icon.trash />, danger: true, onClick: () => deleteVideo(v) });
     return items;
   };
@@ -627,22 +615,9 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--accent-glow)', border: `1px solid rgba(124,106,247,0.31)`, borderRadius: 6, padding: '3px 9px', fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>
           v{selectedVideo.version}
         </div>
-        {editingTitle ? (
-          <input autoFocus value={titleDraft} onChange={e => setTitleDraft(e.target.value)}
-            onBlur={renameVideo}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); renameVideo(); } else if (e.key === 'Escape') setEditingTitle(false); }}
-            style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, background: 'var(--bg3)', border: '1px solid var(--accent)', borderRadius: 6, padding: '3px 7px', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
-        ) : (
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedVideo.title}</span>
-            {(user.role === 'admin' || selectedVideo.uploaded_by === user.id) && (
-              <button className="icon-btn" onClick={() => { setTitleDraft(selectedVideo.title); setEditingTitle(true); }}
-                title="Renombrar video" aria-label="Renombrar video" style={{ flexShrink: 0, color: 'var(--text3)' }}>
-                <Icon.pencil />
-              </button>
-            )}
-          </span>
-        )}
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+          {selectedVideo.title}
+        </span>
         <span style={{ fontSize: 11, color: 'var(--text3)' }}>{comments.length} comentarios</span>
         <a href={mediaUrl(`/uploads/${selectedVideo.filename}?download=1`)} title="Descargar video" aria-label="Descargar video"
           style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
@@ -662,12 +637,6 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           <button onClick={() => setShareModalVideoId(selectedVideo.id)} title="Compartir con el cliente"
             style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
             🔗 Compartir
-          </button>
-        )}
-        {(user.role === 'admin' || selectedVideo.uploaded_by === user.id) && (
-          <button className="btn-outline" onClick={() => deleteVideo(selectedVideo)} title="Eliminar video"
-            style={{ borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <Icon.trash /> Eliminar
           </button>
         )}
         <button className="btn btn-primary btn-sm" onClick={() => setShowUpload(true)}>⬆ Nueva versión</button>

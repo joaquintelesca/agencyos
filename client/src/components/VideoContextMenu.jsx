@@ -37,13 +37,17 @@ export default function VideoContextMenu({ x, y, items, onClose }) {
           onMouseEnter: e => e.currentTarget.style.background = 'var(--bg4)',
           onMouseLeave: e => e.currentTarget.style.background = 'transparent',
         };
+        // Columna de ancho fijo para el ícono — sin esto, un ícono SVG (13x13, con su propio
+        // padding interno) y un emoji (ancho variable según fuente del sistema) quedan con
+        // espaciados distintos frente al texto aunque el `gap` del flex sea el mismo.
+        const iconWrap = <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, flexShrink: 0 }}>{item.icon}</span>;
         return item.href ? (
           <a key={i} role="menuitem" href={item.href} onClick={onClose} style={itemStyle} {...hoverProps}>
-            {item.icon}{item.label}
+            {iconWrap}{item.label}
           </a>
         ) : (
           <button key={i} role="menuitem" onClick={() => { onClose(); item.onClick(); }} style={itemStyle} {...hoverProps}>
-            {item.icon}{item.label}
+            {iconWrap}{item.label}
           </button>
         );
       })}

@@ -123,7 +123,7 @@ export default function VideosDashboard() {
   const videoMenuItems = (v) => [
     { label: 'Renombrar', icon: <Icon.pencil />, onClick: () => setRenameModalVideo(v) },
     { label: 'Descargar', icon: <Icon.download />, href: mediaUrl(`/uploads/${v.filename}?download=1`) },
-    { label: 'Compartir', icon: '🔗', onClick: () => setShareModalVideoId(v.id) },
+    { label: 'Compartir', icon: <Icon.link />, onClick: () => setShareModalVideoId(v.id) },
     { label: 'Eliminar', icon: <Icon.trash />, danger: true, onClick: () => deleteVideoFromDashboard(v) },
   ];
 
