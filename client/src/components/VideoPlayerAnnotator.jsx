@@ -94,7 +94,9 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   // quedar un tick atrás por el batching de React y dejar pasar un segundo submit antes de
   // re-renderizar. Este state es solo para el "Enviando..." visual del botón.
   const [submitting, setSubmitting] = useState(false);
-  const [showCommentInput, setShowCommentInput] = useState(false);
+  // Antes arrancaba cerrado y solo se abría con la primera pausa — el usuario lo quiere visible
+  // desde que se abre el video, no recién después de pausar.
+  const [showCommentInput, setShowCommentInput] = useState(true);
   const [approving, setApproving] = useState(false);
 
   const formatT = formatTime;
@@ -581,18 +583,22 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
 
         {/* "Comentar aquí" como acción flotante propia, separada de la barra de controles — antes
             competía por espacio ahí al lado del volumen, sin ninguna jerarquía visual clara siendo
-            la acción principal de todo el reproductor. */}
+            la acción principal de todo el reproductor. Ahora que el cuadro de comentario queda
+            visible de entrada (no solo tras la primera pausa), este botón además funciona como
+            toggle: si ya está abierto, lo colapsa (sin descartar nada — el draft y el timestamp
+            capturado siguen ahí si se vuelve a abrir); si está cerrado, lo abre con el mismo
+            comportamiento de siempre (pausa + captura el momento actual, salvo que ya hubiera un
+            draft sin enviar con un timestamp propio, que no se pisa). */}
         <button onClick={() => {
+          if (showCommentInput) { setShowCommentInput(false); return; }
           if (videoRef.current) videoRef.current.pause();
-          // Mismo cuidado que onVideoPause: si ya hay un timestamp capturado, no lo pisa en
-          // silencio. Si no hay ninguno todavía, cae al caso normal de abajo.
           if (hasUnsavedDraft() && capturedTs) { setShowCommentInput(true); return; }
           const t = videoRef.current?.currentTime || 0;
           setCapturedTs({ type: 'single', ts: t });
           setShowCommentInput(true);
         }}
           style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 3, display: 'flex', alignItems: 'center', gap: 7, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 999, padding: '9px 15px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', boxShadow: '0 6px 20px rgba(124,106,247,0.45)' }}>
-          <Icon.comment /> Comentar aquí
+          {showCommentInput ? <><Icon.close /> Ocultar</> : <><Icon.comment /> Comentar aquí</>}
         </button>
       </div>
 
@@ -701,12 +707,18 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
                 title="Descartar rango marcado" aria-label="Descartar rango marcado"
                 style={{ color: 'var(--text3)', fontSize: 14 }}>✕</button>
             </div>
-          ) : (
+          ) : capturedTs ? (
             <div style={{ background: 'var(--bg3)', border: '1px solid var(--accent)', borderRadius: 7, padding: '6px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>⏸ Pausado en {formatT(capturedTs?.ts ?? currentTime)}</span>
+              <span style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>⏸ Pausado en {formatT(capturedTs.ts)}</span>
               <button className="icon-btn" onClick={() => { setShowCommentInput(false); setCapturedTs(null); clearAnnotations(); }}
                 title="Descartar marca de tiempo" aria-label="Descartar marca de tiempo"
                 style={{ color: 'var(--text3)', fontSize: 14 }}>✕</button>
+            </div>
+          ) : (
+            // El cuadro ahora se ve desde que se abre el video, antes de pausar nunca — todavía no
+            // hay ningún momento capturado, así que no hay nada que descartar (sin botón ✕ acá).
+            <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 7, padding: '6px 10px', marginBottom: 8 }}>
+              <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600 }}>⏸ Pausá para comentar</span>
             </div>
           )}
           <MentionInput as="textarea" value={commentText} onChange={setCommentText} members={members}
