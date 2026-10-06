@@ -204,6 +204,25 @@ module.exports = function videoUploadRoutes({
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 
+  // Mismo criterio de permiso que borrar: admin o quien lo subió, no cualquier miembro del
+  // proyecto. Solo cambia el título que se ve en la UI — original_name (el nombre real de subida)
+  // queda intacto, pero el nombre de descarga sí sigue al título (ver videoDownloadName).
+  router.patch('/api/videos/:id/rename', auth, async (req, res) => {
+    try {
+      const title = (req.body.title || '').trim();
+      if (!title) return res.status(400).json({ error: 'El nombre no puede estar vacío' });
+      if (title.length > 200) return res.status(400).json({ error: 'Nombre demasiado largo' });
+      const video = await db('videos').where({ id: req.params.id }).first();
+      if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+      if (req.user.role !== 'admin' && video.uploaded_by !== req.user.id) {
+        return res.status(403).json({ error: 'Solo el admin o quien subió el video puede renombrarlo' });
+      }
+      await db('videos').where({ id: req.params.id }).update({ title });
+      await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
+      res.json({ success: true, title });
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
   // "Aprobado" antes era solo un estado inferido (sin comentarios sin resolver, sin tarea en
   // revisión) — no había ninguna acción real de aprobar, así que un video sin ningún comentario
   // caía ahí por descarte. Esto le da al equipo/cliente un cierre explícito. Cualquier miembro del

@@ -16,7 +16,7 @@ const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 // comentar de invitado, aprobar/desaprobar) es EXACTAMENTE la misma para los dos — solo cambia
 // cómo se llega a ese video_id. Por eso vive una sola vez en las funciones de abajo, y cada grupo
 // de rutas públicas solo se encarga de resolver su propio token hasta un video_id válido.
-module.exports = function sharesRoutes({ db, auth, serveFile, safeJsonParse, emitToProject, createNotification, logActivity }) {
+module.exports = function sharesRoutes({ db, auth, serveFile, videoDownloadName, safeJsonParse, emitToProject, createNotification, logActivity }) {
   const router = express.Router();
 
   const reviewLimiter = rateLimit({
@@ -233,7 +233,7 @@ module.exports = function sharesRoutes({ db, auth, serveFile, safeJsonParse, emi
       // ?download=1 fuerza la descarga con el nombre real del archivo en vez de solo reproducirlo
       // inline — decisión explícita del usuario: descarga siempre disponible, sin condición de
       // pago, porque solo comparte estos links con clientes de confianza.
-      await serveFile(res, video.filename, req.query.download === '1' ? video.original_name : null);
+      await serveFile(res, video.filename, req.query.download === '1' ? videoDownloadName(video) : null);
     } catch (e) { console.error(e); res.status(500).end(); }
   });
 
@@ -331,7 +331,7 @@ module.exports = function sharesRoutes({ db, auth, serveFile, safeJsonParse, emi
       if (!owned) return res.status(404).end();
       const video = await db('videos').where({ id: req.params.videoId }).first();
       if (!video) return res.status(404).end();
-      await serveFile(res, video.filename, req.query.download === '1' ? video.original_name : null);
+      await serveFile(res, video.filename, req.query.download === '1' ? videoDownloadName(video) : null);
     } catch (e) { console.error(e); res.status(500).end(); }
   });
 

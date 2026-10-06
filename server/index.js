@@ -129,6 +129,16 @@ async function serveFile(res, filename, downloadName) {
   return res.sendFile(path.join(uploadsDir, filename));
 }
 
+// Nombre con el que se descarga un video: el título actual (lo que se ve en la UI, y lo que cambia
+// si alguien lo renombra) en vez del nombre original de subida — si no, renombrar un video en la
+// app no se reflejaría en el archivo que termina bajando la gente. Si el título no tiene extensión
+// (puede pasar si alguien lo escribió a mano sin ".mp4"), se le pega la del archivo real.
+function videoDownloadName(video) {
+  const base = (video.title || '').trim() || video.original_name;
+  const ext = path.extname(video.original_name || '');
+  return ext && !base.toLowerCase().endsWith(ext.toLowerCase()) ? `${base}${ext}` : base;
+}
+
 // Borra un archivo subido sin tirar el request si falta o falla — se llama siempre después
 // de que la DB ya quedó consistente, así que un error acá es solo una fuga de storage, no de datos.
 async function safeUnlink(filename) {
@@ -935,14 +945,26 @@ app.get('/uploads/:filename', authMedia, async (req, res) => {
       return res.status(404).json({ error: 'Archivo no encontrado' });
     }
 
-    if (req.user.role === 'admin') return serveFile(res, filename);
+    // ?download=1 fuerza Content-Disposition: attachment con el título actual del video en vez de
+    // solo reproducirlo inline — mismo mecanismo que ya usa el link público de revisión. Solo
+    // aplica cuando filename es el archivo del video en sí (no un thumbnail, que no tiene sentido
+    // "descargar" aparte).
+    const forceDownload = req.query.download === '1';
+    const video = await db('videos').where({ filename }).first();
+    const downloadName = forceDownload && video ? videoDownloadName(video) : null;
 
-    // El thumbnail tiene su propio nombre de archivo (distinto al del video), así que el mismo
-    // chequeo de acceso por proyecto tiene que poder encontrar el video dueño buscando por
-    // cualquiera de las dos columnas.
-    const video = await db('videos').where({ filename }).orWhere({ thumbnail_filename: filename }).first();
+    if (req.user.role === 'admin') return serveFile(res, filename, downloadName);
+
     if (video) {
-      if (await isProjectMember(req.user.id, req.user.role, video.project_id)) return serveFile(res, filename);
+      if (await isProjectMember(req.user.id, req.user.role, video.project_id)) return serveFile(res, filename, downloadName);
+      return res.status(403).json({ error: 'Sin acceso' });
+    }
+
+    // El thumbnail tiene su propio nombre de archivo (distinto al del video) — se busca aparte
+    // porque la query de arriba ya cubrió el caso de que `filename` sea el del video.
+    const thumbOwner = await db('videos').where({ thumbnail_filename: filename }).first();
+    if (thumbOwner) {
+      if (await isProjectMember(req.user.id, req.user.role, thumbOwner.project_id)) return serveFile(res, filename);
       return res.status(403).json({ error: 'Sin acceso' });
     }
 
@@ -1073,7 +1095,7 @@ require('./lib/payment-reminders')({ db, createNotification });
 app.use(require('./routes/video-comments')({ db, auth, isProjectMember, safeJsonParse, attachmentUploadMiddleware, emitToProject, extractMentionedUserIds, createNotification, safeUnlink, logActivity }));
 
 // ─── SHARES (links de revisión sin cuenta para clientes: por video y por cliente) ────────────
-app.use(require('./routes/shares')({ db, auth, serveFile, safeJsonParse, emitToProject, createNotification, logActivity }));
+app.use(require('./routes/shares')({ db, auth, serveFile, videoDownloadName, safeJsonParse, emitToProject, createNotification, logActivity }));
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
 

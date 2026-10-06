@@ -27,6 +27,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const [showUpload, setShowUpload] = useState(false);
   const [shareModal, setShareModal] = useState(false);
   const [showCompareModal, setShowCompareModal] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
   const [share, setShare] = useState(undefined); // undefined = sin cargar, null = sin link activo
   const [shareDays, setShareDays] = useState(30);
   const [shareBusy, setShareBusy] = useState(false);
@@ -214,6 +216,16 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       const patch = { approved_at: null, approved_by_name: null };
       setVideos(prev => prev.map(v => v.id === selectedVideo.id ? { ...v, ...patch } : v));
     } catch (e) { console.error(e); await alert('No se pudo quitar la aprobación: ' + e.message); }
+  };
+
+  const renameVideo = async () => {
+    const title = titleDraft.trim();
+    if (!title || title === selectedVideo.title) { setEditingTitle(false); return; }
+    try {
+      await api(`/api/videos/${selectedVideo.id}/rename`, { method: 'PATCH', body: { title } });
+      setVideos(prev => prev.map(v => v.id === selectedVideo.id ? { ...v, title } : v));
+      setEditingTitle(false);
+    } catch (e) { console.error(e); await alert('No se pudo renombrar el video: ' + e.message); }
   };
 
   const startEditComment = (c) => { setEditingComment(c.id); setEditText(c.content); };
@@ -615,8 +627,27 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--accent-glow)', border: `1px solid rgba(124,106,247,0.31)`, borderRadius: 6, padding: '3px 9px', fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>
           v{selectedVideo.version}
         </div>
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{selectedVideo.title}</span>
+        {editingTitle ? (
+          <input autoFocus value={titleDraft} onChange={e => setTitleDraft(e.target.value)}
+            onBlur={renameVideo}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); renameVideo(); } else if (e.key === 'Escape') setEditingTitle(false); }}
+            style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, background: 'var(--bg3)', border: '1px solid var(--accent)', borderRadius: 6, padding: '3px 7px', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
+        ) : (
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedVideo.title}</span>
+            {(user.role === 'admin' || selectedVideo.uploaded_by === user.id) && (
+              <button className="icon-btn" onClick={() => { setTitleDraft(selectedVideo.title); setEditingTitle(true); }}
+                title="Renombrar video" aria-label="Renombrar video" style={{ flexShrink: 0, color: 'var(--text3)' }}>
+                <Icon.pencil />
+              </button>
+            )}
+          </span>
+        )}
         <span style={{ fontSize: 11, color: 'var(--text3)' }}>{comments.length} comentarios</span>
+        <a href={mediaUrl(`/uploads/${selectedVideo.filename}?download=1`)} title="Descargar video" aria-label="Descargar video"
+          style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <Icon.download /> Descargar
+        </a>
         {/* Solo tiene sentido si hay al menos otra versión del mismo video (mismo group_id) —
             comparar contra un video sin relación no es lo que alguien espera de "comparar versiones". */}
         {videos.filter(v => v.group_id && v.group_id === selectedVideo.group_id).length > 1 && (
