@@ -153,6 +153,9 @@ body {
    .force-visible por JS en vez de depender de un :hover que ahí no existe de verdad. */
 .msg-row .msg-react-toolbar { opacity: 0; pointer-events: none; transition: opacity 0.15s; }
 @media (hover: hover) and (pointer: fine) {
+  /* --bg2 es el mismo paso de elevación "apenas más claro" que ya usan los paneles contra el
+     fondo de la página — no se inventa un color nuevo, mismo criterio que el resto de la app. */
+  .msg-row:hover { background: var(--bg2); }
   .msg-row:hover .msg-react-toolbar { opacity: 1; pointer-events: auto; }
 }
 .msg-react-toolbar.force-visible { opacity: 1; pointer-events: auto; }

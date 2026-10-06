@@ -11,8 +11,12 @@ import Icon from '../components/Icon';
 const formatRecordingTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 // Mismo set que QUICK_REACTIONS en server/routes/chat.js — reacciones rápidas fijas, sin picker
-// libre (a propósito, no todo el catálogo de emoji del sistema).
+// libre (a propósito, no todo el catálogo de emoji del sistema). Las 3 "primarias" se ven directo
+// en la barra (estilo Slack); el resto queda atrás del botón "😊 Más reacciones" para no saturar
+// el toolbar con 8 botones todo el tiempo.
 const QUICK_REACTIONS = ['👍', '👀', '✅', '🙌', '❤️', '🎉', '🔥', '😂'];
+const PRIMARY_REACTIONS = ['✅', '👀', '🙌'];
+const MORE_REACTIONS = QUICK_REACTIONS.filter(e => !PRIMARY_REACTIONS.includes(e));
 
 // Reproductor propio para notas de voz (estilo Slack) en vez de <audio controls> nativo: los
 // .webm que graba MediaRecorder no siempre reportan su propia duración de forma confiable en
@@ -1214,6 +1218,7 @@ const LONG_PRESS_MS = 450;
 function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, isNarrowViewport, highlighted }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   const [toolbarOpen, setToolbarOpen] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const rowRef = useRef(null);
   const pressTimerRef = useRef(null);
 
@@ -1242,20 +1247,37 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
     return () => document.removeEventListener('touchstart', handleOutside);
   }, [toolbarOpen]);
 
+  // El popover de "más reacciones" es un segundo nivel aparte del toolbar principal — en desktop
+  // el toolbar se muestra/oculta solo con CSS :hover (sin pasar por `toolbarOpen`), así que acá
+  // hace falta su propio cierre por click afuera, con mousedown además de touchstart.
+  useEffect(() => {
+    if (!emojiPickerOpen) return;
+    const handleOutside = (e) => {
+      if (rowRef.current && !rowRef.current.contains(e.target)) setEmojiPickerOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [emojiPickerOpen]);
+
   useEffect(() => () => clearPressTimer(), []);
 
-  const react = (emoji) => { onReact(emoji); setToolbarOpen(false); };
+  const react = (emoji) => { onReact(emoji); setToolbarOpen(false); setEmojiPickerOpen(false); };
 
   return (
     <div
       ref={rowRef}
       id={`chat-msg-${msg.id}`}
       className="msg-row"
+      onMouseLeave={() => setEmojiPickerOpen(false)}
       style={{
         display: 'flex', gap: 10, padding: compact ? '1px 0' : '8px 0 2px', alignItems: 'flex-start', position: 'relative',
         borderRadius: 8,
         boxShadow: highlighted ? '0 0 0 2px var(--accent)' : 'none',
-        transition: 'box-shadow 0.2s',
+        transition: 'box-shadow 0.2s, background-color 0.12s',
         // En celular, mantener presionado no debe disparar el menú nativo de "copiar/compartir"
         // ni seleccionar texto — compite visualmente con nuestra propia barra de reacciones.
         ...(isNarrowViewport ? { WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } : {}),
@@ -1273,7 +1295,7 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
         className={`panel msg-react-toolbar${toolbarOpen ? ' force-visible' : ''}`}
         style={{ position: 'absolute', top: -14, right: 0, display: 'flex', alignItems: 'center', gap: 2, borderRadius: 20, padding: '2px 4px', boxShadow: 'var(--shadow-lg)', zIndex: 1 }}
       >
-        {QUICK_REACTIONS.map(emoji => (
+        {PRIMARY_REACTIONS.map(emoji => (
           <button
             key={emoji}
             className="icon-btn"
@@ -1284,6 +1306,37 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
             {emoji}
           </button>
         ))}
+        <div style={{ position: 'relative' }}>
+          <button
+            className="icon-btn"
+            onClick={() => setEmojiPickerOpen(o => !o)}
+            title="Más reacciones"
+            aria-label="Más reacciones"
+            aria-expanded={emojiPickerOpen}
+            style={{ borderRadius: '50%', width: 24, height: 24, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', background: emojiPickerOpen ? 'var(--bg3)' : 'transparent' }}
+          >
+            😊
+          </button>
+          {/* Resto del set fijo de 8 (ver QUICK_REACTIONS) — no un picker libre de todo el
+              catálogo de emoji, a propósito. Mismo estilo de pill que el toolbar principal. */}
+          {emojiPickerOpen && (
+            <div className="panel msg-react-toolbar force-visible" role="menu"
+              style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, display: 'flex', gap: 2, borderRadius: 20, padding: '2px 4px', boxShadow: 'var(--shadow-lg)', zIndex: 2 }}>
+              {MORE_REACTIONS.map(emoji => (
+                <button
+                  key={emoji}
+                  role="menuitem"
+                  className="icon-btn"
+                  onClick={() => react(emoji)}
+                  title={`Reaccionar con ${emoji}`}
+                  style={{ borderRadius: '50%', width: 24, height: 24, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {/* Solo tiene sentido si hay texto — un mensaje de solo imagen/audio/archivo no tiene nada
             que copiar. Primera de una serie de acciones estilo Slack que se van a ir sumando acá
             (citar, fijar, reenviar, guardar, responder en hilo). */}
