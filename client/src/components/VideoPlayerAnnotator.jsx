@@ -837,7 +837,11 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit', resize: 'none', minHeight: 56, outline: 'none', boxSizing: 'border-box' }}
             onFocus={e => e.target.style.borderColor = 'var(--accent)'}
             onBlur={e => e.target.style.borderColor = 'var(--border)'}
-            onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitComment(); }}
+            onKeyDown={e => {
+              if (e.key !== 'Enter' || e.shiftKey) return;
+              e.preventDefault();
+              if (commentText.trim() && !submitting) submitComment();
+            }}
           />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
