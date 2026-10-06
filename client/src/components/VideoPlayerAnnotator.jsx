@@ -87,6 +87,15 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   const [rangeMode, setRangeMode] = useState(false);
   const [rangeStart, setRangeStart] = useState(null);
   const [rangeEnd, setRangeEnd] = useState(null);
+  // Handles arrastrables del rango sobre el timeline — 'start' | 'end' | null mientras se arrastra
+  // uno de los dos. timelineRef es lo que permite calcular a qué segundo corresponde la posición
+  // del mouse durante el drag (igual que ya hace seek() con el click, pero acá el mousemove puede
+  // salir del propio elemento mientras se arrastra, por eso se escucha en document, no en el div).
+  const timelineRef = useRef(null);
+  const [draggingHandle, setDraggingHandle] = useState(null);
+  // Se pone en true justo al soltar un handle, y se limpia en el próximo tick — alcanza para
+  // tapar el único click nativo que el navegador dispara inmediatamente después del mouseup.
+  const justDraggedHandleRef = useRef(false);
   const [capturedTs, setCapturedTs] = useState(null);
   const [commentText, setCommentText] = useState('');
   const [commentFiles, setCommentFiles] = useState([]);
@@ -212,6 +221,12 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   };
 
   const seek = (e) => {
+    // Al soltar un handle de rango, su posición quedó clampeada (no siguió al mouse hasta el
+    // final) — el mouseup termina sobre una zona del timeline que el handle ya no cubre, y el
+    // click nativo que el navegador sintetiza ahí cae directo en el timeline, no en el handle
+    // (stopPropagation en el handle no ayuda: el click ni pasa por él). Por eso se corta el seek
+    // directamente acá con esta bandera, en vez de depender de stopPropagation.
+    if (justDraggedHandleRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const t = pct * duration;
@@ -266,6 +281,57 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
     setCapturedTs(ts);
     setShowCommentInput(true);
   };
+
+  // Punto de tiempo (segundos) que corresponde a una posición X de mouse/touch sobre el timeline —
+  // misma cuenta que seek(), pero reusable desde el drag de los handles del rango.
+  const timeFromClientX = (clientX) => {
+    const el = timelineRef.current;
+    if (!el || !duration) return 0;
+    const rect = el.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    return ratio * duration;
+  };
+
+  const startHandleDrag = (which) => {
+    if (videoRef.current) videoRef.current.pause();
+    setDraggingHandle(which);
+  };
+
+  // Se re-suscribe en cada cambio de rangeStart/rangeEnd para que el handler de mousemove siempre
+  // tenga el valor más reciente del OTRO extremo a mano (para no dejar que un handle cruce al otro)
+  // sin necesidad de refs paralelos — el costo de volver a enganchar el listener en cada frame de
+  // drag es insignificante para esta interacción.
+  useEffect(() => {
+    if (!draggingHandle) return;
+    const onMove = (e) => {
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const t = timeFromClientX(clientX);
+      if (draggingHandle === 'start') {
+        const newStart = Math.min(t, rangeEnd ?? duration ?? t);
+        setRangeStart(newStart);
+        setCapturedTs({ type: 'range', start: newStart, end: rangeEnd ?? newStart });
+      } else {
+        const newEnd = Math.max(t, rangeStart ?? 0);
+        setRangeEnd(newEnd);
+        setCapturedTs({ type: 'range', start: rangeStart ?? newEnd, end: newEnd });
+      }
+    };
+    const onUp = () => {
+      setDraggingHandle(null);
+      justDraggedHandleRef.current = true;
+      setTimeout(() => { justDraggedHandleRef.current = false; }, 0);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchmove', onMove);
+    document.addEventListener('touchend', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onUp);
+    };
+  }, [draggingHandle, rangeStart, rangeEnd, duration]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const posFromClient = (clientX, clientY) => {
     const canvas = canvasRef.current;
@@ -607,7 +673,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
 
       {/* Timeline */}
       <div style={{ background: 'var(--bg2)', padding: '0 14px', flexShrink: 0 }}>
-        <div style={{ position: 'relative', height: 40, display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={seek}
+        <div ref={timelineRef} style={{ position: 'relative', height: 40, display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={seek}
           onKeyDown={onTimelineKeyDown}
           role="slider" tabIndex={duration ? 0 : -1} aria-label="Progreso del video"
           aria-valuemin={0} aria-valuemax={duration || 0} aria-valuenow={currentTime}
@@ -616,6 +682,35 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             <div style={{ width: `${progressPct}%`, height: '100%', background: 'var(--accent)', borderRadius: 2 }} />
             {rangePct != null && rangeEndPct != null && (
               <div style={{ position: 'absolute', top: 0, left: `${rangePct}%`, width: `${rangeEndPct - rangePct}%`, height: '100%', background: 'rgba(240,168,58,0.31)', borderLeft: '2px solid var(--yellow)', borderRight: '2px solid var(--yellow)' }} />
+            )}
+            {/* Handles arrastrables del rango — solo mientras rangeMode está activo (los de arriba,
+                el relleno amarillo, también se dibujan para comentarios de rango YA enviados por
+                cualquiera, así que estos van aparte y gateados por rangeMode para no confundir "el
+                rango que estoy armando ahora" con uno de un comentario existente). El área de
+                agarre (20px) es bastante más ancha que la barra blanca visible (3px) a propósito —
+                mismo criterio que cualquier editor de video, agarrarla "a pixel" sería frustrante. */}
+            {/* onClick además de onMouseDown: un mousedown+mouseup sobre el mismo elemento dispara
+                un evento "click" nativo propio, por separado, que sigue burbujeando hacia el
+                timeline aunque el mousedown ya haya hecho stopPropagation — sin esto, soltar el
+                handle también disparaba seek() y movía el video además de mover el handle (se
+                encontró probándolo en vivo, no se veía leyendo el código). */}
+            {rangeMode && rangePct != null && (
+              <div onMouseDown={e => { e.stopPropagation(); startHandleDrag('start'); }}
+                onTouchStart={e => { e.stopPropagation(); startHandleDrag('start'); }}
+                onClick={e => e.stopPropagation()}
+                title={`Inicio: ${formatT(rangeStart)}`}
+                style={{ position: 'absolute', top: -14, bottom: -14, left: `${rangePct}%`, width: 20, transform: 'translateX(-50%)', cursor: 'ew-resize', zIndex: 4, touchAction: 'none' }}>
+                <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 3, background: '#fff', transform: 'translateX(-50%)', borderRadius: 2, boxShadow: '0 0 0 1px rgba(0,0,0,0.3)' }} />
+              </div>
+            )}
+            {rangeMode && rangeEndPct != null && (
+              <div onMouseDown={e => { e.stopPropagation(); startHandleDrag('end'); }}
+                onTouchStart={e => { e.stopPropagation(); startHandleDrag('end'); }}
+                onClick={e => e.stopPropagation()}
+                title={`Fin: ${formatT(rangeEnd)}`}
+                style={{ position: 'absolute', top: -14, bottom: -14, left: `${rangeEndPct}%`, width: 20, transform: 'translateX(-50%)', cursor: 'ew-resize', zIndex: 4, touchAction: 'none' }}>
+                <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 3, background: '#fff', transform: 'translateX(-50%)', borderRadius: 2, boxShadow: '0 0 0 1px rgba(0,0,0,0.3)' }} />
+              </div>
             )}
             <div style={{ position: 'absolute', top: '50%', left: `${progressPct}%`, transform: 'translate(-50%,-50%)', width: 13, height: 13, borderRadius: '50%', background: 'var(--accent)', border: '2px solid #fff', pointerEvents: 'none' }} />
             {comments.map(c => {
@@ -663,7 +758,19 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           <div style={{ flex: 1 }} />
 
           {!rangeMode ? (
-            <button onClick={() => { setRangeMode(true); setRangeStart(null); setRangeEnd(null); }} title="Seleccionar rango"
+            <button onClick={() => {
+              if (videoRef.current) videoRef.current.pause();
+              // Arranca con un tramo de 3s desde donde está el video — así los handles del
+              // timeline aparecen de entrada, listos para arrastrar, en vez de requerir pasar
+              // primero por "Marcar inicio"/"Marcar fin" para tener algo que mostrar.
+              const start = currentTime;
+              const end = duration ? Math.min(duration, start + 3) : start + 3;
+              setRangeMode(true);
+              setRangeStart(start);
+              setRangeEnd(end);
+              setCapturedTs({ type: 'range', start, end });
+              setShowCommentInput(true);
+            }} title="Seleccionar rango"
               style={{ ...iconBtn, width: 'auto', gap: 5, padding: '0 9px', color: 'var(--yellow)' }}>
               <Icon.range /> <span style={{ fontSize: 11, fontWeight: 600 }}>Rango</span>
             </button>
@@ -679,7 +786,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
                   {rangeEnd != null ? `⏹ ${formatT(rangeEnd)}` : '⏹ Marcar fin'}
                 </button>
               )}
-              <button className="btn-outline" onClick={() => { setRangeMode(false); setRangeStart(null); setRangeEnd(null); setCapturedTs(null); setShowCommentInput(false); }}
+              <button className="btn-outline" onClick={() => { setRangeMode(false); setRangeStart(null); setRangeEnd(null); setCapturedTs(null); setShowCommentInput(false); setDraggingHandle(null); }}
                 title="Cancelar selección de rango" aria-label="Cancelar selección de rango"
                 style={{ borderRadius: 6, padding: '4px 8px', color: 'var(--text3)', fontSize: 11 }}>✕</button>
             </div>
