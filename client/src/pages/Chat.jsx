@@ -1271,7 +1271,7 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
           a la derecha del mensaje, estilo Slack. */}
       <div
         className={`panel msg-react-toolbar${toolbarOpen ? ' force-visible' : ''}`}
-        style={{ position: 'absolute', top: -14, right: 0, display: 'flex', gap: 2, borderRadius: 20, padding: '2px 4px', boxShadow: 'var(--shadow-lg)', zIndex: 1 }}
+        style={{ position: 'absolute', top: -14, right: 0, display: 'flex', alignItems: 'center', gap: 2, borderRadius: 20, padding: '2px 4px', boxShadow: 'var(--shadow-lg)', zIndex: 1 }}
       >
         {QUICK_REACTIONS.map(emoji => (
           <button
@@ -1284,6 +1284,22 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
             {emoji}
           </button>
         ))}
+        {/* Solo tiene sentido si hay texto — un mensaje de solo imagen/audio/archivo no tiene nada
+            que copiar. Primera de una serie de acciones estilo Slack que se van a ir sumando acá
+            (citar, fijar, reenviar, guardar, responder en hilo). */}
+        {msg.content && (
+          <>
+            <div style={{ width: 1, height: 16, background: 'var(--border2)', margin: '0 2px' }} />
+            <button
+              className="icon-btn"
+              onClick={() => { navigator.clipboard.writeText(msg.content); setToolbarOpen(false); }}
+              title="Copiar texto"
+              style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Icon.copy />
+            </button>
+          </>
+        )}
       </div>
       <div style={{ width: 36, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
         {!compact ? (
