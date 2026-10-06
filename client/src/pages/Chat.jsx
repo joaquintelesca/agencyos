@@ -1313,9 +1313,9 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
             title="Más reacciones"
             aria-label="Más reacciones"
             aria-expanded={emojiPickerOpen}
-            style={{ borderRadius: '50%', width: 24, height: 24, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', background: emojiPickerOpen ? 'var(--bg3)' : 'transparent' }}
+            style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', background: emojiPickerOpen ? 'var(--bg3)' : 'transparent' }}
           >
-            😊
+            <Icon.smile />
           </button>
           {/* Resto del set fijo de 8 (ver QUICK_REACTIONS) — no un picker libre de todo el
               catálogo de emoji, a propósito. Mismo estilo de pill que el toolbar principal. */}
@@ -1347,7 +1347,7 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
               className="icon-btn"
               onClick={() => { navigator.clipboard.writeText(msg.content); setToolbarOpen(false); }}
               title="Copiar texto"
-              style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
             >
               <Icon.copy />
             </button>

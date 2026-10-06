@@ -43,6 +43,9 @@ const Icon = {
   copy: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="12" height="12" rx="1.5" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></svg>,
   download: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12m0 0 4.5-4.5M12 15 7.5 10.5" /><path d="M4 18v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" /></svg>,
   link: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 14a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.5 1.5" /><path d="M14 10a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.5-1.5" /></svg>,
+  // Botón "más reacciones" del chat — a propósito un ícono de trazo, no un emoji: un emoji ahí se
+  // confundía con una reacción más entre las demás (ver comentario arriba del archivo).
+  smile: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M8 13.5c1 1.5 2.5 2.5 4 2.5s3-1 4-2.5" /><circle cx="9" cy="9.3" r="0.9" fill="currentColor" stroke="none" /><circle cx="15" cy="9.3" r="0.9" fill="currentColor" stroke="none" /></svg>,
 };
 
 export default Icon;
