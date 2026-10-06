@@ -6,6 +6,9 @@ import { initials } from '../utils/format';
 import { uploadVideoChunked, captureVideoThumbnail } from '../utils/upload';
 import VideoPlayerAnnotator, { formatTime } from './VideoPlayerAnnotator';
 import VideoCompareModal from './VideoCompareModal';
+import VideoShareModal from './VideoShareModal';
+import RenameVideoModal from './RenameVideoModal';
+import VideoContextMenu from './VideoContextMenu';
 import MentionInput, { renderMentions } from './MentionInput';
 import useNarrowViewport from '../hooks/useNarrowViewport';
 import useModalA11y from '../hooks/useModalA11y';
@@ -14,7 +17,7 @@ import Icon from './Icon';
 export default function VideoReview({ projectId, tasks = [], uploadForTaskId, onUploadForTaskHandled, initialVideoId }) {
   const { api, user, socket, mediaUrl, token } = useAuth();
   const { scheduleDelete } = useUndo();
-  const { alert, confirm } = useAlert();
+  const { alert } = useAlert();
   // El panel de comentarios (320px fijo) al lado del video no entra en un celular — abajo de este
   // ancho se apilan: video arriba, comentarios abajo con su propia altura y scroll.
   const isNarrowViewport = useNarrowViewport();
@@ -25,13 +28,12 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const appliedInitialVideoRef = useRef(null);
   const [comments, setComments] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
-  const [shareModal, setShareModal] = useState(false);
+  const [shareModalVideoId, setShareModalVideoId] = useState(null);
+  const [renameModalVideo, setRenameModalVideo] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, video }
   const [showCompareModal, setShowCompareModal] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
-  const [share, setShare] = useState(undefined); // undefined = sin cargar, null = sin link activo
-  const [shareDays, setShareDays] = useState(30);
-  const [shareBusy, setShareBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadForm, setUploadForm] = useState({ title: '', version: '', task_id: '' });
@@ -327,30 +329,17 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     });
   };
 
-  const openShareModal = async () => {
-    setShareModal(true);
-    setShare(undefined);
-    try {
-      setShare(await api(`/api/videos/${selectedVideo.id}/share`));
-    } catch (e) { console.error(e); setShare(null); }
-  };
-
-  const createShare = async () => {
-    setShareBusy(true);
-    try {
-      setShare(await api(`/api/videos/${selectedVideo.id}/share`, { method: 'POST', body: { expiresInDays: shareDays } }));
-    } catch (e) { console.error(e); await alert('No se pudo generar el link: ' + e.message); }
-    finally { setShareBusy(false); }
-  };
-
-  const revokeShare = async () => {
-    if (!share || !await confirm('¿Desactivar este link? El cliente ya no va a poder abrirlo.', { confirmText: 'Desactivar', danger: true })) return;
-    setShareBusy(true);
-    try {
-      await api(`/api/video-shares/${share.id}/revoke`, { method: 'PATCH' });
-      setShare(null);
-    } catch (e) { console.error(e); await alert('No se pudo desactivar el link: ' + e.message); }
-    finally { setShareBusy(false); }
+  // Items del menú de clic derecho sobre una tarjeta — mismas 4 acciones que ya existen dentro
+  // del reproductor (renombrar, descargar, compartir, eliminar), filtradas por el mismo permiso
+  // que ya tiene cada una ahí (Compartir admin-only, el resto admin o quien subió el video).
+  const videoMenuItems = (v) => {
+    const canManage = user.role === 'admin' || v.uploaded_by === user.id;
+    const items = [];
+    if (canManage) items.push({ label: 'Renombrar', icon: <Icon.pencil />, onClick: () => setRenameModalVideo(v) });
+    items.push({ label: 'Descargar', icon: <Icon.download />, href: mediaUrl(`/uploads/${v.filename}?download=1`) });
+    if (user.role === 'admin') items.push({ label: 'Compartir', icon: '🔗', onClick: () => setShareModalVideoId(v.id) });
+    if (canManage) items.push({ label: 'Eliminar', icon: <Icon.trash />, danger: true, onClick: () => deleteVideo(v) });
+    return items;
   };
 
   const handleUnstack = async (videoId) => {
@@ -435,6 +424,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       {...dropTargetProps(v.id)}
       {...touchDragProps(v.id)}
       onClick={() => { if (justDraggedRef.current) return; setSelectedVideo(v); }}
+      onContextMenu={e => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, video: v }); }}
       style={{ position: 'relative', background: 'var(--bg2)', border: `2px solid ${isDragOver ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 12, padding: 16, cursor: dragVideoId ? 'grabbing' : 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s', opacity: dragVideoId === v.id ? 0.4 : 1, touchAction: dragVideoId ? 'none' : 'auto' }}
       onMouseEnter={e => { if (!isDragOver && !dragVideoId) e.currentTarget.style.borderColor = 'var(--accent)'; }}
       onMouseLeave={e => { if (!isDragOver) e.currentTarget.style.borderColor = 'var(--border)'; }}>
@@ -479,7 +469,6 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   );
 
   const uploadModalRef = useModalA11y(showUpload, () => { if (!uploading) setShowUpload(false); });
-  const shareModalRef = useModalA11y(shareModal, () => setShareModal(false));
 
   // ─── VIDEO LIST ──────────────────────────────────────────────────────────────
   if (!selectedVideo) {
@@ -519,6 +508,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                 {...cardDragProps(item.latest.id)}
                 {...touchDragProps(item.latest.id)}
                 onClick={() => { if (justDraggedRef.current) return; setSelectedVideo(item.latest); }}
+                onContextMenu={e => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, video: item.latest }); }}
                 style={{
                   background: 'var(--bg2)', borderRadius: 12, padding: 16,
                   cursor: dragVideoId ? 'grabbing' : 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s',
@@ -601,6 +591,16 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
             </div>
           </div>
         )}
+        {contextMenu && (
+          <VideoContextMenu x={contextMenu.x} y={contextMenu.y} items={videoMenuItems(contextMenu.video)} onClose={() => setContextMenu(null)} />
+        )}
+        {shareModalVideoId && (
+          <VideoShareModal videoId={shareModalVideoId} onClose={() => setShareModalVideoId(null)} />
+        )}
+        {renameModalVideo && (
+          <RenameVideoModal video={renameModalVideo} onClose={() => setRenameModalVideo(null)}
+            onRenamed={newTitle => setVideos(prev => prev.map(v => v.id === renameModalVideo.id ? { ...v, title: newTitle } : v))} />
+        )}
       </div>
     );
   }
@@ -659,7 +659,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         {/* Admin-only a propósito, no "admin o quien subió" como Eliminar — decidir qué sale a
             un cliente externo es una decisión de la agencia, no de un editor individual. */}
         {user.role === 'admin' && (
-          <button onClick={openShareModal} title="Compartir con el cliente"
+          <button onClick={() => setShareModalVideoId(selectedVideo.id)} title="Compartir con el cliente"
             style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
             🔗 Compartir
           </button>
@@ -942,51 +942,17 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         </div>
       )}
 
-      {/* Share modal — link de revisión para el cliente */}
-      {shareModal && (
-        <div className="modal-overlay" onClick={() => setShareModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} ref={shareModalRef} role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
-            <button className="modal-close" onClick={() => setShareModal(false)} title="Cerrar" aria-label="Cerrar">✕</button>
-            <h2 id="share-modal-title">Compartir con el cliente</h2>
-            {share === undefined && <div style={{ padding: '20px 0', textAlign: 'center' }}><div className="spinner" /></div>}
-            {share === null && (
-              <>
-                <p style={{ fontSize: 'var(--fs-base)', color: 'var(--text2)', lineHeight: 'var(--lh-normal)', marginBottom: 16 }}>
-                  Se genera un link público para este video puntual — sin cuenta ni contraseña, el cliente puede verlo y dejar comentarios con timestamp igual que acá. No ve otros videos, tareas ni información de pago.
-                </p>
-                <div className="form-group">
-                  <label>Vence en</label>
-                  <select className="input" value={shareDays} onChange={e => setShareDays(Number(e.target.value))}>
-                    <option value={7}>7 días</option>
-                    <option value={30}>30 días</option>
-                    <option value={90}>90 días</option>
-                  </select>
-                </div>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button className="btn btn-ghost" onClick={() => setShareModal(false)}>Cancelar</button>
-                  <button className="btn btn-primary" onClick={createShare} disabled={shareBusy}>{shareBusy ? 'Generando...' : 'Generar link'}</button>
-                </div>
-              </>
-            )}
-            {share && (
-              <>
-                <div className="form-group">
-                  <label>Link para el cliente</label>
-                  <input className="input" readOnly value={`${window.location.origin}/review/${share.id}`}
-                    onClick={e => e.target.select()} />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                  <span className="badge" style={{ fontWeight: 500, background: 'rgba(34,201,122,0.12)', color: 'var(--green)' }}>✓ Activo</span>
-                  <span style={{ fontSize: 12, color: 'var(--text3)' }}>vence el {new Date(share.expires_at).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button className="btn btn-danger" onClick={revokeShare} disabled={shareBusy}>Desactivar</button>
-                  <button className="btn btn-primary" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/review/${share.id}`); }}>Copiar link</button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+      {shareModalVideoId && (
+        <VideoShareModal videoId={shareModalVideoId} onClose={() => setShareModalVideoId(null)} />
+      )}
+
+      {renameModalVideo && (
+        <RenameVideoModal video={renameModalVideo} onClose={() => setRenameModalVideo(null)}
+          onRenamed={newTitle => setVideos(prev => prev.map(v => v.id === renameModalVideo.id ? { ...v, title: newTitle } : v))} />
+      )}
+
+      {contextMenu && (
+        <VideoContextMenu x={contextMenu.x} y={contextMenu.y} items={videoMenuItems(contextMenu.video)} onClose={() => setContextMenu(null)} />
       )}
 
       {showCompareModal && (() => {

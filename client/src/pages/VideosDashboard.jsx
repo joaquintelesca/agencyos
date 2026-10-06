@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useUndo } from '../context/UndoContext';
 import { initials } from '../utils/format';
 import ClickableRow from '../components/ClickableRow';
+import VideoContextMenu from '../components/VideoContextMenu';
+import VideoShareModal from '../components/VideoShareModal';
+import RenameVideoModal from '../components/RenameVideoModal';
+import Icon from '../components/Icon';
 
 const CATEGORIES = [
   { key: 'unreviewed', label: 'Sin revisar', color: 'var(--blue)', bg: 'rgba(58,158,240,0.12)' },
@@ -12,10 +17,11 @@ const CATEGORIES = [
 ];
 const categoryMeta = (key) => CATEGORIES.find(c => c.key === key);
 
-function VideoRow({ v, navigate, showClient }) {
+function VideoRow({ v, navigate, showClient, onContextMenu }) {
   const meta = categoryMeta(v.category);
   return (
     <ClickableRow className="panel" onClick={() => navigate(`/project/${v.project_id}?tab=videos`)}
+      onContextMenu={e => { e.preventDefault(); onContextMenu(e, v); }}
       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 9, cursor: 'pointer', transition: 'all 0.1s' }}
       onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
       onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
@@ -41,10 +47,11 @@ function VideoRow({ v, navigate, showClient }) {
 // NO es el mismo componente: acá se listan videos de CUALQUIER proyecto a la vez (sin el drag de
 // apilar versiones, que no tiene sentido entre proyectos distintos), y se agrega el nombre del
 // proyecto/cliente y el badge de categoría en vez del estado de la tarea vinculada.
-function VideoCard({ v, navigate, showClient, mediaUrl }) {
+function VideoCard({ v, navigate, showClient, mediaUrl, onContextMenu }) {
   const meta = categoryMeta(v.category);
   return (
     <ClickableRow className="" onClick={() => navigate(`/project/${v.project_id}?tab=videos`)}
+      onContextMenu={e => { e.preventDefault(); onContextMenu(e, v); }}
       style={{ display: 'block', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, cursor: 'pointer', transition: 'border-color 0.15s' }}
       onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
       onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
@@ -84,16 +91,41 @@ function VideoCard({ v, navigate, showClient, mediaUrl }) {
 
 export default function VideosDashboard() {
   const { api, mediaUrl } = useAuth();
+  const { scheduleDelete } = useUndo();
   const navigate = useNavigate();
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all | review | editing | approved
   const [view, setView] = useState('general'); // general | client
   const [layout, setLayout] = useState('list'); // list | cards
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, video }
+  const [shareModalVideoId, setShareModalVideoId] = useState(null);
+  const [renameModalVideo, setRenameModalVideo] = useState(null);
 
   useEffect(() => {
     api('/api/dashboard/videos-overview').then(setVideos).catch(console.error).finally(() => setLoading(false));
   }, []);
+
+  // Esta página es admin-only (el server devuelve 403 a cualquier otro rol), así que a diferencia
+  // de "Videos del proyecto" acá no hace falta filtrar por quién subió cada video — si se ve esta
+  // página, se pueden gestionar los 4 videos de cualquiera.
+  const openContextMenu = (e, v) => setContextMenu({ x: e.clientX, y: e.clientY, video: v });
+  const deleteVideoFromDashboard = (v) => {
+    setVideos(prev => prev.filter(x => x.id !== v.id));
+    scheduleDelete('Video eliminado', {
+      onCommit: async () => {
+        try { await api(`/api/videos/${v.id}`, { method: 'DELETE' }); }
+        catch (e) { if (e.status === 404) return; throw e; }
+      },
+      onUndo: () => setVideos(prev => [v, ...prev]),
+    });
+  };
+  const videoMenuItems = (v) => [
+    { label: 'Renombrar', icon: <Icon.pencil />, onClick: () => setRenameModalVideo(v) },
+    { label: 'Descargar', icon: <Icon.download />, href: mediaUrl(`/uploads/${v.filename}?download=1`) },
+    { label: 'Compartir', icon: '🔗', onClick: () => setShareModalVideoId(v.id) },
+    { label: 'Eliminar', icon: <Icon.trash />, danger: true, onClick: () => deleteVideoFromDashboard(v) },
+  ];
 
   const counts = CATEGORIES.reduce((acc, c) => ({ ...acc, [c.key]: videos.filter(v => v.category === c.key).length }), {});
   const shown = filter === 'all' ? videos : videos.filter(v => v.category === filter);
@@ -152,11 +184,11 @@ export default function VideosDashboard() {
       ) : view === 'general' ? (
         layout === 'cards' ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
-            {shown.map(v => <VideoCard key={v.id} v={v} navigate={navigate} mediaUrl={mediaUrl} showClient />)}
+            {shown.map(v => <VideoCard key={v.id} v={v} navigate={navigate} mediaUrl={mediaUrl} showClient onContextMenu={openContextMenu} />)}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {shown.map(v => <VideoRow key={v.id} v={v} navigate={navigate} showClient />)}
+            {shown.map(v => <VideoRow key={v.id} v={v} navigate={navigate} showClient onContextMenu={openContextMenu} />)}
           </div>
         )
       ) : (
@@ -170,16 +202,27 @@ export default function VideosDashboard() {
               </div>
               {layout === 'cards' ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
-                  {g.videos.map(v => <VideoCard key={v.id} v={v} navigate={navigate} mediaUrl={mediaUrl} />)}
+                  {g.videos.map(v => <VideoCard key={v.id} v={v} navigate={navigate} mediaUrl={mediaUrl} onContextMenu={openContextMenu} />)}
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {g.videos.map(v => <VideoRow key={v.id} v={v} navigate={navigate} />)}
+                  {g.videos.map(v => <VideoRow key={v.id} v={v} navigate={navigate} onContextMenu={openContextMenu} />)}
                 </div>
               )}
             </div>
           ))}
         </div>
+      )}
+
+      {contextMenu && (
+        <VideoContextMenu x={contextMenu.x} y={contextMenu.y} items={videoMenuItems(contextMenu.video)} onClose={() => setContextMenu(null)} />
+      )}
+      {shareModalVideoId && (
+        <VideoShareModal videoId={shareModalVideoId} onClose={() => setShareModalVideoId(null)} />
+      )}
+      {renameModalVideo && (
+        <RenameVideoModal video={renameModalVideo} onClose={() => setRenameModalVideo(null)}
+          onRenamed={newTitle => setVideos(prev => prev.map(v => v.id === renameModalVideo.id ? { ...v, title: newTitle } : v))} />
       )}
     </div>
   );
