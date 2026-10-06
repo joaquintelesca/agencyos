@@ -109,6 +109,7 @@ export default function Chat() {
   const [conversations, setConversations] = useState([]);
   const [channels, setChannels] = useState([]);
   const [activeConv, setActiveConv] = useState(null);
+  const [showSaved, setShowSaved] = useState(false);
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
@@ -391,6 +392,7 @@ export default function Chat() {
   };
 
   const openConv = async (conv) => {
+    setShowSaved(false);
     activeConvRef.current = conv;
     setActiveConv(conv);
     setMessages([]);
@@ -510,6 +512,35 @@ export default function Chat() {
     } catch (e) {
       console.error('Error al reaccionar:', e);
     }
+  };
+
+  // A diferencia de reaccionar, guardar es privado (no hay evento de socket que avise a nadie
+  // más) — el estado local se actualiza directo acá con la respuesta del servidor, optimista.
+  const toggleSave = async (messageId) => {
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, saved_by_me: !m.saved_by_me } : m));
+    try {
+      await api(`/api/chat/messages/${messageId}/save`, { method: 'POST' });
+    } catch (e) {
+      console.error('Error al guardar:', e);
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, saved_by_me: !m.saved_by_me } : m));
+    }
+  };
+
+  // Abre la conversación dueña de un mensaje guardado y lo flashea — mismo mecanismo que el deep
+  // link del buscador global (ver pendingHighlight más arriba), pero resuelto en el lugar en vez
+  // de navegar a una URL, porque ya estamos parados en esta misma página.
+  const goToSavedMessage = async (m) => {
+    setShowSaved(false);
+    if (m.type === 'channel') {
+      await openConv({ type: 'channel', id: m.channel_id, name: m.channel_name });
+    } else {
+      const isSelfNote = m.sender_id === user.id && m.receiver_id === user.id;
+      const otherId = isSelfNote ? user.id : (m.sender_id === user.id ? m.receiver_id : m.sender_id);
+      const otherName = isSelfNote ? 'Notas' : (m.sender_id === user.id ? m.receiver_name : m.sender_name);
+      await openConv({ type: 'dm', id: otherId, name: otherName, isSelf: isSelfNote });
+      if (m.client_id) await switchTab(m.client_id);
+    }
+    setPendingHighlight(m.id);
   };
 
   const handleFileUpload = async (e) => {
@@ -705,7 +736,7 @@ export default function Chat() {
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
 
       {/* ── SIDEBAR ── */}
-      {(!isNarrowViewport || !activeConv) && (
+      {(!isNarrowViewport || (!activeConv && !showSaved)) && (
       <div style={{ width: isNarrowViewport ? '100%' : 240, background: 'var(--bg2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
 
         {/* Header del sidebar */}
@@ -736,6 +767,25 @@ export default function Chat() {
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
+
+          {/* Guardados — entrada fija arriba de todo, no es un DM ni un canal, es una vista propia
+              (ver SavedMessagesPanel) con todo lo que guardaste de cualquier conversación. */}
+          <div style={{ padding: '10px 10px 0' }}>
+            <div
+              onClick={() => { setShowSaved(true); setActiveConv(null); activeConvRef.current = null; }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 9, padding: '6px 8px', borderRadius: 7, marginBottom: 1, cursor: 'pointer',
+                background: showSaved ? 'var(--accent)' : 'transparent', transition: 'background 0.1s',
+              }}
+              onMouseEnter={e => { if (!showSaved) e.currentTarget.style.background = 'var(--bg3)'; }}
+              onMouseLeave={e => { if (!showSaved) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <span style={{ width: 26, display: 'flex', justifyContent: 'center', color: showSaved ? '#fff' : 'var(--text3)', flexShrink: 0 }}>
+                {showSaved ? <Icon.bookmarkFilled /> : <Icon.bookmark />}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 500, color: showSaved ? '#fff' : 'var(--text2)' }}>Guardados</span>
+            </div>
+          </div>
 
           {/* Sección DMs */}
           <div style={{ padding: '10px 10px 4px' }}>
@@ -855,7 +905,16 @@ export default function Chat() {
       )}
 
       {/* ── ÁREA PRINCIPAL ── */}
-      {isNarrowViewport && !activeConv ? null : !activeConv ? (
+      {showSaved ? (
+        <SavedMessagesPanel
+          api={api}
+          userId={user?.id}
+          initials={initials}
+          isNarrowViewport={isNarrowViewport}
+          onBack={() => setShowSaved(false)}
+          onGoToMessage={goToSavedMessage}
+        />
+      ) : isNarrowViewport && !activeConv ? null : !activeConv ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, color: 'var(--text3)' }}>
           <div style={{ fontSize: 48 }}>💬</div>
           <div style={{ textAlign: 'center' }}>
@@ -971,6 +1030,7 @@ export default function Chat() {
                   onImageLoad={rescrollIfNearBottom}
                   userId={user?.id}
                   onReact={(emoji) => toggleReaction(msg.id, emoji)}
+                  onSave={() => toggleSave(msg.id)}
                   isNarrowViewport={isNarrowViewport}
                   highlighted={flashMessageId === msg.id}
                 />
@@ -1210,12 +1270,79 @@ function SidebarItem({ label, subtitle, active, unread, online, color, isUser, i
   );
 }
 
+// Vista plana de "todo lo que guardé", de cualquier conversación a la vez — no reusa el hilo de
+// mensajes normal (Message) porque acá no hace falta reaccionar/editar, solo ver de dónde viene
+// cada uno y poder ir directo a esa conversación (onGoToMessage) o sacarlo de guardados.
+function SavedMessagesPanel({ api, userId, initials, isNarrowViewport, onBack, onGoToMessage }) {
+  const [saved, setSaved] = useState(null); // null = cargando
+
+  const load = () => { api('/api/chat/saved').then(setSaved).catch(() => setSaved([])); };
+  useEffect(load, []);
+
+  const unsave = async (m) => {
+    setSaved(prev => prev.filter(s => s.id !== m.id));
+    try { await api(`/api/chat/messages/${m.id}/save`, { method: 'POST' }); } catch (e) { console.error(e); }
+  };
+
+  const labelFor = (m) => {
+    if (m.type === 'channel') return `#${m.channel_name || 'canal'}`;
+    const isSelfNote = m.sender_id === userId && m.receiver_id === userId;
+    if (isSelfNote) return 'Notas';
+    return m.sender_id === userId ? m.receiver_name : m.sender_name;
+  };
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+        {isNarrowViewport && (
+          <button className="icon-btn" onClick={onBack} title="Volver" aria-label="Volver a la lista"
+            style={{ color: 'var(--text2)', fontSize: 18, padding: 0, marginLeft: 34, flexShrink: 0 }}>←</button>
+        )}
+        <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--bg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--yellow)' }}>
+          <Icon.bookmarkFilled />
+        </div>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>Guardados</div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+        {saved === null && <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><div className="spinner" /></div>}
+        {saved?.length === 0 && (
+          <div className="empty"><div className="empty-icon">🔖</div><p>Nada guardado todavía</p><p>Pasá el mouse sobre un mensaje y tocá el ícono de guardar</p></div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {saved?.map(m => (
+            <div key={m.id} className="panel" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 9, cursor: 'pointer' }}
+              onClick={() => onGoToMessage(m)}>
+              <div className="avatar" style={{ background: 'var(--accent)', width: 30, height: 30, fontSize: 11, flexShrink: 0 }}>
+                {m.type === 'channel' ? '#' : initials(m.sender_name)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>{m.sender_name}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>en {labelFor(m)}</span>
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {m.content || (m.file_type ? '📎 Archivo' : '')}
+                </div>
+              </div>
+              <button className="icon-btn" onClick={e => { e.stopPropagation(); unsave(m); }}
+                title="Quitar de guardados" aria-label="Quitar de guardados"
+                style={{ color: 'var(--yellow)', flexShrink: 0 }}>
+                <Icon.bookmarkFilled />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Cuánto hay que mantener presionado un mensaje en celular para que aparezca la barra de
 // reacciones — el mismo gesto que WhatsApp/Telegram, ni tan corto que se dispare con un tap
 // normal ni tan largo que se sienta que no respondió.
 const LONG_PRESS_MS = 450;
 
-function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, isNarrowViewport, highlighted }) {
+function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, onSave, isNarrowViewport, highlighted }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -1337,22 +1464,29 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
             </div>
           )}
         </div>
-        {/* Solo tiene sentido si hay texto — un mensaje de solo imagen/audio/archivo no tiene nada
-            que copiar. Primera de una serie de acciones estilo Slack que se van a ir sumando acá
-            (citar, fijar, reenviar, guardar, responder en hilo). */}
+        {/* Serie de acciones estilo Slack que se van a ir sumando acá (citar, fijar, reenviar,
+            responder en hilo). "Copiar" solo tiene sentido si hay texto — un mensaje de solo
+            imagen/audio/archivo no tiene nada que copiar; "Guardar" aplica a cualquier mensaje. */}
+        <div style={{ width: 1, height: 16, background: 'var(--border2)', margin: '0 2px' }} />
         {msg.content && (
-          <>
-            <div style={{ width: 1, height: 16, background: 'var(--border2)', margin: '0 2px' }} />
-            <button
-              className="icon-btn"
-              onClick={() => { navigator.clipboard.writeText(msg.content); setToolbarOpen(false); }}
-              title="Copiar texto"
-              style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
-            >
-              <Icon.copy />
-            </button>
-          </>
+          <button
+            className="icon-btn"
+            onClick={() => { navigator.clipboard.writeText(msg.content); setToolbarOpen(false); }}
+            title="Copiar texto"
+            style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+          >
+            <Icon.copy />
+          </button>
         )}
+        <button
+          className="icon-btn"
+          onClick={() => { onSave(); setToolbarOpen(false); }}
+          title={msg.saved_by_me ? 'Quitar de guardados' : 'Guardar'}
+          aria-pressed={!!msg.saved_by_me}
+          style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: msg.saved_by_me ? 'var(--yellow)' : '#fff' }}
+        >
+          {msg.saved_by_me ? <Icon.bookmarkFilled /> : <Icon.bookmark />}
+        </button>
       </div>
       <div style={{ width: 36, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
         {!compact ? (

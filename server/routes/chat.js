@@ -8,6 +8,20 @@ const QUICK_REACTIONS = ['👍', '👀', '✅', '🙌', '❤️', '🎉', '🔥'
 module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUpload, verifyAndPersistFiles, SAFE_ATTACHMENT_MIME_EXT }) {
   const router = express.Router();
 
+  // Mismo criterio que ver el mensaje: participante del DM, o miembro del canal (o admin). Usado
+  // por reaccionar y por guardar — cualquier acción que toque un mensaje puntual por id.
+  async function canAccessMessage(user, message) {
+    if (message.type === 'dm') {
+      return user.role === 'admin' || user.id === message.sender_id || user.id === message.receiver_id;
+    }
+    if (message.type === 'channel') {
+      if (user.role === 'admin') return true;
+      const isMember = await db('chat_channel_members').where({ channel_id: message.channel_id, user_id: user.id }).first();
+      return !!isMember;
+    }
+    return false;
+  }
+
   router.get('/api/chat/dm-tabs', auth, async (req, res) => {
     try {
       const { userId } = req.query;
@@ -162,9 +176,15 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
         const byEmoji = (reactionsByMessage[row.message_id] ??= {});
         (byEmoji[row.emoji] ??= { emoji: row.emoji, users: [] }).users.push({ id: row.user_id, name: row.user_name });
       }
+      // Guardados: solo importa si LOS GUARDÉ YO (no es un dato visible para otros, a diferencia
+      // de las reacciones), así que alcanza con un Set de ids, filtrado por user_id.
+      const savedIds = messageIds.length
+        ? new Set(await db('chat_saved_messages').where('user_id', userId).whereIn('message_id', messageIds).pluck('message_id'))
+        : new Set();
       const withReactions = ordered.map(m => ({
         ...m,
         reactions: Object.values(reactionsByMessage[m.id] || {}).map(r => ({ ...r, count: r.users.length })),
+        saved_by_me: savedIds.has(m.id),
       }));
       res.json(withReactions);
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -179,17 +199,7 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
       const message = await db('chat_messages').where({ id: req.params.id }).first();
       if (!message) return res.status(404).json({ error: 'Mensaje no encontrado' });
 
-      // Mismo criterio de acceso que ver el mensaje: participante del DM, o miembro del canal (o admin).
-      if (message.type === 'dm') {
-        if (req.user.role !== 'admin' && req.user.id !== message.sender_id && req.user.id !== message.receiver_id) {
-          return res.status(403).json({ error: 'Sin acceso' });
-        }
-      } else if (message.type === 'channel') {
-        if (req.user.role !== 'admin') {
-          const isMember = await db('chat_channel_members').where({ channel_id: message.channel_id, user_id: req.user.id }).first();
-          if (!isMember) return res.status(403).json({ error: 'No sos miembro de este canal' });
-        }
-      }
+      if (!await canAccessMessage(req.user, message)) return res.status(403).json({ error: 'Sin acceso' });
 
       const existing = await db('chat_reactions').where({ message_id: req.params.id, user_id: req.user.id, emoji }).first();
       let action;
@@ -210,6 +220,43 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
         for (const uid of members) io.to(`user:${uid}`).emit('chat:reaction', payload);
       }
       res.json({ success: true, action });
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // Toggle guardar/quitar un mensaje — privado por usuario (no se avisa por socket a nadie más,
+  // a diferencia de reaccionar, que sí es visible para el resto de la conversación).
+  router.post('/api/chat/messages/:id/save', auth, async (req, res) => {
+    try {
+      const message = await db('chat_messages').where({ id: req.params.id }).first();
+      if (!message) return res.status(404).json({ error: 'Mensaje no encontrado' });
+      if (!await canAccessMessage(req.user, message)) return res.status(403).json({ error: 'Sin acceso' });
+
+      const existing = await db('chat_saved_messages').where({ message_id: req.params.id, user_id: req.user.id }).first();
+      if (existing) {
+        await db('chat_saved_messages').where({ id: existing.id }).delete();
+        return res.json({ saved: false });
+      }
+      await db('chat_saved_messages').insert({ id: uuidv4(), message_id: req.params.id, user_id: req.user.id });
+      res.json({ saved: true });
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // Lista de mensajes guardados por el usuario actual, de cualquier conversación — mismo shape
+  // de columnas (sender_name/receiver_name/channel_name/client_id) que la búsqueda global en
+  // search.js, para poder armar el link "ir al mensaje" con la misma lógica en el cliente.
+  router.get('/api/chat/saved', auth, async (req, res) => {
+    try {
+      const rows = await db('chat_saved_messages as s')
+        .join('chat_messages as m', 's.message_id', 'm.id')
+        .join('users as u', 'm.sender_id', 'u.id')
+        .leftJoin('users as ru', 'm.receiver_id', 'ru.id')
+        .leftJoin('chat_channels as ch', 'm.channel_id', 'ch.id')
+        .where('s.user_id', req.user.id)
+        .select('m.id', 'm.content', 'm.type', 'm.sender_id', 'm.receiver_id', 'm.channel_id', 'm.client_id',
+          'm.created_at', 'm.file_type', 'u.name as sender_name', 'ru.name as receiver_name', 'ch.name as channel_name',
+          's.created_at as saved_at')
+        .orderBy('s.created_at', 'desc');
+      res.json(rows);
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 
