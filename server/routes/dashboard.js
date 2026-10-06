@@ -89,7 +89,7 @@ module.exports = function dashboardRoutes({ db, auth }) {
         .leftJoin(unresolvedSub.as('uc'), 'uc.video_id', 'v.id')
         .leftJoin(totalSub.as('tc'), 'tc.video_id', 'v.id')
         .select(
-          'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at', 'v.file_size',
+          'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at', 'v.file_size', 'v.thumbnail_filename',
           'p.name as project_name', 'p.color as project_color',
           'c.id as client_id', 'c.name as client_name', 'c.color as client_color',
           'u.name as uploader_name',

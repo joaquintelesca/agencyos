@@ -37,13 +37,59 @@ function VideoRow({ v, navigate, showClient }) {
   );
 }
 
+// Misma tarjeta visual que "Videos del proyecto" (VideoReview.jsx renderVideoCard) — a propósito
+// NO es el mismo componente: acá se listan videos de CUALQUIER proyecto a la vez (sin el drag de
+// apilar versiones, que no tiene sentido entre proyectos distintos), y se agrega el nombre del
+// proyecto/cliente y el badge de categoría en vez del estado de la tarea vinculada.
+function VideoCard({ v, navigate, showClient, mediaUrl }) {
+  const meta = categoryMeta(v.category);
+  return (
+    <ClickableRow className="" onClick={() => navigate(`/project/${v.project_id}?tab=videos`)}
+      style={{ display: 'block', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, cursor: 'pointer', transition: 'border-color 0.15s' }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+      <div style={{ width: '100%', paddingBottom: '56%', background: 'var(--bg4)', borderRadius: 8, marginBottom: 10, position: 'relative', overflow: 'hidden' }}>
+        {v.thumbnail_filename
+          ? <img src={mediaUrl(`/uploads/${v.thumbnail_filename}`)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>▶️</div>}
+        {v.approved_at && (
+          <div title={`Aprobado${v.approved_by_name ? ` por ${v.approved_by_name}` : ''}`}
+            style={{ position: 'absolute', bottom: 6, left: 6, width: 20, height: 20, borderRadius: '50%', background: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 700 }}>
+            ✓
+          </div>
+        )}
+      </div>
+      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.title}</div>
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ width: 7, height: 7, borderRadius: '50%', background: v.project_color || 'var(--text3)', flexShrink: 0 }} />
+        {showClient && v.client_name ? `${v.client_name} · ` : ''}{v.project_name}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <span className="badge" style={{ padding: '2px 7px', background: 'var(--accent-glow)', color: 'var(--accent2)', fontWeight: 700, flexShrink: 0 }}>v{v.version}</span>
+        <span className="badge" style={{ fontSize: 10, fontWeight: 500, background: meta.bg, color: meta.color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {v.category === 'editing' ? `${v.unresolved_count} comentario${v.unresolved_count !== 1 ? 's' : ''}` : meta.label}
+        </span>
+      </div>
+      {v.uploader_name && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
+          <div className="avatar" style={{ width: 18, height: 18, background: 'var(--accent)', fontSize: 7, fontWeight: 700 }}>
+            {initials(v.uploader_name)}
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.uploader_name}</span>
+        </div>
+      )}
+    </ClickableRow>
+  );
+}
+
 export default function VideosDashboard() {
-  const { api } = useAuth();
+  const { api, mediaUrl } = useAuth();
   const navigate = useNavigate();
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all | review | editing | approved
   const [view, setView] = useState('general'); // general | client
+  const [layout, setLayout] = useState('list'); // list | cards
 
   useEffect(() => {
     api('/api/dashboard/videos-overview').then(setVideos).catch(console.error).finally(() => setLoading(false));
@@ -70,12 +116,19 @@ export default function VideosDashboard() {
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', rowGap: 10 }}>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--fs-xl)', fontWeight: 800 }}>Videos</h1>
-        <div className="tab-switch">
-          {[['general', 'General'], ['client', 'Por cliente']].map(([key, label]) => (
-            <button key={key} className={view === key ? 'active' : ''} onClick={() => setView(key)}>{label}</button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div className="tab-switch">
+            {[['list', 'Lista'], ['cards', 'Cards']].map(([key, label]) => (
+              <button key={key} className={layout === key ? 'active' : ''} onClick={() => setLayout(key)}>{label}</button>
+            ))}
+          </div>
+          <div className="tab-switch">
+            {[['general', 'General'], ['client', 'Por cliente']].map(([key, label]) => (
+              <button key={key} className={view === key ? 'active' : ''} onClick={() => setView(key)}>{label}</button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -97,9 +150,15 @@ export default function VideosDashboard() {
       {shown.length === 0 ? (
         <div className="empty"><div className="empty-icon">🎬</div><p>No hay videos {filter !== 'all' ? 'en esta categoría' : 'todavía'}</p></div>
       ) : view === 'general' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {shown.map(v => <VideoRow key={v.id} v={v} navigate={navigate} showClient />)}
-        </div>
+        layout === 'cards' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
+            {shown.map(v => <VideoCard key={v.id} v={v} navigate={navigate} mediaUrl={mediaUrl} showClient />)}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {shown.map(v => <VideoRow key={v.id} v={v} navigate={navigate} showClient />)}
+          </div>
+        )
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
           {clientGroups.map(g => (
@@ -109,9 +168,15 @@ export default function VideosDashboard() {
                 <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{g.name}</span>
                 <span style={{ fontSize: 12, color: 'var(--text3)' }}>{g.videos.length} video{g.videos.length !== 1 ? 's' : ''}</span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {g.videos.map(v => <VideoRow key={v.id} v={v} navigate={navigate} />)}
-              </div>
+              {layout === 'cards' ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
+                  {g.videos.map(v => <VideoCard key={v.id} v={v} navigate={navigate} mediaUrl={mediaUrl} />)}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {g.videos.map(v => <VideoRow key={v.id} v={v} navigate={navigate} />)}
+                </div>
+              )}
             </div>
           ))}
         </div>
