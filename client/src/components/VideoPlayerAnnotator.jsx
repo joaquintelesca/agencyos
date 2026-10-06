@@ -421,7 +421,10 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
       setCommentText('');
       setCommentFiles([]);
       if (commentFileRef.current) commentFileRef.current.value = '';
-      setShowCommentInput(false);
+      // Ya no se colapsa acá — el cuadro ahora queda siempre visible (ver commit 1166994), así que
+      // cerrarlo después de cada envío obligaba a reabrirlo a mano con "Comentar aquí" para el
+      // próximo comentario. Se limpia el draft/timestamp igual que antes; sin capturedTs, el header
+      // cae solo al estado neutro "Pausá para comentar", listo para el siguiente.
       setCapturedTs(null);
       setRangeMode(false);
       setRangeStart(null);
