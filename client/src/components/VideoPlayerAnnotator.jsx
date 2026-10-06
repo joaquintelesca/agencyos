@@ -634,11 +634,13 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingBottom: 10, flexWrap: 'wrap', rowGap: 6 }}>
           <button onClick={() => { if (videoRef.current) { videoRef.current.currentTime = 0; setCurrentTime(0); } }}
             title="Ir al inicio" aria-label="Ir al inicio" style={iconBtn}><Icon.skipBack /></button>
+          <button onClick={() => seekBy(-5)}
+            title="Retroceder 5s" aria-label="Retroceder 5 segundos" style={iconBtn}><Icon.skipBack /></button>
           <button onClick={togglePlay} title={playing ? 'Pausar' : 'Reproducir'} aria-label={playing ? 'Pausar' : 'Reproducir'}
             style={{ ...iconBtn, width: 34, height: 34, background: 'var(--bg4)', color: 'var(--text)' }}>
             {playing ? <Icon.pause /> : <Icon.play />}
           </button>
-          <button onClick={() => { if (videoRef.current) { videoRef.current.currentTime = Math.min(duration, currentTime + 5); } }}
+          <button onClick={() => seekBy(5)}
             title="Adelantar 5s" aria-label="Adelantar 5 segundos" style={iconBtn}><Icon.skipForward /></button>
           <span style={{ fontSize: 11.5, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums', padding: '0 4px', whiteSpace: 'nowrap' }}>
             {formatT(currentTime)} / {formatT(duration)}
