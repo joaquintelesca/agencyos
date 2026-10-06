@@ -444,7 +444,14 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           // controles y el compositor: justo lo que se acaba de arreglar para que se pueda dibujar
           // con el dedo dejaba de verse en el momento exacto en que el cliente le da play.
           playsInline
-          style={{ maxWidth: '100%', maxHeight: '100%', display: 'block' }}
+          style={{ maxWidth: '100%', maxHeight: '100%', display: 'block', cursor: 'pointer' }}
+          // Clickear la pantalla del video para pausar/reproducir, como cualquier reproductor
+          // (YouTube, Vimeo, etc.) — antes solo el botón de abajo lo hacía. Puesto directo en el
+          // <video>, no en el contenedor: así nunca interfiere con el canvas de dibujo (que lo tapa
+          // encima con pointerEvents:'auto' mientras se está dibujando) ni con el botón flotante
+          // "Comentar aquí" ni con el overlay de error — todos son hermanos posicionados arriba, y
+          // un click ahí nunca le llega al <video> de abajo.
+          onClick={togglePlay}
           onTimeUpdate={onTimeUpdate}
           onLoadedMetadata={onLoadedMetadata}
           onCanPlay={onCanPlay}
