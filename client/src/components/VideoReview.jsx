@@ -8,7 +8,7 @@ import VideoPlayerAnnotator, { formatTime } from './VideoPlayerAnnotator';
 import VideoCompareModal from './VideoCompareModal';
 import VideoShareModal from './VideoShareModal';
 import RenameVideoModal from './RenameVideoModal';
-import VideoContextMenu from './VideoContextMenu';
+import ContextMenu from './ContextMenu';
 import MentionInput, { renderMentions } from './MentionInput';
 import useNarrowViewport from '../hooks/useNarrowViewport';
 import useModalA11y from '../hooks/useModalA11y';
@@ -580,7 +580,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           </div>
         )}
         {contextMenu && (
-          <VideoContextMenu x={contextMenu.x} y={contextMenu.y} items={videoMenuItems(contextMenu.video)} onClose={() => setContextMenu(null)} />
+          <ContextMenu x={contextMenu.x} y={contextMenu.y} items={videoMenuItems(contextMenu.video)} onClose={() => setContextMenu(null)} />
         )}
         {shareModalVideoId && (
           <VideoShareModal videoId={shareModalVideoId} onClose={() => setShareModalVideoId(null)} />
@@ -921,7 +921,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       )}
 
       {contextMenu && (
-        <VideoContextMenu x={contextMenu.x} y={contextMenu.y} items={videoMenuItems(contextMenu.video)} onClose={() => setContextMenu(null)} />
+        <ContextMenu x={contextMenu.x} y={contextMenu.y} items={videoMenuItems(contextMenu.video)} onClose={() => setContextMenu(null)} />
       )}
 
       {showCompareModal && (() => {

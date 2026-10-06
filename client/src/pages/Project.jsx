@@ -8,6 +8,7 @@ import ActivityTimeline from '../components/ActivityTimeline';
 import MentionInput, { renderMentions } from '../components/MentionInput';
 import { initials } from '../utils/format';
 import Icon from '../components/Icon';
+import ContextMenu from '../components/ContextMenu';
 import HoursMinutesInput from '../components/HoursMinutesInput';
 import useNarrowViewport from '../hooks/useNarrowViewport';
 import useModalA11y from '../hooks/useModalA11y';
@@ -43,6 +44,7 @@ export default function Project() {
   const [newMsg, setNewMsg] = useState('');
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [taskContextMenu, setTaskContextMenu] = useState(null); // { x, y, task }
   const [taskForm, setTaskForm] = useState({ title: '', description: '', status: 'todo', priority: 'medium', assigned_to: '', due_date: '' });
   const [dragTask, setDragTask] = useState(null);
   const [reviewReminderTask, setReviewReminderTask] = useState(null);
@@ -452,6 +454,24 @@ export default function Project() {
   // eso sigue siendo del admin.
   const canEditTask = (task) => user.role === 'admin' || task.created_by === user.id || task.assigned_to === user.id;
 
+  // Mismas acciones que ya existen en la tarjeta/modal, accesibles por clic derecho — "Mover a"
+  // usa el mismo permiso que ya tiene el drag-and-drop (admin o la persona asignada), no el de
+  // Editar/Eliminar (que también incluye a quien creó la tarea aunque no esté asignada).
+  const taskMenuItems = (task) => {
+    const items = [];
+    const canMove = user.role === 'admin' || task.assigned_to === user.id;
+    if (canEditTask(task)) items.push({ label: 'Editar', icon: <Icon.pencil />, onClick: () => openEditTask(task) });
+    if (canMove) {
+      items.push({
+        label: 'Mover a', icon: <Icon.arrow />,
+        submenu: STATUSES.filter(s => s.key !== task.status).map(s => ({ label: s.label, onClick: () => moveTaskToStatus(task, s.key) })),
+      });
+    }
+    if (task.latest_video_id) items.push({ label: 'Ver video', icon: <Icon.video />, onClick: () => openTaskVideo(task.latest_video_id) });
+    if (canEditTask(task)) items.push({ label: 'Eliminar', icon: <Icon.trash />, danger: true, onClick: () => deleteTask(task.id) });
+    return items;
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Header — en angosto no entra todo en una sola fila (título+badges+botones+tabs), así
@@ -583,7 +603,13 @@ export default function Project() {
                     onDragStart={() => onDragStart(task)} initials={initials}
                     onOpenVideo={openTaskVideo}
                     canDrag={user.role === 'admin' || task.assigned_to === user.id}
-                    onMoveToReview={(user.role === 'admin' || task.assigned_to === user.id) ? () => moveTaskToStatus(task, 'review') : null} />
+                    onMoveToReview={(user.role === 'admin' || task.assigned_to === user.id) ? () => moveTaskToStatus(task, 'review') : null}
+                    onContextMenu={e => {
+                      const items = taskMenuItems(task);
+                      if (items.length === 0) return;
+                      e.preventDefault();
+                      setTaskContextMenu({ x: e.clientX, y: e.clientY, task });
+                    }} />
                 ))}
               </div>
               {canManageTasks && (
@@ -668,6 +694,10 @@ export default function Project() {
       )}
 
       {tab === 'activity' && <ActivityTimeline projectId={id} />}
+
+      {taskContextMenu && (
+        <ContextMenu x={taskContextMenu.x} y={taskContextMenu.y} items={taskMenuItems(taskContextMenu.task)} onClose={() => setTaskContextMenu(null)} />
+      )}
 
       {/* Task Modal */}
       {showTaskModal && (
@@ -905,7 +935,7 @@ export default function Project() {
   );
 }
 
-function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, canDrag = true, onMoveToReview }) {
+function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, canDrag = true, onMoveToReview, onContextMenu }) {
   const priorityColors = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' };
   const priorityLabels = { high: 'Alta', medium: 'Media', low: 'Baja' };
   // No se puede envolver la card entera en un <button> — ya tiene botones reales adentro ("Ver
@@ -917,6 +947,7 @@ function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, 
   // onEdit() al usarlos con mouse.
   return (
     <div className="panel" draggable={canDrag} onDragStart={canDrag ? onDragStart : undefined} onClick={onEdit || undefined}
+      onContextMenu={onContextMenu}
       role={onEdit ? 'button' : undefined} tabIndex={onEdit ? 0 : undefined}
       onKeyDown={onEdit ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(); } }) : undefined}
       style={{

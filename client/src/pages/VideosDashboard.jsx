@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { initials } from '../utils/format';
 import ClickableRow from '../components/ClickableRow';
-import VideoContextMenu from '../components/VideoContextMenu';
+import ContextMenu from '../components/ContextMenu';
 import VideoShareModal from '../components/VideoShareModal';
 import RenameVideoModal from '../components/RenameVideoModal';
 import Icon from '../components/Icon';
@@ -215,7 +215,7 @@ export default function VideosDashboard() {
       )}
 
       {contextMenu && (
-        <VideoContextMenu x={contextMenu.x} y={contextMenu.y} items={videoMenuItems(contextMenu.video)} onClose={() => setContextMenu(null)} />
+        <ContextMenu x={contextMenu.x} y={contextMenu.y} items={videoMenuItems(contextMenu.video)} onClose={() => setContextMenu(null)} />
       )}
       {shareModalVideoId && (
         <VideoShareModal videoId={shareModalVideoId} onClose={() => setShareModalVideoId(null)} />
