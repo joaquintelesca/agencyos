@@ -66,6 +66,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   // controles del sistema operativo.
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoError, setVideoError] = useState(false);
+  const [videoErrorDetail, setVideoErrorDetail] = useState(null);
 
   const [tool, setTool] = useState('freehand'); // freehand | rect | arrow
   const [drawColor, setDrawColor] = useState(DRAW_COLORS[0]);
@@ -161,12 +162,32 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   // canplay (no loadeddata) porque es el evento que garantiza que ya se puede arrancar a
   // reproducir sin cortes — loadeddata puede disparar con apenas el primer frame decodificado.
   const onCanPlay = () => setVideoLoading(false);
-  const onVideoError = () => { setVideoLoading(false); setVideoError(true); };
+  // Antes esto tiraba a la basura el MediaError nativo del navegador — "no se pudo cargar" sin
+  // ninguna pista de si era la red, el archivo en sí (corrupto/códec no soportado) o que el link
+  // firmado no haya devuelto el video real (ej. un error XML de R2 en vez del archivo). Los 4
+  // códigos de MediaError.code son un estándar del navegador, no algo que invente esta app.
+  const MEDIA_ERROR_LABELS = {
+    1: 'Carga cancelada',
+    2: 'Error de red al pedir el archivo',
+    3: 'El archivo está dañado o usa un formato/códec que el navegador no puede decodificar',
+    4: 'El navegador no reconoció el contenido como un video válido (puede ser que el link no haya devuelto el archivo real)',
+  };
+  const onVideoError = (e) => {
+    setVideoLoading(false);
+    setVideoError(true);
+    const mediaError = e.target?.error;
+    const detail = mediaError
+      ? `${MEDIA_ERROR_LABELS[mediaError.code] || 'Código desconocido'} (code ${mediaError.code})`
+      : 'Sin detalle del navegador';
+    setVideoErrorDetail(detail);
+    console.error('Video playback error:', { code: mediaError?.code, message: mediaError?.message, src });
+  };
 
   // Reintentar no alcanza con volver a poner el mismo `src` (React no vuelve a montar el <video>
   // si la prop no cambia de valor) — hay que forzar la recarga real del elemento con .load().
   const retryVideo = () => {
     setVideoError(false);
+    setVideoErrorDetail(null);
     setVideoLoading(true);
     videoRef.current?.load();
   };
@@ -446,6 +467,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           // el estado de error en el navegador, no se veía leyendo el código.
           <div style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', padding: 20 }}>
             <span style={{ fontSize: 13, color: 'var(--text2)' }}>⚠️ No se pudo cargar el video</span>
+            {videoErrorDetail && <span style={{ fontSize: 11, color: 'var(--text3)', maxWidth: 320 }}>{videoErrorDetail}</span>}
             <button className="btn-retry" onClick={retryVideo}>Reintentar</button>
           </div>
         )}
