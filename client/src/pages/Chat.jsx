@@ -1653,6 +1653,9 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
       id={`chat-msg-${msg.id}`}
       className="msg-row"
       onMouseLeave={() => setEmojiPickerOpen(false)}
+      // Doble clic es el mismo atajo que el botón "Citar" del toolbar — mismo patrón que WhatsApp
+      // desktop.
+      onDoubleClick={() => onQuote()}
       style={{
         display: 'flex', gap: 10, padding: compact ? '1px 0' : '8px 0 2px', alignItems: 'flex-start', position: 'relative',
         borderRadius: 8,
