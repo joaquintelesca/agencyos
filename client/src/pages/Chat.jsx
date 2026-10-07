@@ -110,6 +110,7 @@ export default function Chat() {
   const [channels, setChannels] = useState([]);
   const [activeConv, setActiveConv] = useState(null);
   const [showSaved, setShowSaved] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null); // mensaje que se está citando, o null
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
@@ -393,6 +394,7 @@ export default function Chat() {
 
   const openConv = async (conv) => {
     setShowSaved(false);
+    setReplyingTo(null);
     activeConvRef.current = conv;
     setActiveConv(conv);
     setMessages([]);
@@ -474,6 +476,17 @@ export default function Chat() {
     }
   }, [messages, loadingOlder, hasMore, api]);
 
+  // Salto al mensaje citado — vive en la misma conversación ya cargada (a diferencia de "ir al
+  // mensaje" desde Guardados), así que alcanza con buscarlo en el DOM directo, sin pasar por
+  // pendingHighlight/openConv.
+  const scrollToMessage = (id) => {
+    const el = document.getElementById(`chat-msg-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFlashMessageId(id);
+    setTimeout(() => setFlashMessageId(null), 2000);
+  };
+
   const sendMessage = async (content, fileUrl, fileType, fileName, fileDuration) => {
     const conv = activeConvRef.current;
     if (!conv) return;
@@ -494,11 +507,13 @@ export default function Chat() {
       file_name: fileName || null,
       file_duration: fileDuration || null,
       client_id: conv.type === 'dm' ? (activeTabRef.current || null) : null,
+      quoted_message_id: replyingTo?.id || null,
     };
 
     try {
       await api('/api/chat/messages', { method: 'POST', body });
       setInput('');
+      setReplyingTo(null);
     } catch (e) {
       await alert('No se pudo enviar: ' + e.message);
     } finally {
@@ -1031,6 +1046,8 @@ export default function Chat() {
                   userId={user?.id}
                   onReact={(emoji) => toggleReaction(msg.id, emoji)}
                   onSave={() => toggleSave(msg.id)}
+                  onQuote={() => setReplyingTo(msg)}
+                  onScrollToQuote={scrollToMessage}
                   isNarrowViewport={isNarrowViewport}
                   highlighted={flashMessageId === msg.id}
                 />
@@ -1041,6 +1058,21 @@ export default function Chat() {
 
           {/* Input */}
           <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+            {replyingTo && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', marginBottom: 8, borderRadius: 8, borderLeft: '2px solid var(--accent)', background: 'var(--bg3)' }}>
+                <Icon.quote />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent2)' }}>Citando a {replyingTo.sender_name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {replyingTo.content || (replyingTo.file_type ? '📎 Archivo' : '')}
+                  </div>
+                </div>
+                <button className="icon-btn" onClick={() => setReplyingTo(null)} title="Cancelar cita" aria-label="Cancelar cita"
+                  style={{ color: 'var(--text3)', flexShrink: 0 }}>
+                  <Icon.close />
+                </button>
+              </div>
+            )}
             {recordedAudio ? (
               // Preview de la nota de voz ya grabada — nada se sube todavía, hace falta
               // confirmar con "Enviar" (mismo patrón que Slack: grabar no es enviar).
@@ -1342,7 +1374,7 @@ function SavedMessagesPanel({ api, userId, initials, isNarrowViewport, onBack, o
 // normal ni tan largo que se sienta que no respondió.
 const LONG_PRESS_MS = 450;
 
-function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, onSave, isNarrowViewport, highlighted }) {
+function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, onSave, onQuote, onScrollToQuote, isNarrowViewport, highlighted }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -1487,6 +1519,14 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
         >
           {msg.saved_by_me ? <Icon.bookmarkFilled /> : <Icon.bookmark />}
         </button>
+        <button
+          className="icon-btn"
+          onClick={() => { onQuote(); setToolbarOpen(false); }}
+          title="Citar"
+          style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+        >
+          <Icon.quote />
+        </button>
       </div>
       <div style={{ width: 36, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
         {!compact ? (
@@ -1504,6 +1544,22 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
               {msg.sender_name}
             </span>
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>{timeStr}</span>
+          </div>
+        )}
+        {/* Bloque de cita — el mensaje citado puede haberse borrado (no hay borrado de chat hoy,
+            pero no hay que asumirlo), en ese caso quoted_sender_name viene null y no se muestra
+            nada en vez de un bloque vacío roto. */}
+        {msg.quoted_message_id && msg.quoted_sender_name && (
+          <div onClick={() => onScrollToQuote(msg.quoted_message_id)}
+            style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 4, padding: '4px 8px', borderLeft: '2px solid var(--border2)', borderRadius: 4, cursor: 'pointer', background: 'var(--bg3)' }}
+            onMouseEnter={e => e.currentTarget.style.borderLeftColor = 'var(--accent)'}
+            onMouseLeave={e => e.currentTarget.style.borderLeftColor = 'var(--border2)'}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent2)' }}>{msg.quoted_sender_name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {msg.quoted_content || (msg.quoted_file_type ? '📎 Archivo' : '')}
+              </div>
+            </div>
           </div>
         )}
         {msg.file_type === 'image' && (

@@ -50,6 +50,9 @@ const Icon = {
   // en los dos, solo cambia fill/stroke).
   bookmark: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4Z" /></svg>,
   bookmarkFilled: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4Z" /></svg>,
+  // "Citar" — comillas de cita, no una flecha de responder (eso queda reservado para el futuro
+  // botón de hilo, una acción distinta).
+  quote: () => <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none"><path d="M7 7c-2.2 0-4 1.8-4 4v6h6v-6H6.2C6.6 9.5 8 8 10 7.6V5.3C8 5.6 7 6.2 7 7Zm10 0c-2.2 0-4 1.8-4 4v6h6v-6h-2.8c.4-1.5 1.8-3 3.8-3.4V5.3c-2 .3-3 .9-3 1.7Z" /></svg>,
 };
 
 export default Icon;

@@ -129,13 +129,20 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
       const userId = req.user.id;
       const PAGE_SIZE = 50;
 
+      // Para el bloque de cita (ver "Citar" en el toolbar) — se arma acá con un join en vez de una
+      // query aparte por mensaje citado, mismo criterio que sender_name.
+      const quoteJoins = (q) => q
+        .leftJoin('chat_messages as qm', 'm.quoted_message_id', 'qm.id')
+        .leftJoin('users as qu', 'qm.sender_id', 'qu.id');
+      const quoteCols = ['qm.content as quoted_content', 'qm.file_type as quoted_file_type', 'qu.name as quoted_sender_name'];
+
       let query;
       if (type === 'dm') {
-        query = db('chat_messages as m')
-          .join('users as u', 'm.sender_id', 'u.id')
+        query = quoteJoins(db('chat_messages as m')
+          .join('users as u', 'm.sender_id', 'u.id'))
           .where('m.type', 'dm')
           .where(function() { this.where({ sender_id: userId, receiver_id: id }).orWhere({ sender_id: id, receiver_id: userId }); })
-          .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color');
+          .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color', ...quoteCols);
         if (client_id) {
           query = query.where('m.client_id', client_id);
         } else {
@@ -146,10 +153,10 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
           const isMember = await db('chat_channel_members').where({ channel_id: id, user_id: userId }).first();
           if (!isMember) return res.status(403).json({ error: 'Sin acceso' });
         }
-        query = db('chat_messages as m')
-          .join('users as u', 'm.sender_id', 'u.id')
+        query = quoteJoins(db('chat_messages as m')
+          .join('users as u', 'm.sender_id', 'u.id'))
           .where({ 'm.type': 'channel', 'm.channel_id': id })
-          .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color');
+          .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color', ...quoteCols);
       } else {
         return res.json([]);
       }
@@ -263,7 +270,7 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
   // POST send a message
   router.post('/api/chat/messages', auth, async (req, res) => {
     try {
-      const { type, receiver_id, channel_id, content, file_url, file_type, file_name, client_id, file_duration } = req.body;
+      const { type, receiver_id, channel_id, content, file_url, file_type, file_name, client_id, file_duration, quoted_message_id } = req.body;
       const senderId = req.user.id;
 
       if (req.user.role !== 'admin' && type === 'dm' && receiver_id !== senderId) {
@@ -296,9 +303,24 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
         }
       }
 
+      // Citar un mensaje de otra conversación (uno que no podés ver) filtraría su contenido hacia
+      // acá — mismo chequeo de acceso que reaccionar/guardar, no solo "existe".
+      let quotedId = null;
+      if (quoted_message_id) {
+        const quotedMsg = await db('chat_messages').where({ id: quoted_message_id }).first();
+        if (quotedMsg && await canAccessMessage(req.user, quotedMsg)) quotedId = quoted_message_id;
+      }
+
       const id = uuidv4();
-      await db('chat_messages').insert({ id, sender_id: senderId, receiver_id: receiver_id || null, channel_id: channel_id || null, type, content: content || '', file_url: file_url || null, file_type: file_type || null, file_name: file_name || null, client_id: (type === 'dm' && client_id) ? client_id : null, file_duration: file_duration || null });
-      const msg = await db('chat_messages as m').join('users as u', 'm.sender_id', 'u.id').where('m.id', id).select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color').first();
+      await db('chat_messages').insert({ id, sender_id: senderId, receiver_id: receiver_id || null, channel_id: channel_id || null, type, content: content || '', file_url: file_url || null, file_type: file_type || null, file_name: file_name || null, client_id: (type === 'dm' && client_id) ? client_id : null, file_duration: file_duration || null, quoted_message_id: quotedId });
+      const msg = await db('chat_messages as m')
+        .join('users as u', 'm.sender_id', 'u.id')
+        .leftJoin('chat_messages as qm', 'm.quoted_message_id', 'qm.id')
+        .leftJoin('users as qu', 'qm.sender_id', 'qu.id')
+        .where('m.id', id)
+        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color',
+          'qm.content as quoted_content', 'qm.file_type as quoted_file_type', 'qu.name as quoted_sender_name')
+        .first();
       // Los mensajes de chat ya tienen su propio contador de no leídos (chat_messages.read_by,
       // vía /api/chat/unread) que alimenta la burbuja del ítem "Chat" del sidebar — no se crea
       // una notificación general acá para no duplicar el aviso en la campanita/Notificaciones.
