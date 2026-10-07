@@ -141,7 +141,7 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
         query = quoteJoins(db('chat_messages as m')
           .join('users as u', 'm.sender_id', 'u.id'))
           .where('m.type', 'dm')
-          .where(function() { this.where({ sender_id: userId, receiver_id: id }).orWhere({ sender_id: id, receiver_id: userId }); })
+          .where(function() { this.where({ 'm.sender_id': userId, 'm.receiver_id': id }).orWhere({ 'm.sender_id': id, 'm.receiver_id': userId }); })
           .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color', ...quoteCols);
         if (client_id) {
           query = query.where('m.client_id', client_id);
@@ -395,6 +395,58 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
         for (const uid of members) {
           io.to(`user:${uid}`).emit('chat:message', msg);
         }
+      }
+      res.json(msg);
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // Reenviar: copia el contenido del mensaje ORIGINAL leído del servidor (no lo que mande el
+  // cliente en el body) — así lo que se reenvía es exactamente lo que esa persona tenía permiso
+  // de ver, no algo que podría falsificar mandando otro content/file_url en el POST. quoted_message_id
+  // apunta al original (mismo mecanismo que "Citar"); `forwarded: true` es la única diferencia,
+  // para que el cliente muestre "Reenviado de X" en vez de "Citando a X".
+  router.post('/api/chat/messages/:id/forward', auth, async (req, res) => {
+    try {
+      const { type, receiver_id, channel_id, client_id } = req.body;
+      const senderId = req.user.id;
+
+      const original = await db('chat_messages').where({ id: req.params.id }).first();
+      if (!original) return res.status(404).json({ error: 'Mensaje no encontrado' });
+      if (!await canAccessMessage(req.user, original)) return res.status(403).json({ error: 'Sin acceso al mensaje original' });
+
+      if (req.user.role !== 'admin' && type === 'dm' && receiver_id !== senderId) {
+        const targetUser = await db('users').where({ id: receiver_id }).first();
+        if (!targetUser || targetUser.role !== 'admin') {
+          return res.status(403).json({ error: 'Los editores solo pueden chatear con admins' });
+        }
+      }
+      if (req.user.role !== 'admin' && type === 'channel') {
+        if (!channel_id) return res.status(400).json({ error: 'Canal no especificado' });
+        const isMember = await db('chat_channel_members').where({ channel_id: String(channel_id), user_id: senderId }).first();
+        if (!isMember) return res.status(403).json({ error: 'No sos miembro de este canal' });
+      }
+
+      const id = uuidv4();
+      await db('chat_messages').insert({
+        id, sender_id: senderId, receiver_id: receiver_id || null, channel_id: channel_id || null, type,
+        content: original.content || '', file_url: original.file_url || null, file_type: original.file_type || null,
+        file_name: original.file_name || null, file_duration: original.file_duration || null,
+        client_id: (type === 'dm' && client_id) ? client_id : null,
+        quoted_message_id: original.id, forwarded: true,
+      });
+      const msg = await db('chat_messages as m')
+        .join('users as u', 'm.sender_id', 'u.id')
+        .leftJoin('chat_messages as qm', 'm.quoted_message_id', 'qm.id')
+        .leftJoin('users as qu', 'qm.sender_id', 'qu.id')
+        .where('m.id', id)
+        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color',
+          'qm.content as quoted_content', 'qm.file_type as quoted_file_type', 'qu.name as quoted_sender_name')
+        .first();
+      if (type === 'dm' && receiver_id) {
+        io.to(`user:${senderId}`).to(`user:${receiver_id}`).emit('chat:message', msg);
+      } else if (type === 'channel' && channel_id) {
+        const members = await db('chat_channel_members').where({ channel_id }).pluck('user_id');
+        for (const uid of members) io.to(`user:${uid}`).emit('chat:message', msg);
       }
       res.json(msg);
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }

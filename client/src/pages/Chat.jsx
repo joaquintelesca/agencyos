@@ -113,6 +113,7 @@ export default function Chat() {
   const [replyingTo, setReplyingTo] = useState(null); // mensaje que se está citando, o null
   const [pinnedMessages, setPinnedMessages] = useState([]);
   const [pinnedPanelOpen, setPinnedPanelOpen] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState(null); // mensaje a reenviar, o null
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
@@ -588,6 +589,26 @@ export default function Chat() {
     }
   };
 
+  // El contenido reenviado se copia server-side a partir del mensaje original leído por id (no
+  // de lo que mande este POST) — ver el comentario del endpoint. Acá solo se manda a dónde.
+  const forwardMessage = async (dest) => {
+    if (!forwardingMessage) return;
+    try {
+      await api(`/api/chat/messages/${forwardingMessage.id}/forward`, {
+        method: 'POST',
+        body: {
+          type: dest.type,
+          receiver_id: dest.type === 'dm' ? dest.id : null,
+          channel_id: dest.type === 'channel' ? dest.id : null,
+          client_id: dest.clientId || null,
+        },
+      });
+      setForwardingMessage(null);
+    } catch (e) {
+      await alert('No se pudo reenviar: ' + e.message);
+    }
+  };
+
   // Abre la conversación dueña de un mensaje guardado y lo flashea — mismo mecanismo que el deep
   // link del buscador global (ver pendingHighlight más arriba), pero resuelto en el lugar en vez
   // de navegar a una URL, porque ya estamos parados en esta misma página.
@@ -793,6 +814,8 @@ export default function Chat() {
   const filteredChannels = channels.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
 
   const newChannelModalRef = useModalA11y(showNewChannel, () => setShowNewChannel(false));
+  const forwardModalRef = useModalA11y(!!forwardingMessage, () => setForwardingMessage(null));
+  const [forwardSearch, setForwardSearch] = useState('');
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
@@ -1127,6 +1150,7 @@ export default function Chat() {
                   onQuote={() => setReplyingTo(msg)}
                   onScrollToQuote={scrollToMessage}
                   onPin={() => togglePin(msg.id)}
+                  onForward={() => { setForwardSearch(''); setForwardingMessage(msg); }}
                   isNarrowViewport={isNarrowViewport}
                   highlighted={flashMessageId === msg.id}
                 />
@@ -1318,6 +1342,38 @@ export default function Chat() {
           </div>
         </div>
       )}
+
+      {forwardingMessage && (() => {
+        const q = forwardSearch.trim().toLowerCase();
+        const dmTargets = conversations.filter(c => !c.is_self && c.name.toLowerCase().includes(q)).map(c => ({ kind: 'dm', id: c.id, name: c.name, color: c.color, isUser: true }));
+        const channelTargets = channels.filter(c => c.name.toLowerCase().includes(q)).map(c => ({ kind: 'channel', id: c.id, name: c.name, isChannel: true }));
+        return (
+          <div className="modal-overlay" onClick={() => setForwardingMessage(null)}>
+            <div className="modal" onClick={e => e.stopPropagation()} ref={forwardModalRef} role="dialog" aria-modal="true" aria-labelledby="forward-modal-title">
+              <button className="modal-close" onClick={() => setForwardingMessage(null)} title="Cerrar" aria-label="Cerrar">✕</button>
+              <h2 id="forward-modal-title">Reenviar mensaje</h2>
+              <p style={{ fontSize: 12.5, color: 'var(--text3)', marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {forwardingMessage.content || (forwardingMessage.file_type ? '📎 Archivo' : '')}
+              </p>
+              <input className="input" autoFocus value={forwardSearch} onChange={e => setForwardSearch(e.target.value)}
+                placeholder="Buscar persona o canal..." style={{ marginBottom: 8 }} />
+              <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {dmTargets.length === 0 && channelTargets.length === 0 && (
+                  <p style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 4px' }}>Sin resultados</p>
+                )}
+                {dmTargets.map(t => (
+                  <SidebarItem key={`dm-${t.id}`} label={t.name} isUser initials={initials(t.name)} color={t.color}
+                    onClick={() => { setForwardSearch(''); forwardMessage({ type: 'dm', id: t.id }); }} />
+                ))}
+                {channelTargets.map(t => (
+                  <SidebarItem key={`ch-${t.id}`} label={`#${t.name}`} isChannel
+                    onClick={() => { setForwardSearch(''); forwardMessage({ type: 'channel', id: t.id }); }} />
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -1453,7 +1509,7 @@ function SavedMessagesPanel({ api, userId, initials, isNarrowViewport, onBack, o
 // normal ni tan largo que se sienta que no respondió.
 const LONG_PRESS_MS = 450;
 
-function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, onSave, onQuote, onScrollToQuote, onPin, isNarrowViewport, highlighted }) {
+function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, onSave, onQuote, onScrollToQuote, onPin, onForward, isNarrowViewport, highlighted }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -1615,6 +1671,14 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
         >
           {msg.pinned ? <Icon.pinFilled /> : <Icon.pin />}
         </button>
+        <button
+          className="icon-btn"
+          onClick={() => { onForward(); setToolbarOpen(false); }}
+          title="Reenviar"
+          style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+        >
+          <Icon.forward />
+        </button>
       </div>
       <div style={{ width: 36, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
         {!compact ? (
@@ -1634,16 +1698,20 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>{timeStr}</span>
           </div>
         )}
-        {/* Bloque de cita — el mensaje citado puede haberse borrado (no hay borrado de chat hoy,
-            pero no hay que asumirlo), en ese caso quoted_sender_name viene null y no se muestra
-            nada en vez de un bloque vacío roto. */}
+        {/* Bloque de cita/reenvío — el mensaje referenciado puede haberse borrado (no hay borrado
+            de chat hoy, pero no hay que asumirlo), en ese caso quoted_sender_name viene null y no
+            se muestra nada en vez de un bloque vacío roto. Un reenvío no es clickeable: el
+            original vive en OTRA conversación, no en esta misma página, así que no hay a dónde
+            saltar (a diferencia de citar, que sí scrollea dentro del mismo hilo). */}
         {msg.quoted_message_id && msg.quoted_sender_name && (
-          <div onClick={() => onScrollToQuote(msg.quoted_message_id)}
-            style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 4, padding: '4px 8px', borderLeft: '2px solid var(--border2)', borderRadius: 4, cursor: 'pointer', background: 'var(--bg3)' }}
-            onMouseEnter={e => e.currentTarget.style.borderLeftColor = 'var(--accent)'}
-            onMouseLeave={e => e.currentTarget.style.borderLeftColor = 'var(--border2)'}>
+          <div onClick={msg.forwarded ? undefined : () => onScrollToQuote(msg.quoted_message_id)}
+            style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 4, padding: '4px 8px', borderLeft: '2px solid var(--border2)', borderRadius: 4, cursor: msg.forwarded ? 'default' : 'pointer', background: 'var(--bg3)' }}
+            onMouseEnter={msg.forwarded ? undefined : e => e.currentTarget.style.borderLeftColor = 'var(--accent)'}
+            onMouseLeave={msg.forwarded ? undefined : e => e.currentTarget.style.borderLeftColor = 'var(--border2)'}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent2)' }}>{msg.quoted_sender_name}</div>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent2)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                {msg.forwarded && <Icon.forward />} {msg.forwarded ? 'Reenviado de ' : ''}{msg.quoted_sender_name}
+              </div>
               <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {msg.quoted_content || (msg.quoted_file_type ? '📎 Archivo' : '')}
               </div>
