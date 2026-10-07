@@ -111,6 +111,8 @@ export default function Chat() {
   const [activeConv, setActiveConv] = useState(null);
   const [showSaved, setShowSaved] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null); // mensaje que se está citando, o null
+  const [pinnedMessages, setPinnedMessages] = useState([]);
+  const [pinnedPanelOpen, setPinnedPanelOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
@@ -158,6 +160,7 @@ export default function Chat() {
   const [flashMessageId, setFlashMessageId] = useState(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const pinnedPanelRef = useRef(null);
   const fileInputRef = useRef(null);
   // true justo después de cargar los mensajes de una conversación recién abierta (o un cambio de
   // tab dentro de un DM) — hace que el scroll al fondo sea instantáneo en vez de animado, y evita
@@ -287,6 +290,15 @@ export default function Chat() {
       }));
     };
 
+    // Fijar es compartido (a diferencia de guardar) — se avisa a toda la conversación por socket.
+    // El payload trae solo el id (no el mensaje completo), así que para la lista de fijados
+    // alcanza con recargarla; para el ícono en el toolbar basta con pisar el flag inline.
+    const handleChatPin = ({ messageId, pinned }) => {
+      setMessagesRef.current(prev => prev.map(m => m.id === messageId ? { ...m, pinned } : m));
+      const conv = activeConvRef.current;
+      if (conv) loadPinned(conv.type, conv.id, conv.type === 'dm' ? activeTabRef.current : null);
+    };
+
     // Tras una reconexión (WiFi cortado, pestaña dormida) pueden haber quedado mensajes sin
     // enterarse — se resincroniza la lista de conversaciones, los no leídos, y si hay una
     // conversación abierta, sus mensajes.
@@ -311,12 +323,14 @@ export default function Chat() {
     socket.on('chat:message', handleChatMessage);
     socket.on('chat:read', handleChatRead);
     socket.on('chat:reaction', handleChatReaction);
+    socket.on('chat:pin', handleChatPin);
     socket.on('connect', onReconnect);
 
     return () => {
       socket.off('chat:message', handleChatMessage);
       socket.off('chat:read', handleChatRead);
       socket.off('chat:reaction', handleChatReaction);
+      socket.off('chat:pin', handleChatPin);
       socket.off('connect', onReconnect);
     };
   }, [socket]); // solo depende del socket, no de activeConv ni user
@@ -392,9 +406,19 @@ export default function Chat() {
     }
   };
 
+  // Scoped igual que los mensajes (type/id/client_id) — fijar es por conversación, no global.
+  const loadPinned = async (type, id, clientId) => {
+    try {
+      const tabParam = clientId ? `&client_id=${clientId}` : '';
+      setPinnedMessages(await api(`/api/chat/messages/pinned?type=${type}&id=${id}${tabParam}`));
+    } catch (e) { console.error('Error cargando fijados:', e); }
+  };
+
   const openConv = async (conv) => {
     setShowSaved(false);
     setReplyingTo(null);
+    setPinnedPanelOpen(false);
+    setPinnedMessages([]);
     activeConvRef.current = conv;
     setActiveConv(conv);
     setMessages([]);
@@ -424,6 +448,7 @@ export default function Chat() {
       justLoadedRef.current = true;
       setMessages(msgs);
       setHasMore(msgs.length >= 50);
+      loadPinned(conv.type, conv.id, null);
       await api('/api/chat/read', { method: 'POST', body: { type: conv.type, id: conv.id } });
     } catch (e) {
       console.error('Error cargando mensajes:', e);
@@ -437,6 +462,7 @@ export default function Chat() {
     activeTabRef.current = clientId;
     setMessages([]);
     setHasMore(true);
+    setPinnedPanelOpen(false);
     const conv = activeConvRef.current;
     if (!conv || conv.type !== 'dm') return;
     try {
@@ -444,6 +470,7 @@ export default function Chat() {
       const msgs = await api(`/api/chat/messages?type=dm&id=${conv.id}${tabParam}`);
       if (activeTabRef.current !== clientId || activeConvRef.current !== conv) return;
       justLoadedRef.current = true;
+      loadPinned('dm', conv.id, clientId);
       setMessages(msgs);
       setHasMore(msgs.length >= 50);
     } catch (e) {
@@ -486,6 +513,13 @@ export default function Chat() {
     setFlashMessageId(id);
     setTimeout(() => setFlashMessageId(null), 2000);
   };
+
+  useEffect(() => {
+    if (!pinnedPanelOpen) return;
+    const onOutside = (e) => { if (pinnedPanelRef.current && !pinnedPanelRef.current.contains(e.target)) setPinnedPanelOpen(false); };
+    document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
+  }, [pinnedPanelOpen]);
 
   const sendMessage = async (content, fileUrl, fileType, fileName, fileDuration) => {
     const conv = activeConvRef.current;
@@ -538,6 +572,19 @@ export default function Chat() {
     } catch (e) {
       console.error('Error al guardar:', e);
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, saved_by_me: !m.saved_by_me } : m));
+    }
+  };
+
+  // El flip optimista es solo para el ícono del toolbar (feedback instantáneo); la lista de
+  // fijados en sí se actualiza cuando vuelve el propio evento de socket (ver handleChatPin),
+  // mismo criterio que reaccionar — no hay doble fuente de verdad.
+  const togglePin = async (messageId) => {
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, pinned: !m.pinned } : m));
+    try {
+      await api(`/api/chat/messages/${messageId}/pin`, { method: 'POST' });
+    } catch (e) {
+      console.error('Error al fijar:', e);
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, pinned: !m.pinned } : m));
     }
   };
 
@@ -975,6 +1022,37 @@ export default function Chat() {
                 </div>
               </>
             )}
+            {pinnedMessages.length > 0 && (
+              <div ref={pinnedPanelRef} style={{ position: 'relative', marginLeft: 'auto', flexShrink: 0 }}>
+                <button className="icon-btn" onClick={() => setPinnedPanelOpen(o => !o)}
+                  aria-expanded={pinnedPanelOpen} title="Mensajes fijados"
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--accent2)', fontSize: 12, fontWeight: 600, padding: '5px 9px', borderRadius: 7, background: pinnedPanelOpen ? 'var(--bg3)' : 'transparent' }}>
+                  <Icon.pinFilled /> {pinnedMessages.length}
+                </button>
+                {pinnedPanelOpen && (
+                  <div className="panel" role="menu"
+                    style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, width: 280, maxHeight: 320, overflowY: 'auto', borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 10, padding: 6 }}>
+                    {pinnedMessages.map(m => (
+                      <div key={m.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 8px', borderRadius: 7, cursor: 'pointer' }}
+                        onClick={() => { setPinnedPanelOpen(false); scrollToMessage(m.id); }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg4)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700 }}>{m.sender_name}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {m.content || (m.file_type ? '📎 Archivo' : '')}
+                          </div>
+                        </div>
+                        <button className="icon-btn" onClick={e => { e.stopPropagation(); togglePin(m.id); }}
+                          title="Desfijar" aria-label="Desfijar" style={{ color: 'var(--accent2)', flexShrink: 0 }}>
+                          <Icon.close />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Pestañas por cliente (solo DMs con tabs) */}
@@ -1048,6 +1126,7 @@ export default function Chat() {
                   onSave={() => toggleSave(msg.id)}
                   onQuote={() => setReplyingTo(msg)}
                   onScrollToQuote={scrollToMessage}
+                  onPin={() => togglePin(msg.id)}
                   isNarrowViewport={isNarrowViewport}
                   highlighted={flashMessageId === msg.id}
                 />
@@ -1374,7 +1453,7 @@ function SavedMessagesPanel({ api, userId, initials, isNarrowViewport, onBack, o
 // normal ni tan largo que se sienta que no respondió.
 const LONG_PRESS_MS = 450;
 
-function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, onSave, onQuote, onScrollToQuote, isNarrowViewport, highlighted }) {
+function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, onSave, onQuote, onScrollToQuote, onPin, isNarrowViewport, highlighted }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -1526,6 +1605,15 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
           style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
         >
           <Icon.quote />
+        </button>
+        <button
+          className="icon-btn"
+          onClick={() => { onPin(); setToolbarOpen(false); }}
+          title={msg.pinned ? 'Desfijar' : 'Fijar'}
+          aria-pressed={!!msg.pinned}
+          style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: msg.pinned ? 'var(--accent2)' : '#fff' }}
+        >
+          {msg.pinned ? <Icon.pinFilled /> : <Icon.pin />}
         </button>
       </div>
       <div style={{ width: 36, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>

@@ -9,7 +9,7 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
   const router = express.Router();
 
   // Mismo criterio que ver el mensaje: participante del DM, o miembro del canal (o admin). Usado
-  // por reaccionar y por guardar — cualquier acción que toque un mensaje puntual por id.
+  // por reaccionar, guardar, citar y fijar — cualquier acción que toque un mensaje puntual por id.
   async function canAccessMessage(user, message) {
     if (message.type === 'dm') {
       return user.role === 'admin' || user.id === message.sender_id || user.id === message.receiver_id;
@@ -188,10 +188,16 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
       const savedIds = messageIds.length
         ? new Set(await db('chat_saved_messages').where('user_id', userId).whereIn('message_id', messageIds).pluck('message_id'))
         : new Set();
+      // Fijados: a diferencia de guardados, es compartido (visible para todos en la conversación),
+      // así que sin filtro de user_id.
+      const pinnedIds = messageIds.length
+        ? new Set(await db('chat_pinned_messages').whereIn('message_id', messageIds).pluck('message_id'))
+        : new Set();
       const withReactions = ordered.map(m => ({
         ...m,
         reactions: Object.values(reactionsByMessage[m.id] || {}).map(r => ({ ...r, count: r.users.length })),
         saved_by_me: savedIds.has(m.id),
+        pinned: pinnedIds.has(m.id),
       }));
       res.json(withReactions);
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -264,6 +270,64 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
           's.created_at as saved_at')
         .orderBy('s.created_at', 'desc');
       res.json(rows);
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // Toggle fijar/desfijar — a diferencia de guardar, SÍ se avisa por socket (es visible para
+  // toda la conversación, no privado) y el toggle es sobre el mensaje en sí, no por usuario.
+  router.post('/api/chat/messages/:id/pin', auth, async (req, res) => {
+    try {
+      const message = await db('chat_messages').where({ id: req.params.id }).first();
+      if (!message) return res.status(404).json({ error: 'Mensaje no encontrado' });
+      if (!await canAccessMessage(req.user, message)) return res.status(403).json({ error: 'Sin acceso' });
+
+      const existing = await db('chat_pinned_messages').where({ message_id: req.params.id }).first();
+      let pinned;
+      if (existing) {
+        await db('chat_pinned_messages').where({ id: existing.id }).delete();
+        pinned = false;
+      } else {
+        await db('chat_pinned_messages').insert({ id: uuidv4(), message_id: req.params.id, pinned_by: req.user.id });
+        pinned = true;
+      }
+
+      const payload = { messageId: req.params.id, pinned };
+      if (message.type === 'dm') {
+        io.to(`user:${message.sender_id}`).to(`user:${message.receiver_id}`).emit('chat:pin', payload);
+      } else if (message.type === 'channel') {
+        const members = await db('chat_channel_members').where({ channel_id: message.channel_id }).pluck('user_id');
+        for (const uid of members) io.to(`user:${uid}`).emit('chat:pin', payload);
+      }
+      res.json({ pinned });
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // Lista de fijados de UNA conversación puntual (no "todos los que fijé yo" como /saved, porque
+  // fijar es compartido por conversación) — mismo filtro de acceso/client_id que /api/chat/messages.
+  router.get('/api/chat/messages/pinned', auth, async (req, res) => {
+    try {
+      const { type, id, client_id } = req.query;
+      const userId = req.user.id;
+      let query = db('chat_pinned_messages as p')
+        .join('chat_messages as m', 'p.message_id', 'm.id')
+        .join('users as u', 'm.sender_id', 'u.id')
+        .select('m.id', 'm.content', 'm.type', 'm.file_type', 'm.created_at', 'u.name as sender_name', 'p.created_at as pinned_at');
+
+      if (type === 'dm') {
+        query = query.where('m.type', 'dm')
+          .where(function() { this.where({ 'm.sender_id': userId, 'm.receiver_id': id }).orWhere({ 'm.sender_id': id, 'm.receiver_id': userId }); });
+        query = client_id ? query.where('m.client_id', client_id) : query.whereNull('m.client_id');
+      } else if (type === 'channel') {
+        if (req.user.role !== 'admin') {
+          const isMember = await db('chat_channel_members').where({ channel_id: id, user_id: userId }).first();
+          if (!isMember) return res.status(403).json({ error: 'Sin acceso' });
+        }
+        query = query.where({ 'm.type': 'channel', 'm.channel_id': id });
+      } else {
+        return res.json([]);
+      }
+
+      res.json(await query.orderBy('p.created_at', 'desc'));
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 
