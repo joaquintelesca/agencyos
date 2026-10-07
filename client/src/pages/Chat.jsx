@@ -114,6 +114,13 @@ export default function Chat() {
   const [pinnedMessages, setPinnedMessages] = useState([]);
   const [pinnedPanelOpen, setPinnedPanelOpen] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState(null); // mensaje a reenviar, o null
+  const [openThread, setOpenThread] = useState(null); // mensaje root del hilo abierto, o null
+  const [threadReplies, setThreadReplies] = useState([]);
+  const [threadInput, setThreadInput] = useState('');
+  const [loadingThread, setLoadingThread] = useState(false);
+  const [sendingThreadReply, setSendingThreadReply] = useState(false);
+  const openThreadRef = useRef(null);
+  const setThreadRepliesRef = useRef(setThreadReplies);
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
@@ -198,6 +205,7 @@ export default function Chat() {
   useEffect(() => { recordedAudioUrlRef.current = recordedAudio?.url || null; }, [recordedAudio]);
 
   useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
+  useEffect(() => { openThreadRef.current = openThread?.id || null; }, [openThread]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { userRef.current = user; }, [user]);
 
@@ -231,7 +239,14 @@ export default function Chat() {
         (conv.type === 'channel' && msg.type === 'channel' && msg.channel_id === conv.id)
       );
 
-      if (isForActiveConv) {
+      // Una respuesta de hilo no va suelta en el feed principal — solo suma al contador del root
+      // (si está en la lista cargada) y, si ese hilo está abierto ahora mismo, se agrega ahí.
+      if (msg.thread_parent_id) {
+        setMessagesRef.current(prev => prev.map(m => m.id === msg.thread_parent_id ? { ...m, reply_count: (m.reply_count || 0) + 1 } : m));
+        if (openThreadRef.current === msg.thread_parent_id) {
+          setThreadRepliesRef.current(prev => prev.some(r => r.id === msg.id) ? prev : [...prev, msg]);
+        }
+      } else if (isForActiveConv) {
         const tab = activeTabRef.current;
         const msgTab = msg.client_id || null;
         const tabMatches = conv.type !== 'dm' || tab === msgTab;
@@ -250,7 +265,9 @@ export default function Chat() {
         setUnreadCountsRef.current(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
       }
 
-      // Actualizar preview del sidebar
+      // Actualizar preview del sidebar — una respuesta de hilo no cuenta como "último mensaje" de
+      // la conversación (queda enterrada en su hilo, no es lo último que se ve del intercambio).
+      if (msg.thread_parent_id) return;
       const preview = msg.content || (msg.file_type ? '📎 Archivo' : '');
       if (msg.type === 'dm') {
         const otherId = msg.sender_id === me.id ? msg.receiver_id : msg.sender_id;
@@ -420,6 +437,8 @@ export default function Chat() {
     setReplyingTo(null);
     setPinnedPanelOpen(false);
     setPinnedMessages([]);
+    setOpenThread(null);
+    setThreadReplies([]);
     activeConvRef.current = conv;
     setActiveConv(conv);
     setMessages([]);
@@ -464,6 +483,8 @@ export default function Chat() {
     setMessages([]);
     setHasMore(true);
     setPinnedPanelOpen(false);
+    setOpenThread(null);
+    setThreadReplies([]);
     const conv = activeConvRef.current;
     if (!conv || conv.type !== 'dm') return;
     try {
@@ -591,6 +612,8 @@ export default function Chat() {
 
   // El contenido reenviado se copia server-side a partir del mensaje original leído por id (no
   // de lo que mande este POST) — ver el comentario del endpoint. Acá solo se manda a dónde.
+  const openForwardModal = (msg) => { setForwardSearch(''); setForwardingMessage(msg); };
+
   const forwardMessage = async (dest) => {
     if (!forwardingMessage) return;
     try {
@@ -606,6 +629,44 @@ export default function Chat() {
       setForwardingMessage(null);
     } catch (e) {
       await alert('No se pudo reenviar: ' + e.message);
+    }
+  };
+
+  const openThreadPanel = async (msg) => {
+    setOpenThread(msg);
+    setThreadReplies([]);
+    setLoadingThread(true);
+    try {
+      const data = await api(`/api/chat/messages/${msg.id}/thread`);
+      // root viene re-enriquecido (por si el reply_count mostrado en la tarjeta estaba
+      // desactualizado) — se pisa el que ya se tenía para que el panel abra con el número correcto.
+      setOpenThread(data.root);
+      setThreadReplies(data.replies);
+    } catch (e) {
+      console.error('Error cargando el hilo:', e);
+    } finally {
+      setLoadingThread(false);
+    }
+  };
+
+  const closeThreadPanel = () => {
+    setOpenThread(null);
+    setThreadReplies([]);
+    setThreadInput('');
+  };
+
+  // Solo texto por ahora (sin adjuntos/nota de voz) — mantiene acotado el primer alcance del
+  // composer del hilo; el composer principal ya cubre esos casos para el mensaje raíz.
+  const sendThreadReply = async () => {
+    if (!openThread || !threadInput.trim() || sendingThreadReply) return;
+    setSendingThreadReply(true);
+    try {
+      await api(`/api/chat/messages/${openThread.id}/reply`, { method: 'POST', body: { content: threadInput } });
+      setThreadInput('');
+    } catch (e) {
+      await alert('No se pudo responder: ' + e.message);
+    } finally {
+      setSendingThreadReply(false);
     }
   };
 
@@ -1150,7 +1211,8 @@ export default function Chat() {
                   onQuote={() => setReplyingTo(msg)}
                   onScrollToQuote={scrollToMessage}
                   onPin={() => togglePin(msg.id)}
-                  onForward={() => { setForwardSearch(''); setForwardingMessage(msg); }}
+                  onForward={() => openForwardModal(msg)}
+                  onOpenThread={() => openThreadPanel(msg)}
                   isNarrowViewport={isNarrowViewport}
                   highlighted={flashMessageId === msg.id}
                 />
@@ -1374,6 +1436,30 @@ export default function Chat() {
           </div>
         );
       })()}
+
+      {openThread && (
+        <ThreadPanel
+          root={openThread}
+          replies={threadReplies}
+          loading={loadingThread}
+          threadInput={threadInput}
+          setThreadInput={setThreadInput}
+          onSend={sendThreadReply}
+          sending={sendingThreadReply}
+          onClose={closeThreadPanel}
+          isNarrowViewport={isNarrowViewport}
+          userId={user?.id}
+          initials={initials}
+          mediaUrl={mediaUrl}
+          onImageLoad={rescrollIfNearBottom}
+          toggleReaction={toggleReaction}
+          toggleSave={toggleSave}
+          setReplyingTo={setReplyingTo}
+          scrollToMessage={scrollToMessage}
+          togglePin={togglePin}
+          openForward={openForwardModal}
+        />
+      )}
     </div>
   );
 }
@@ -1509,7 +1595,7 @@ function SavedMessagesPanel({ api, userId, initials, isNarrowViewport, onBack, o
 // normal ni tan largo que se sienta que no respondió.
 const LONG_PRESS_MS = 450;
 
-function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, onSave, onQuote, onScrollToQuote, onPin, onForward, isNarrowViewport, highlighted }) {
+function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, onSave, onQuote, onScrollToQuote, onPin, onForward, onOpenThread, isNarrowViewport, highlighted }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -1679,6 +1765,18 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
         >
           <Icon.forward />
         </button>
+        {/* Una respuesta de hilo no tiene su propio sub-hilo (un solo nivel, ver la migración) —
+            no tiene sentido ofrecer "Responder en hilo" sobre algo que ya es una respuesta. */}
+        {!msg.thread_parent_id && onOpenThread && (
+          <button
+            className="icon-btn"
+            onClick={() => { onOpenThread(); setToolbarOpen(false); }}
+            title="Responder en hilo"
+            style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+          >
+            <Icon.comment />
+          </button>
+        )}
       </div>
       <div style={{ width: 36, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
         {!compact ? (
@@ -1779,6 +1877,87 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
             })}
           </div>
         )}
+        {msg.reply_count > 0 && onOpenThread && (
+          <button className="icon-btn" onClick={() => onOpenThread()}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5, color: 'var(--accent2)', fontSize: 12, fontWeight: 600 }}>
+            <Icon.comment /> {msg.reply_count} respuesta{msg.reply_count !== 1 ? 's' : ''}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Panel lateral estilo Slack — en desktop convive al lado de la conversación (el mensaje raíz
+// queda visible ahí mismo, con su propio flash de highlight si venís de otro lado); en celular,
+// tapa toda la pantalla (un tercer panel angosto no entra junto a sidebar+conversación). Reusa
+// Message para el root y cada respuesta: mismas 6 acciones disponibles ahí también, sin duplicar
+// la UI de la tarjeta de mensaje.
+function ThreadPanel({ root, replies, loading, threadInput, setThreadInput, onSend, sending, onClose, isNarrowViewport,
+  userId, initials, mediaUrl, onImageLoad, toggleReaction, toggleSave, setReplyingTo, scrollToMessage, togglePin, openForward }) {
+  // Mismas 6 acciones que en el feed principal, con los mismos closures por mensaje — el root y
+  // cada respuesta pasan por acá en vez de por el .map() de Chat.jsx, pero son las mismas funciones.
+  const renderMessage = (msg) => (
+    <Message key={msg.id} msg={msg} isMe={msg.sender_id === userId} compact={false}
+      initials={initials} mediaUrl={mediaUrl} onImageLoad={onImageLoad} userId={userId}
+      onReact={emoji => toggleReaction(msg.id, emoji)}
+      onSave={() => toggleSave(msg.id)}
+      onQuote={() => setReplyingTo(msg)}
+      onScrollToQuote={scrollToMessage}
+      onPin={() => togglePin(msg.id)}
+      onForward={() => openForward(msg)}
+      onOpenThread={null}
+      isNarrowViewport={isNarrowViewport} />
+  );
+  return (
+    <div style={{
+      width: isNarrowViewport ? '100%' : 360, flexShrink: 0, display: 'flex', flexDirection: 'column',
+      borderLeft: isNarrowViewport ? 'none' : '1px solid var(--border)', background: 'var(--bg)', overflow: 'hidden',
+      ...(isNarrowViewport ? { position: 'fixed', inset: 0, zIndex: 50 } : {}),
+    }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        {/* marginLeft despeja el botón flotante "▶ Mostrar sidebar" del shell en angosto (mismo
+            problema/arreglo que el resto de los headers de Chat.jsx) — en desktop el panel no
+            convive con ese botón flotante, así que no hace falta ahí. */}
+        <button className="icon-btn" onClick={onClose} title="Cerrar hilo" aria-label="Cerrar hilo"
+          style={{ color: 'var(--text2)', fontSize: 18, padding: 0, marginLeft: isNarrowViewport ? 34 : 0 }}>←</button>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Hilo</div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px' }}>
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><div className="spinner" /></div>
+        ) : root && (
+          <>
+            {renderMessage(root)}
+            <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', margin: '12px 0 8px' }}>
+              {replies.length} respuesta{replies.length !== 1 ? 's' : ''}
+            </div>
+            {replies.map(r => renderMessage(r))}
+          </>
+        )}
+      </div>
+      <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 12, padding: '8px 12px' }}>
+          <input
+            value={threadInput}
+            onChange={e => setThreadInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
+            placeholder="Responder en el hilo..."
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font)' }}
+          />
+          <button
+            onClick={onSend}
+            disabled={!threadInput.trim() || sending}
+            title="Responder"
+            aria-label="Responder"
+            style={{
+              background: threadInput.trim() ? 'var(--accent)' : 'var(--bg4)', border: 'none', borderRadius: 8, width: 28, height: 28,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: threadInput.trim() ? 'pointer' : 'default', flexShrink: 0,
+            }}
+          >
+            <span style={{ fontSize: 13, color: '#fff' }}>↑</span>
+          </button>
+        </div>
       </div>
     </div>
   );

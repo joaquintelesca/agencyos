@@ -22,6 +22,50 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
     return false;
   }
 
+  // Para el bloque de cita/reenvío (ver "Citar"/"Reenviar" en el toolbar) — se arma con un join en
+  // vez de una query aparte por mensaje citado, mismo criterio que sender_name. A nivel de módulo
+  // porque lo usan tanto el feed principal como el hilo de un mensaje.
+  const quoteJoins = (q) => q
+    .leftJoin('chat_messages as qm', 'm.quoted_message_id', 'qm.id')
+    .leftJoin('users as qu', 'qm.sender_id', 'qu.id');
+  const quoteCols = ['qm.content as quoted_content', 'qm.file_type as quoted_file_type', 'qu.name as quoted_sender_name'];
+
+  // Suma reacciones/guardado-propio/fijado/cantidad-de-respuestas a una lista de mensajes ya
+  // traída — usado por el feed principal y por el hilo de un mensaje (GET .../thread), que
+  // necesitan exactamente el mismo enriquecido. `rows` tiene que venir ya con sender_name/
+  // quoted_* (ver quoteJoins) — esto solo agrega lo que depende de una query aparte por batch.
+  async function enrichMessages(rows, userId) {
+    const ids = rows.map(m => m.id);
+    if (ids.length === 0) return rows;
+    const reactionRows = await db('chat_reactions as r')
+      .join('users as u', 'r.user_id', 'u.id')
+      .whereIn('r.message_id', ids)
+      .select('r.message_id', 'r.emoji', 'r.user_id', 'u.name as user_name');
+    const reactionsByMessage = {};
+    for (const row of reactionRows) {
+      const byEmoji = (reactionsByMessage[row.message_id] ??= {});
+      (byEmoji[row.emoji] ??= { emoji: row.emoji, users: [] }).users.push({ id: row.user_id, name: row.user_name });
+    }
+    // Guardados: solo importa si LOS GUARDÉ YO (no es un dato visible para otros, a diferencia de
+    // las reacciones), así que alcanza con un Set de ids, filtrado por user_id.
+    const savedIds = new Set(await db('chat_saved_messages').where('user_id', userId).whereIn('message_id', ids).pluck('message_id'));
+    // Fijados: a diferencia de guardados, es compartido (visible para todos en la conversación),
+    // así que sin filtro de user_id.
+    const pinnedIds = new Set(await db('chat_pinned_messages').whereIn('message_id', ids).pluck('message_id'));
+    // Cantidad de respuestas por hilo — para el "💬 N respuestas" bajo cada mensaje que tiene
+    // alguna. El llamador siempre pasa roots (el feed principal y /thread excluyen las respuestas
+    // de sus propios ids), así que no hace falta filtrar thread_parent_id por tipo de fila.
+    const replyRows = await db('chat_messages').whereIn('thread_parent_id', ids).groupBy('thread_parent_id').select('thread_parent_id', db.raw('count(*) as count'));
+    const replyCountByRoot = Object.fromEntries(replyRows.map(r => [r.thread_parent_id, Number(r.count)]));
+    return rows.map(m => ({
+      ...m,
+      reactions: Object.values(reactionsByMessage[m.id] || {}).map(r => ({ ...r, count: r.users.length })),
+      saved_by_me: savedIds.has(m.id),
+      pinned: pinnedIds.has(m.id),
+      reply_count: replyCountByRoot[m.id] || 0,
+    }));
+  }
+
   router.get('/api/chat/dm-tabs', auth, async (req, res) => {
     try {
       const { userId } = req.query;
@@ -129,18 +173,12 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
       const userId = req.user.id;
       const PAGE_SIZE = 50;
 
-      // Para el bloque de cita (ver "Citar" en el toolbar) — se arma acá con un join en vez de una
-      // query aparte por mensaje citado, mismo criterio que sender_name.
-      const quoteJoins = (q) => q
-        .leftJoin('chat_messages as qm', 'm.quoted_message_id', 'qm.id')
-        .leftJoin('users as qu', 'qm.sender_id', 'qu.id');
-      const quoteCols = ['qm.content as quoted_content', 'qm.file_type as quoted_file_type', 'qu.name as quoted_sender_name'];
-
       let query;
       if (type === 'dm') {
         query = quoteJoins(db('chat_messages as m')
           .join('users as u', 'm.sender_id', 'u.id'))
           .where('m.type', 'dm')
+          .whereNull('m.thread_parent_id') // las respuestas de hilo no van sueltas en el feed principal
           .where(function() { this.where({ 'm.sender_id': userId, 'm.receiver_id': id }).orWhere({ 'm.sender_id': id, 'm.receiver_id': userId }); })
           .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color', ...quoteCols);
         if (client_id) {
@@ -156,6 +194,7 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
         query = quoteJoins(db('chat_messages as m')
           .join('users as u', 'm.sender_id', 'u.id'))
           .where({ 'm.type': 'channel', 'm.channel_id': id })
+          .whereNull('m.thread_parent_id')
           .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color', ...quoteCols);
       } else {
         return res.json([]);
@@ -168,38 +207,7 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
 
       const msgs = await query.orderBy('m.created_at', 'desc').limit(PAGE_SIZE);
       const ordered = msgs.reverse();
-
-      // Reacciones batcheadas en una sola query (por message_id) en vez de una por mensaje —
-      // mismo criterio que los adjuntos/respuestas de comentarios de video.
-      const messageIds = ordered.map(m => m.id);
-      const reactionRows = messageIds.length
-        ? await db('chat_reactions as r')
-            .join('users as u', 'r.user_id', 'u.id')
-            .whereIn('r.message_id', messageIds)
-            .select('r.message_id', 'r.emoji', 'r.user_id', 'u.name as user_name')
-        : [];
-      const reactionsByMessage = {};
-      for (const row of reactionRows) {
-        const byEmoji = (reactionsByMessage[row.message_id] ??= {});
-        (byEmoji[row.emoji] ??= { emoji: row.emoji, users: [] }).users.push({ id: row.user_id, name: row.user_name });
-      }
-      // Guardados: solo importa si LOS GUARDÉ YO (no es un dato visible para otros, a diferencia
-      // de las reacciones), así que alcanza con un Set de ids, filtrado por user_id.
-      const savedIds = messageIds.length
-        ? new Set(await db('chat_saved_messages').where('user_id', userId).whereIn('message_id', messageIds).pluck('message_id'))
-        : new Set();
-      // Fijados: a diferencia de guardados, es compartido (visible para todos en la conversación),
-      // así que sin filtro de user_id.
-      const pinnedIds = messageIds.length
-        ? new Set(await db('chat_pinned_messages').whereIn('message_id', messageIds).pluck('message_id'))
-        : new Set();
-      const withReactions = ordered.map(m => ({
-        ...m,
-        reactions: Object.values(reactionsByMessage[m.id] || {}).map(r => ({ ...r, count: r.users.length })),
-        saved_by_me: savedIds.has(m.id),
-        pinned: pinnedIds.has(m.id),
-      }));
-      res.json(withReactions);
+      res.json(await enrichMessages(ordered, userId));
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 
@@ -328,6 +336,78 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
       }
 
       res.json(await query.orderBy('p.created_at', 'desc'));
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // Root + respuestas de un hilo — un solo nivel (ver la migración), así que "respuestas" es
+  // directo: todo lo que tenga thread_parent_id = este id, sin recursión.
+  router.get('/api/chat/messages/:id/thread', auth, async (req, res) => {
+    try {
+      const root = await db('chat_messages as m')
+        .join('users as u', 'm.sender_id', 'u.id')
+        .where('m.id', req.params.id)
+        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color')
+        .first();
+      if (!root) return res.status(404).json({ error: 'Mensaje no encontrado' });
+      if (!await canAccessMessage(req.user, root)) return res.status(403).json({ error: 'Sin acceso' });
+
+      const replies = quoteJoins(db('chat_messages as m')
+        .join('users as u', 'm.sender_id', 'u.id'))
+        .where('m.thread_parent_id', req.params.id)
+        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color', ...quoteCols)
+        .orderBy('m.created_at', 'asc');
+
+      const [enrichedRoot] = await enrichMessages([root], req.user.id);
+      const enrichedReplies = await enrichMessages(await replies, req.user.id);
+      res.json({ root: enrichedRoot, replies: enrichedReplies });
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // Responder en hilo: a diferencia del envío normal, el destino (type/receiver_id/channel_id/
+  // client_id) se copia del ROOT leído server-side, no de lo que mande el cliente — así una
+  // respuesta siempre cuelga de la conversación real del hilo, sin poder "colarla" en otra.
+  router.post('/api/chat/messages/:id/reply', auth, async (req, res) => {
+    try {
+      const { content, file_url, file_type, file_name, file_duration } = req.body;
+      const senderId = req.user.id;
+
+      const parent = await db('chat_messages').where({ id: req.params.id }).first();
+      if (!parent) return res.status(404).json({ error: 'Mensaje no encontrado' });
+      if (!await canAccessMessage(req.user, parent)) return res.status(403).json({ error: 'Sin acceso' });
+      // Si alguien contesta una respuesta (no debería pasar desde la UI, que no expone esa acción
+      // ahí, pero no hay que confiar solo en eso), se cuelga del root real — un solo nivel siempre.
+      const rootId = parent.thread_parent_id || parent.id;
+
+      if (!content?.trim() && !file_url) {
+        return res.status(400).json({ error: 'Mensaje vacío' });
+      }
+      if (file_url) {
+        if (typeof file_url !== 'string' || !/^\/uploads\/[A-Za-z0-9._-]+$/.test(file_url)) {
+          return res.status(400).json({ error: 'Archivo inválido' });
+        }
+        if (!['image', 'video', 'audio', 'file'].includes(file_type)) {
+          return res.status(400).json({ error: 'Tipo de archivo inválido' });
+        }
+      }
+
+      const id = uuidv4();
+      await db('chat_messages').insert({
+        id, sender_id: senderId, receiver_id: parent.receiver_id, channel_id: parent.channel_id, type: parent.type,
+        content: content || '', file_url: file_url || null, file_type: file_type || null, file_name: file_name || null,
+        file_duration: file_duration || null, client_id: parent.client_id, thread_parent_id: rootId,
+      });
+      const msg = await db('chat_messages as m')
+        .join('users as u', 'm.sender_id', 'u.id')
+        .where('m.id', id)
+        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color')
+        .first();
+      if (parent.type === 'dm') {
+        io.to(`user:${parent.sender_id}`).to(`user:${parent.receiver_id}`).emit('chat:message', msg);
+      } else if (parent.type === 'channel') {
+        const members = await db('chat_channel_members').where({ channel_id: parent.channel_id }).pluck('user_id');
+        for (const uid of members) io.to(`user:${uid}`).emit('chat:message', msg);
+      }
+      res.json(msg);
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 
