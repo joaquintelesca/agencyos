@@ -42,31 +42,33 @@ export default function ActivityTimeline({ projectId }) {
   }
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isNarrowViewport ? '16px 16px' : '20px 24px', maxWidth: 640, boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {items.map((a, i) => (
-          <div key={a.id} style={{ display: 'flex', gap: 12 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--bg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
-                {activityIcon(a.type)}
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+      <div style={{ padding: isNarrowViewport ? '16px 16px' : '20px 24px', maxWidth: 640, boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {items.map((a, i) => (
+            <div key={a.id} style={{ display: 'flex', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--bg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
+                  {activityIcon(a.type)}
+                </div>
+                {i < items.length - 1 && <div style={{ width: 1, flex: 1, background: 'var(--border)', minHeight: 18 }} />}
               </div>
-              {i < items.length - 1 && <div style={{ width: 1, flex: 1, background: 'var(--border)', minHeight: 18 }} />}
-            </div>
-            <div style={{ paddingBottom: 18, minWidth: 0 }}>
-              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.4 }}>{activityLabel(a)}</div>
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-                {new Date(a.created_at).toLocaleString('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              <div style={{ paddingBottom: 18, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.4 }}>{activityLabel(a)}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                  {new Date(a.created_at).toLocaleString('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+        {hasMore && (
+          <button className="btn-outline" onClick={loadMore} disabled={loadingMore}
+            style={{ marginTop: 4, borderRadius: 7, padding: '7px 16px', color: 'var(--text2)', fontSize: 12 }}>
+            {loadingMore ? 'Cargando...' : 'Cargar más'}
+          </button>
+        )}
       </div>
-      {hasMore && (
-        <button className="btn-outline" onClick={loadMore} disabled={loadingMore}
-          style={{ marginTop: 4, borderRadius: 7, padding: '7px 16px', color: 'var(--text2)', fontSize: 12 }}>
-          {loadingMore ? 'Cargando...' : 'Cargar más'}
-        </button>
-      )}
     </div>
   );
 }
