@@ -833,11 +833,12 @@ export default function Layout() {
       )}
 
       {/* El botón flotante "▶ Mostrar sidebar" (fixed, top-left) vive siempre arriba del contenido
-          (zIndex alto) para poder reabrir el drawer en angosto — sin este padding, cualquier
-          página cuyo primer elemento cayera justo en esa esquina quedaba tapada por el botón (le
-          pasó a los links "← Configuración" nuevos de Almacenamiento/Branding/Backups, pero es un
-          problema general de layout, no de esas pantallas puntuales). */}
-      <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', paddingTop: (isNarrowViewport && !sidebarVisible) ? 44 : 0 }}>
+          (zIndex alto) para poder reabrirla — sin este padding, cualquier página cuyo primer
+          elemento cayera justo en esa esquina quedaba tapada por el botón (le pasó a los links "←
+          Configuración" nuevos de Almacenamiento/Branding/Backups en angosto, y al título del
+          Dashboard en escritorio con la sidebar comprimida — mismo problema de layout en ambos
+          casos, se corrige con la misma condición: !sidebarVisible, no solo en angosto). */}
+      <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', paddingTop: !sidebarVisible ? 44 : 0 }}>
         {storageWarning && user?.role === 'admin' && (
           <div style={{ background: 'rgba(240,168,58,0.08)', borderBottom: '1px solid rgba(240,168,58,0.31)', padding: '8px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
