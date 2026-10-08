@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { useAlert } from '../context/AlertContext';
+import { useReviewReminder } from '../context/ReviewReminderContext';
 import { initials } from '../utils/format';
 import { notificationLabel, notificationTarget, notificationText, notificationIcon } from '../utils/notifications';
 import { renderMentions } from './MentionInput';
@@ -29,6 +30,9 @@ export default function Layout() {
   const { scheduleDelete } = useUndo();
   const { alert, confirm } = useAlert();
   const { canInstall, promptInstall } = useInstallPrompt();
+  const { pendingReview, clearPendingReview } = useReviewReminder();
+  const [reviewReminder, setReviewReminder] = useState(null); // { videoId, projectId, videoTitle } | null
+  const [sendingReviewReminder, setSendingReviewReminder] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const [projects, setProjects] = useState([]);
@@ -91,6 +95,39 @@ export default function Layout() {
   // tapa la pantalla nueva y hay que ir a cerrarlo a mano cada vez.
   useEffect(() => { if (isNarrowViewport) setMobileSidebarOpen(false); }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
   const sidebarVisible = isNarrowViewport ? mobileSidebarOpen : !sidebarCollapsed;
+
+  // Si hay un video con comentarios sin avisar (ver ReviewReminderContext) y la navegación cambió
+  // de forma que ya no estamos parados en ESE video puntual, se perdió la oportunidad natural de
+  // apretar "Revisión terminada" ahí mismo — se muestra el recordatorio acá, que sobrevive a
+  // cualquier navegación (cambio de tab del proyecto, otra página del sidebar, etc.) porque el
+  // Provider vive arriba del Router. Se dispara una sola vez: en cuanto se arma el recordatorio,
+  // se limpia pendingReview para no repetirlo en la próxima navegación.
+  useEffect(() => {
+    if (!pendingReview) return;
+    const params = new URLSearchParams(location.search);
+    const stillThere = location.pathname === `/project/${pendingReview.projectId}`
+      && params.get('tab') === 'videos' && params.get('video') === pendingReview.videoId;
+    if (stillThere) return;
+    setReviewReminder(pendingReview);
+    clearPendingReview();
+  }, [location.pathname, location.search]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Se llama directo al endpoint sin volver a navegar al video — ya se tiene el id a mano, no hace
+  // falta volver ahí solo para apretar el mismo botón. Si mientras tanto ya no quedan comentarios
+  // sin resolver (alguien más se adelantó, o el editor ya los resolvió), el servidor devuelve 400 —
+  // se trata como un resultado benigno, no un error real, y el modal se cierra igual.
+  const confirmReviewReminder = async () => {
+    if (!reviewReminder || sendingReviewReminder) return;
+    setSendingReviewReminder(true);
+    try {
+      await api(`/api/videos/${reviewReminder.videoId}/review-done`, { method: 'POST' });
+    } catch (e) {
+      if (e.status !== 400) { console.error(e); await alert('No se pudo avisar: ' + e.message); }
+    } finally {
+      setSendingReviewReminder(false);
+      setReviewReminder(null);
+    }
+  };
 
   // Cmd/Ctrl+K siempre se intercepta, a diferencia del Cmd/Ctrl+Z de deshacer (ver UndoContext) —
   // ahí no tocar el atajo mientras se escribe en un input importa porque pisaría el undo nativo
@@ -594,6 +631,7 @@ export default function Layout() {
   );
 
   const newProjectModalRef = useModalA11y(showNewProject, () => setShowNewProject(false));
+  const reviewReminderModalRef = useModalA11y(!!reviewReminder, () => setReviewReminder(null));
   const newClientModalRef = useModalA11y(showNewClient, () => setShowNewClient(false));
   const editProjectModalRef = useModalA11y(!!editingProject, () => setEditingProject(null));
   const completeConfirmModalRef = useModalA11y(showCompleteConfirm, () => setShowCompleteConfirm(false));
@@ -830,6 +868,24 @@ export default function Layout() {
       </main>
 
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+
+      {reviewReminder && (
+        <div className="modal-overlay" onClick={() => setReviewReminder(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={reviewReminderModalRef} role="dialog" aria-modal="true" aria-labelledby="review-reminder-title">
+            <button className="modal-close" onClick={() => setReviewReminder(null)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="review-reminder-title">¿Terminaste de revisar?</h2>
+            <p style={{ fontSize: 'var(--fs-base)', color: 'var(--text2)', lineHeight: 'var(--lh-normal)', marginBottom: 16 }}>
+              Dejaste comentarios en <strong>"{reviewReminder.videoTitle}"</strong> pero no le avisaste al editor que terminaste de revisar.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setReviewReminder(null)}>Ahora no</button>
+              <button className="btn btn-primary" onClick={confirmReviewReminder} disabled={sendingReviewReminder}>
+                {sendingReviewReminder ? 'Avisando...' : 'Avisar ahora'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New Project Modal */}
       {showNewProject && (

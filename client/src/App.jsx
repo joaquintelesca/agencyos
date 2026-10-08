@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UndoProvider } from './context/UndoContext';
 import { AlertProvider } from './context/AlertContext';
+import { ReviewReminderProvider } from './context/ReviewReminderContext';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -50,33 +51,35 @@ export default function App() {
       <AuthProvider>
         <AlertProvider>
           <UndoProvider>
-            <BrowserRouter>
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  <Route path="/login" element={<Login />} />
-                  {/* Pública a propósito, fuera de PrivateRoute — el cliente que abre esto no
-                      tiene cuenta ni la va a crear. */}
-                  <Route path="/review/:token" element={<PublicReview />} />
-                  <Route path="/client-review/:token" element={<ClientReview />} />
-                  <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-                    <Route index element={<Dashboard />} />
-                    <Route path="calendar" element={<CalendarPage />} />
-                    <Route path="project/:id" element={<Project />} />
-                    <Route path="client/:id" element={<ClientDashboard />} />
-                    <Route path="team" element={<Team />} />
-                    <Route path="chat" element={<Chat />} />
-                    <Route path="notifications" element={<Notifications />} />
-                    <Route path="earnings" element={<Earnings />} />
-                    <Route path="payments" element={<AdminRoute><Payments /></AdminRoute>} />
-                    <Route path="videos" element={<AdminRoute><VideosDashboard /></AdminRoute>} />
-                    <Route path="storage" element={<AdminRoute><Storage /></AdminRoute>} />
-                    <Route path="settings" element={<AdminRoute><Settings /></AdminRoute>} />
-                    <Route path="settings/branding" element={<AdminRoute><BrandingSettings /></AdminRoute>} />
-                    <Route path="settings/backups" element={<AdminRoute><BackupSettings /></AdminRoute>} />
-                  </Route>
-                </Routes>
-              </Suspense>
-            </BrowserRouter>
+            <ReviewReminderProvider>
+              <BrowserRouter>
+                <Suspense fallback={<PageLoader />}>
+                  <Routes>
+                    <Route path="/login" element={<Login />} />
+                    {/* Pública a propósito, fuera de PrivateRoute — el cliente que abre esto no
+                        tiene cuenta ni la va a crear. */}
+                    <Route path="/review/:token" element={<PublicReview />} />
+                    <Route path="/client-review/:token" element={<ClientReview />} />
+                    <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+                      <Route index element={<Dashboard />} />
+                      <Route path="calendar" element={<CalendarPage />} />
+                      <Route path="project/:id" element={<Project />} />
+                      <Route path="client/:id" element={<ClientDashboard />} />
+                      <Route path="team" element={<Team />} />
+                      <Route path="chat" element={<Chat />} />
+                      <Route path="notifications" element={<Notifications />} />
+                      <Route path="earnings" element={<Earnings />} />
+                      <Route path="payments" element={<AdminRoute><Payments /></AdminRoute>} />
+                      <Route path="videos" element={<AdminRoute><VideosDashboard /></AdminRoute>} />
+                      <Route path="storage" element={<AdminRoute><Storage /></AdminRoute>} />
+                      <Route path="settings" element={<AdminRoute><Settings /></AdminRoute>} />
+                      <Route path="settings/branding" element={<AdminRoute><BrandingSettings /></AdminRoute>} />
+                      <Route path="settings/backups" element={<AdminRoute><BackupSettings /></AdminRoute>} />
+                    </Route>
+                  </Routes>
+                </Suspense>
+              </BrowserRouter>
+            </ReviewReminderProvider>
           </UndoProvider>
         </AlertProvider>
       </AuthProvider>

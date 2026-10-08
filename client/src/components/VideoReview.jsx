@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useUndo } from '../context/UndoContext';
 import { useAlert } from '../context/AlertContext';
+import { useReviewReminder } from '../context/ReviewReminderContext';
 import { initials } from '../utils/format';
 import { uploadVideoChunked, captureVideoThumbnail } from '../utils/upload';
 import VideoPlayerAnnotator, { formatTime } from './VideoPlayerAnnotator';
@@ -18,6 +19,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const { api, user, socket, mediaUrl, token } = useAuth();
   const { scheduleDelete } = useUndo();
   const { alert } = useAlert();
+  const { setPendingReview, clearPendingReview, pendingReview } = useReviewReminder();
   // El panel de comentarios (320px fijo) al lado del video no entra en un celular — abajo de este
   // ancho se apilan: video arriba, comentarios abajo con su propia altura y scroll.
   const isNarrowViewport = useNarrowViewport();
@@ -219,14 +221,15 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     } catch (e) { console.error(e); await alert('No se pudo quitar la aprobación: ' + e.message); }
   };
 
-  // Un solo aviso al editor resumiendo la revisión, en vez de uno por cada comentario que se dejó
-  // en el camino (esos ya no notifican, ver server) — y de paso mueve la tarea a "Aplicar feedback"
-  // si el video tiene una vinculada, para no tener que ir a arrastrarla a mano en el Kanban.
+  // Un aviso explícito de cierre, aparte de las notificaciones agrupadas que ya se mandan por
+  // comentario (ver server) — y de paso mueve la tarea a "Aplicar feedback" si el video tiene una
+  // vinculada, para no tener que ir a arrastrarla a mano en el Kanban.
   const markReviewDone = async () => {
     if (markingReviewDone) return;
     setMarkingReviewDone(true);
     try {
       await api(`/api/videos/${selectedVideo.id}/review-done`, { method: 'POST' });
+      if (pendingReview?.videoId === selectedVideo.id) clearPendingReview();
     } catch (e) { console.error(e); await alert('No se pudo avisar: ' + e.message); }
     finally { setMarkingReviewDone(false); }
   };
@@ -689,6 +692,12 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
             await api(`/api/videos/${selectedVideo.id}/comments`, { method: 'POST', body: fd });
             const updated = await api(`/api/videos/${selectedVideo.id}/comments`);
             setComments(updated);
+            // Solo el admin tiene el botón "Revisión terminada" — recordarle a un editor que no lo
+            // apretó no tendría sentido, ni siquiera lo ve. Se guarda el ÚLTIMO video comentado: si
+            // sigue comentando otro antes de avisar, el recordatorio apunta al más reciente.
+            if (user.role === 'admin') {
+              setPendingReview({ videoId: selectedVideo.id, projectId, videoTitle: selectedVideo.title });
+            }
           }}
         />
 

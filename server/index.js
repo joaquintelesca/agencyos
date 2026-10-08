@@ -1135,19 +1135,28 @@ async function createNotificationInner({ userId, type, actorId, guestName, proje
     if (muted) return;
   }
 
-  // Notificaciones de chat de proyecto: agrupar las no leídas del mismo emisor en una sola, en vez
-  // de crear una fila nueva por cada mensaje — alguien escribiendo 10 mensajes seguidos generaba
-  // 10 notificaciones separadas. (Esto apuntaba a `type === 'chat'`, un tipo que nunca se llegó a
-  // usar en ningún lado — el chat de proyecto siempre mandó 'project_message', así que este bloque
-  // quedó de código muerto hasta ahora.)
-  if (type === 'project_message') {
-    const existing = await db('notifications')
-      .where({ user_id: userId, actor_id: actorId, type: 'project_message', read: false })
-      .first();
+  // Agrupar las no leídas del mismo emisor en una sola fila, en vez de crear una nueva por cada
+  // evento — alguien escribiendo 10 mensajes seguidos (o dejando 10 comentarios en un mismo video)
+  // generaba 10 notificaciones separadas. (El bloque de chat apuntaba a `type === 'chat'`, un tipo
+  // que nunca se llegó a usar — el chat de proyecto siempre mandó 'project_message' — así que
+  // quedó de código muerto hasta que se reusó acá para comentarios de video.)
+  if (type === 'project_message' || type === 'comment') {
+    const matchWhere = { user_id: userId, actor_id: actorId, type, read: false };
+    // Comentarios se agrupan por video además de por actor — la misma persona comentando dos
+    // videos distintos casi al mismo tiempo no debería mezclarse en una sola notificación ("¿de
+    // cuál video habla?"). Un mensaje de chat ya es 1 a 1 con el actor, no tiene ese problema.
+    if (type === 'comment' && videoId) matchWhere.video_id = videoId;
+    const existing = await db('notifications').where(matchWhere).first();
     if (existing) {
+      const groupCount = (existing.group_count || 1) + 1;
+      // Chat: el último mensaje escrito sigue siendo el preview más útil. Comentarios de video: a
+      // partir del segundo, el conteo dice más que mostrar solo el texto de uno entre varios.
+      const groupedPreview = type === 'comment' ? `${groupCount} comentarios nuevos` : (preview || existing.preview);
       await db('notifications').where({ id: existing.id }).update({
-        preview: preview || existing.preview,
+        preview: groupedPreview,
         chat_message_id: chatMessageId || existing.chat_message_id,
+        comment_id: commentId || existing.comment_id,
+        group_count: groupCount,
         created_at: new Date().toISOString(),
       });
       const updated = await db('notifications as n')

@@ -93,13 +93,35 @@ module.exports = function videoCommentsRoutes({ db, auth, isProjectMember, safeJ
       }
       if (video) await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
       if (video) {
-        // Ya no se notifica uno por uno por cada comentario "normal" — alguien revisando un video
-        // a fondo deja muchos seguidos, e inundaba de avisos al editor (y a otros admins que ya
-        // habían comentado) con uno por cada uno. Eso se junta ahora en un solo aviso al terminar
-        // la revisión (ver POST .../review-done). Una @mención sigue avisando al toque igual que
-        // antes — es un pedido explícito de atención puntual sobre algo puntual, no el ruido
-        // ambiente que se quería agrupar.
-        const mentionedIds = extractMentionedUserIds(content).filter(uid => uid !== req.user.id);
+        // El editor que subió el video (y el asignado de su tarea) tienen que enterarse sí o sí,
+        // además de los admins y de quien ya haya comentado este video antes. Cada comentario
+        // vuelve a avisar (a diferencia de antes de "Revisión terminada"), pero ahora es seguro:
+        // createNotificationInner agrupa varios comentarios seguidos de la misma persona sobre el
+        // mismo video en UNA sola notificación no leída ("N comentarios nuevos") en vez de una
+        // fila por cada uno — "Revisión terminada" sigue siendo el cierre explícito aparte, no
+        // reemplaza esto, lo complementa para cuando nadie lo aprieta.
+        const taskAssignee = video.task_id
+          ? (await db('tasks').where({ id: video.task_id }).select('assigned_to').first())?.assigned_to
+          : null;
+        const directIds = [video.uploaded_by, taskAssignee].filter(Boolean);
+        const recipients = await db('users')
+          .where('id', '!=', req.user.id)
+          .where(function() {
+            this.where({ role: 'admin' })
+              .orWhereIn('id', db('video_comments').where({ video_id: req.params.videoId }).select('user_id'))
+              .orWhereIn('id', directIds);
+          });
+        // A quien mencionaron le llega "te mencionaron" en vez del genérico "comentó en un video" —
+        // mandarle los dos sería el mismo aviso anunciado dos veces distintas, y además una mención
+        // no se agrupa (ver createNotificationInner), así que tiene que quedar clara por separado.
+        const mentionedIds = new Set(extractMentionedUserIds(content));
+        for (const m of recipients) {
+          const type = mentionedIds.has(m.id) ? 'mention' : 'comment';
+          await createNotification({ userId: m.id, type, actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });
+          mentionedIds.delete(m.id);
+        }
+        // Alguien mencionado que no estuviera ya en la lista de destinatarios habituales igual
+        // tiene que enterarse — la mención es una invitación explícita a mirar, no solo un aviso pasivo.
         for (const uid of mentionedIds) {
           await createNotification({ userId: uid, type: 'mention', actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });
         }
