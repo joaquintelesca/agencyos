@@ -621,7 +621,7 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
           <button onClick={onMarkReviewDone} disabled={markingReviewDone}
             title={reviewAlreadyNotified ? 'Ya le avisaste al editor — click para avisar de nuevo' : 'Avisarle al editor que terminaste de revisar'}
             style={{ position: 'absolute', top: 46, right: 10, zIndex: 3, display: 'flex', alignItems: 'center', gap: 6, background: reviewAlreadyNotified ? 'var(--green)' : 'rgba(20,20,23,0.82)', border: `1px solid ${reviewAlreadyNotified ? 'var(--green)' : 'var(--border2)'}`, color: reviewAlreadyNotified ? '#fff' : 'var(--text2)', fontSize: 11.5, fontWeight: 600, padding: '6px 11px', borderRadius: 999, cursor: markingReviewDone ? 'default' : 'pointer', opacity: markingReviewDone ? 0.7 : 1 }}>
-            {reviewAlreadyNotified ? <><Icon.check /> Avisado</> : <>🔍 {markingReviewDone ? 'Avisando...' : 'Revisión terminada'}</>}
+            {reviewAlreadyNotified ? <><Icon.check /> Editor avisado</> : <>🔍 {markingReviewDone ? 'Avisando...' : 'Revisión terminada'}</>}
           </button>
         )}
 
