@@ -158,13 +158,23 @@ module.exports = function videoCommentsRoutes({ db, auth, isProjectMember, safeJ
         await createNotification({ userId: uid, type: 'video_review_done', actorId: req.user.id, projectId: video.project_id, videoId: video.id, preview });
       }
 
+      // Formato "YYYY-MM-DD HH:MM:SS.mmm" (sin 'T' ni 'Z') a propósito: es el mismo formato
+      // ambiguo-pero-consistente que ya usan created_at de video_comments y el resto de la app
+      // (ver client: new Date(comment.created_at) en VideoReview.jsx/Chat.jsx/etc, que el
+      // navegador interpreta como hora LOCAL). Si acá se guardara en ISO con 'Z' (hora UTC
+      // explícita), compararlo contra created_at de un comentario rompía en cualquier timezone
+      // distinto de UTC — dos formatos distintos para la misma comparación.
+      const reviewDoneAt = new Date().toISOString().replace('T', ' ').replace('Z', '');
+      await db('videos').where({ id: video.id }).update({ review_done_at: reviewDoneAt });
+      await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
+
       if (video.task_id) {
         await db('tasks').where({ id: video.task_id }).update({ status: 'feedback', updated_at: new Date().toISOString() });
         const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', video.task_id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
         await emitToProject(video.project_id, 'task:updated', task);
       }
 
-      res.json({ success: true, notified: recipientIds.size, pending });
+      res.json({ success: true, notified: recipientIds.size, pending, review_done_at: reviewDoneAt });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 

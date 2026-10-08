@@ -43,7 +43,7 @@ export function formatTime(s) {
 // navegar a otro video o a la lista — el compositor de comentario vive DENTRO de este componente,
 // así que el padre no tiene otra forma de saber si hay algo sin enviar.
 const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
-  { src, comments, currentUserId, activeComment, onActiveCommentChange, allowAttachments = true, onSubmit, approvedAt, approvedByName, onApprove, onUnapprove, onMarkReviewDone, markingReviewDone, members = [] },
+  { src, comments, currentUserId, activeComment, onActiveCommentChange, allowAttachments = true, onSubmit, approvedAt, approvedByName, onApprove, onUnapprove, onMarkReviewDone, markingReviewDone, reviewAlreadyNotified, members = [] },
   ref
 ) {
   const { alert, confirm } = useAlert();
@@ -611,12 +611,17 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
 
         {/* Pedido del usuario: debajo de "Aprobar", no en la barra superior de VideoReview donde
             vivía antes. Solo VideoReview pasa esta prop (admin, con comentarios sin resolver) — en
-            el link público/de cliente (mismo componente) nunca llega, así que ahí no aparece. */}
+            el link público/de cliente (mismo componente) nunca llega, así que ahí no aparece.
+            Después de apretarlo quedaba con la misma pinta de siempre — nada decía que el aviso ya
+            había salido, había que ir a chequear el Kanban a mano. reviewAlreadyNotified (calculado
+            en VideoReview comparando la fecha del aviso contra la del comentario sin resolver más
+            reciente) le da un estado visual distinto; sigue siendo clickeable por si quieren
+            re-avisar a propósito. */}
         {onMarkReviewDone && (
           <button onClick={onMarkReviewDone} disabled={markingReviewDone}
-            title="Avisarle al editor que terminaste de revisar"
-            style={{ position: 'absolute', top: 46, right: 10, zIndex: 3, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(20,20,23,0.82)', border: '1px solid var(--border2)', color: 'var(--text2)', fontSize: 11.5, fontWeight: 600, padding: '6px 11px', borderRadius: 999, cursor: markingReviewDone ? 'default' : 'pointer', opacity: markingReviewDone ? 0.7 : 1 }}>
-            🔍 {markingReviewDone ? 'Avisando...' : 'Revisión terminada'}
+            title={reviewAlreadyNotified ? 'Ya le avisaste al editor — click para avisar de nuevo' : 'Avisarle al editor que terminaste de revisar'}
+            style={{ position: 'absolute', top: 46, right: 10, zIndex: 3, display: 'flex', alignItems: 'center', gap: 6, background: reviewAlreadyNotified ? 'var(--green)' : 'rgba(20,20,23,0.82)', border: `1px solid ${reviewAlreadyNotified ? 'var(--green)' : 'var(--border2)'}`, color: reviewAlreadyNotified ? '#fff' : 'var(--text2)', fontSize: 11.5, fontWeight: 600, padding: '6px 11px', borderRadius: 999, cursor: markingReviewDone ? 'default' : 'pointer', opacity: markingReviewDone ? 0.7 : 1 }}>
+            {reviewAlreadyNotified ? <><Icon.check /> Avisado</> : <>🔍 {markingReviewDone ? 'Avisando...' : 'Revisión terminada'}</>}
           </button>
         )}
 

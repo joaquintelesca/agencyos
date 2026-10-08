@@ -696,6 +696,16 @@ async function initDB() {
       t.string('approved_by_guest_name').nullable();
     });
   }
+  // Después de apretar "Revisión terminada" el botón seguía mostrándose exactamente igual —
+  // nada indicaba que el aviso se había mandado, así que había que ir a chequear el Kanban a
+  // mano. Se guarda cuándo fue el último aviso para poder comparar contra la fecha del
+  // comentario sin resolver más reciente (ver POST /api/videos/:id/review-done): si no hay
+  // ningún comentario nuevo desde ese aviso, el botón pasa a un estado "ya avisado" en vez de
+  // quedar idéntico al de antes de apretarlo.
+  const hasVideoReviewDoneAt = await db.schema.hasColumn('videos', 'review_done_at');
+  if (!hasVideoReviewDoneAt) {
+    await db.schema.table('videos', t => { t.datetime('review_done_at').nullable(); });
+  }
 
   // Tabla de miembros de proyecto: controla qué usuarios tienen acceso a qué proyectos.
   const hasProjectMembers = await db.schema.hasTable('project_members');

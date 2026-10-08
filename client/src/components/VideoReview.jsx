@@ -221,6 +221,15 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     } catch (e) { console.error(e); await alert('No se pudo quitar la aprobación: ' + e.message); }
   };
 
+  // Antes el botón quedaba exactamente igual después de apretarlo — nada indicaba que el aviso se
+  // había mandado, había que ir a chequear el Kanban a mano. hasUnresolvedComments decide si el
+  // botón aparece; reviewAlreadyNotified decide con qué pinta (activo vs "✓ Avisado"), comparando
+  // la fecha del aviso contra la del comentario sin resolver más reciente — si después del aviso
+  // llega un comentario nuevo, vuelve a mostrarse activo.
+  const hasUnresolvedComments = comments.some(c => !c.resolved);
+  const reviewAlreadyNotified = hasUnresolvedComments && !!selectedVideo?.review_done_at &&
+    new Date(selectedVideo.review_done_at).getTime() >= Math.max(...comments.filter(c => !c.resolved).map(c => new Date(c.created_at).getTime()));
+
   // Un aviso explícito de cierre, aparte de las notificaciones agrupadas que ya se mandan por
   // comentario (ver server) — y de paso mueve la tarea a "Aplicar feedback" si el video tiene una
   // vinculada, para no tener que ir a arrastrarla a mano en el Kanban.
@@ -228,7 +237,10 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     if (markingReviewDone) return;
     setMarkingReviewDone(true);
     try {
-      await api(`/api/videos/${selectedVideo.id}/review-done`, { method: 'POST' });
+      const res = await api(`/api/videos/${selectedVideo.id}/review-done`, { method: 'POST' });
+      const patch = { review_done_at: res.review_done_at };
+      setSelectedVideo(prev => prev && prev.id === selectedVideo.id ? { ...prev, ...patch } : prev);
+      setVideos(prev => prev.map(v => v.id === selectedVideo.id ? { ...v, ...patch } : v));
       if (pendingReview?.videoId === selectedVideo.id) clearPendingReview();
     } catch (e) { console.error(e); await alert('No se pudo avisar: ' + e.message); }
     finally { setMarkingReviewDone(false); }
@@ -675,8 +687,9 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           approvedByName={selectedVideo.approved_by_name}
           onApprove={approveVideo}
           onUnapprove={unapproveVideo}
-          onMarkReviewDone={(user.role === 'admin' && comments.some(c => !c.resolved)) ? markReviewDone : null}
+          onMarkReviewDone={(user.role === 'admin' && hasUnresolvedComments) ? markReviewDone : null}
           markingReviewDone={markingReviewDone}
+          reviewAlreadyNotified={reviewAlreadyNotified}
           onSubmit={async ({ content, timestampSec, timestampEnd, annotations, files }) => {
             const fd = new FormData();
             fd.append('content', content);
