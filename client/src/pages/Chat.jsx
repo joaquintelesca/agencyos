@@ -687,10 +687,10 @@ export default function Chat() {
     setPendingHighlight(m.id);
   };
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
+  // Extraído de handleFileUpload (el flujo del clip) para poder reusarlo también al pegar una
+  // imagen copiada (Cmd+V) — mismo upload, mismo sendMessage, la única diferencia es de dónde
+  // sale el File.
+  const uploadAndSendFile = async (file) => {
     setUploadingFile(true);
     setUploadProgress(0);
     try {
@@ -715,7 +715,31 @@ export default function Chat() {
       setUploadingFile(false);
       setUploadProgress(0);
       uploadXhrRef.current = null;
-      e.target.value = '';
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    await uploadAndSendFile(file);
+    e.target.value = '';
+  };
+
+  // Una imagen copiada (de otra app, o "Copiar imagen" en el navegador) llega como un item de tipo
+  // image/* en el clipboard, no como texto — se intercepta antes de que el navegador intente
+  // pegarla como texto plano (que no haría nada útil acá de cualquier forma).
+  const handlePasteImage = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          uploadAndSendFile(file);
+        }
+        return;
+      }
     }
   };
 
@@ -1329,6 +1353,7 @@ export default function Chat() {
                       sendMessage(input);
                     }
                   }}
+                  onPaste={handlePasteImage}
                   placeholder={activeConv.type === 'channel' ? `Mensaje en #${activeConv.name}...` : activeConv.isSelf ? 'Escribí una nota...' : activeTab ? `Mensaje a ${activeConv.name} sobre ${dmTabs.find(t => t.id === activeTab)?.name || 'cliente'}...` : `Mensaje a ${activeConv.name}...`}
                   style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font)' }}
                 />

@@ -55,6 +55,17 @@ export function AuthProvider({ children }) {
     return () => clearInterval(interval);
   }, [user, token]);
 
+  // El intervalo de arriba no alcanza con la pestaña en segundo plano — los navegadores frenan o
+  // espacian mucho los setInterval de una pestaña inactiva, así que volver después de un rato con
+  // el token ya vencido (p. ej. mirar una miniatura de chat vieja) daba "Token inválido". Al volver
+  // a la pestaña se pide uno nuevo de una, sin esperar al próximo tick del intervalo.
+  useEffect(() => {
+    if (!user || !token) return;
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchMediaToken(token); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [user, token]);
+
   useEffect(() => {
     if (user && token && !socket) {
       const s = io(SOCKET_URL, { extraHeaders: { 'ngrok-skip-browser-warning': 'true' }, auth: { token } });
