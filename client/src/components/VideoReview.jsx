@@ -655,15 +655,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
             🔗 Compartir
           </button>
         )}
-        {/* Solo aparece si hay algo sin resolver que avisar — un video sin comentarios pendientes
-            no tiene nada que resumir. Manda un solo aviso al editor (en vez de uno por comentario,
-            que ya no se mandan) y mueve la tarea vinculada a "Aplicar feedback". */}
-        {user.role === 'admin' && comments.some(c => !c.resolved) && (
-          <button onClick={markReviewDone} disabled={markingReviewDone} title="Avisarle al editor que terminaste de revisar"
-            style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: markingReviewDone ? 'default' : 'pointer', opacity: markingReviewDone ? 0.6 : 1 }}>
-            🔍 {markingReviewDone ? 'Avisando...' : 'Revisión terminada'}
-          </button>
-        )}
+        {/* "Revisión terminada" se movió debajo de "Aprobar", sobre el video mismo (ver
+            VideoPlayerAnnotator) — pedido del usuario, ya no vive acá en la barra superior. */}
         <button className="btn btn-primary btn-sm" onClick={() => setShowUpload(true)}>⬆ Nueva versión</button>
       </div>
 
@@ -682,6 +675,8 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           approvedByName={selectedVideo.approved_by_name}
           onApprove={approveVideo}
           onUnapprove={unapproveVideo}
+          onMarkReviewDone={(user.role === 'admin' && comments.some(c => !c.resolved)) ? markReviewDone : null}
+          markingReviewDone={markingReviewDone}
           onSubmit={async ({ content, timestampSec, timestampEnd, annotations, files }) => {
             const fd = new FormData();
             fd.append('content', content);

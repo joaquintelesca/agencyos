@@ -43,7 +43,7 @@ export function formatTime(s) {
 // navegar a otro video o a la lista — el compositor de comentario vive DENTRO de este componente,
 // así que el padre no tiene otra forma de saber si hay algo sin enviar.
 const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
-  { src, comments, currentUserId, activeComment, onActiveCommentChange, allowAttachments = true, onSubmit, approvedAt, approvedByName, onApprove, onUnapprove, members = [] },
+  { src, comments, currentUserId, activeComment, onActiveCommentChange, allowAttachments = true, onSubmit, approvedAt, approvedByName, onApprove, onUnapprove, onMarkReviewDone, markingReviewDone, members = [] },
   ref
 ) {
   const { alert, confirm } = useAlert();
@@ -606,6 +606,17 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
             title={approvedAt ? `Aprobado por ${approvedByName || 'alguien'} — click para quitar la aprobación` : 'Marcar como aprobado'}
             style={{ position: 'absolute', top: 10, right: 10, zIndex: 3, display: 'flex', alignItems: 'center', gap: 6, background: approvedAt ? 'var(--green)' : 'rgba(20,20,23,0.82)', border: `1px solid ${approvedAt ? 'var(--green)' : 'var(--border2)'}`, color: approvedAt ? '#fff' : 'var(--text2)', fontSize: 11.5, fontWeight: 600, padding: '6px 11px', borderRadius: 999, cursor: approving ? 'default' : 'pointer', opacity: approving ? 0.7 : 1 }}>
             <Icon.check /> {approvedAt ? `Aprobado${approvedByName ? ` por ${approvedByName}` : ''}` : 'Aprobar'}
+          </button>
+        )}
+
+        {/* Pedido del usuario: debajo de "Aprobar", no en la barra superior de VideoReview donde
+            vivía antes. Solo VideoReview pasa esta prop (admin, con comentarios sin resolver) — en
+            el link público/de cliente (mismo componente) nunca llega, así que ahí no aparece. */}
+        {onMarkReviewDone && (
+          <button onClick={onMarkReviewDone} disabled={markingReviewDone}
+            title="Avisarle al editor que terminaste de revisar"
+            style={{ position: 'absolute', top: 46, right: 10, zIndex: 3, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(20,20,23,0.82)', border: '1px solid var(--border2)', color: 'var(--text2)', fontSize: 11.5, fontWeight: 600, padding: '6px 11px', borderRadius: 999, cursor: markingReviewDone ? 'default' : 'pointer', opacity: markingReviewDone ? 0.7 : 1 }}>
+            🔍 {markingReviewDone ? 'Avisando...' : 'Revisión terminada'}
           </button>
         )}
 
