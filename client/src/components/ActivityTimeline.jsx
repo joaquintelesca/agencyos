@@ -42,7 +42,7 @@ export default function ActivityTimeline({ projectId }) {
   }
 
   return (
-    <div style={{ padding: isNarrowViewport ? '16px 16px' : '20px 24px', maxWidth: 640 }}>
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isNarrowViewport ? '16px 16px' : '20px 24px', maxWidth: 640, boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {items.map((a, i) => (
           <div key={a.id} style={{ display: 'flex', gap: 12 }}>

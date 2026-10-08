@@ -14,7 +14,7 @@ module.exports = function activityRoutes({ db, auth, requireProjectAccess }) {
       const rows = await db('project_activity as a')
         .leftJoin('users as u', 'a.actor_id', 'u.id')
         .where('a.project_id', req.params.projectId)
-        .select('a.id', 'a.type', 'a.actor_id', 'a.guest_name', 'a.data', 'a.created_at',
+        .select('a.id', 'a.type', 'a.actor_id', 'a.guest_name', 'a.data', 'a.created_at', 'a.group_count',
           'u.name as actor_name', 'u.avatar_color as actor_color')
         .orderBy('a.created_at', 'desc')
         .limit(limit)

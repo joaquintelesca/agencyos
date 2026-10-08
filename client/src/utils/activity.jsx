@@ -25,7 +25,10 @@ export function activityLabel(a) {
   if (a.type === 'task_assigned') return <><strong>{who}</strong> asignó "{d.title}" a {d.assignee_name || 'alguien'}</>;
   if (a.type === 'video_uploaded') return <><strong>{who}</strong> subió "{d.title}"{d.version ? ` (v${d.version})` : ''}</>;
   if (a.type === 'video_approved') return <><strong>{who}</strong> aprobó "{d.title}"{d.version ? ` (v${d.version})` : ''}</>;
-  if (a.type === 'comment_added') return <><strong>{who}</strong> comentó en "{d.video_title}"</>;
+  if (a.type === 'comment_added') {
+    if (a.group_count > 1) return <><strong>{who}</strong> comentó {a.group_count} veces en "{d.video_title}"</>;
+    return <><strong>{who}</strong> comentó en "{d.video_title}"</>;
+  }
   if (a.type === 'payment_marked') {
     const sideLabel = d.side === 'editor' ? 'al editor' : 'al cliente';
     const valueLabel = d.value === 'paid' || d.value === 'cobrado' ? 'pagado' : 'sin pagar';
