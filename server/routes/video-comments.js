@@ -93,37 +93,56 @@ module.exports = function videoCommentsRoutes({ db, auth, isProjectMember, safeJ
       }
       if (video) await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
       if (video) {
-        // El editor que subió el video (y el asignado de su tarea) tienen que enterarse sí o sí:
-        // antes los destinatarios eran solo "admins + quien ya haya comentado este video", así que
-        // dejarle feedback con timestamps a un editor que todavía no había comentado no le generaba
-        // ninguna señal — el loop central de revisión dependía de que además le movieran la tarea.
-        const taskAssignee = video.task_id
-          ? (await db('tasks').where({ id: video.task_id }).select('assigned_to').first())?.assigned_to
-          : null;
-        const directIds = [video.uploaded_by, taskAssignee].filter(Boolean);
-        const recipients = await db('users')
-          .where('id', '!=', req.user.id)
-          .where(function() {
-            this.where({ role: 'admin' })
-              .orWhereIn('id', db('video_comments').where({ video_id: req.params.videoId }).select('user_id'))
-              .orWhereIn('id', directIds);
-          });
-        // A quien mencionaron le llega "te mencionaron" en vez del genérico "comentó en un video" —
-        // mandarle los dos sería el mismo aviso anunciado dos veces distintas.
-        const mentionedIds = new Set(extractMentionedUserIds(content));
-        for (const m of recipients) {
-          const type = mentionedIds.has(m.id) ? 'mention' : 'comment';
-          await createNotification({ userId: m.id, type, actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });
-          mentionedIds.delete(m.id);
-        }
-        // Alguien mencionado que no estuviera ya en la lista de destinatarios habituales (por
-        // ejemplo, un editor de otra tarea del mismo proyecto que nunca comentó este video) igual
-        // tiene que enterarse — la mención es una invitación explícita a mirar, no solo un aviso pasivo.
+        // Ya no se notifica uno por uno por cada comentario "normal" — alguien revisando un video
+        // a fondo deja muchos seguidos, e inundaba de avisos al editor (y a otros admins que ya
+        // habían comentado) con uno por cada uno. Eso se junta ahora en un solo aviso al terminar
+        // la revisión (ver POST .../review-done). Una @mención sigue avisando al toque igual que
+        // antes — es un pedido explícito de atención puntual sobre algo puntual, no el ruido
+        // ambiente que se quería agrupar.
+        const mentionedIds = extractMentionedUserIds(content).filter(uid => uid !== req.user.id);
         for (const uid of mentionedIds) {
           await createNotification({ userId: uid, type: 'mention', actorId: req.user.id, projectId: video.project_id, videoId: video.id, commentId: id, preview: content?.slice(0, 80) });
         }
       }
       res.json(full);
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // "Revisión terminada": un solo aviso al editor (y al asignado de la tarea) resumiendo cuántos
+  // comentarios quedaron pendientes, en vez de uno por cada comentario que se dejó en el camino
+  // (ver el POST de arriba). También mueve la tarea vinculada a "Aplicar feedback" directo en la
+  // DB (no vía el PATCH de tareas, que ya manda su propio aviso task_feedback — mandar los dos acá
+  // sería la misma idea anunciada dos veces).
+  router.post('/api/videos/:videoId/review-done', auth, async (req, res) => {
+    try {
+      const video = await db('videos').where({ id: req.params.videoId }).first();
+      if (!video) return res.status(404).json({ error: 'Video no encontrado' });
+      if (!await isProjectMember(req.user.id, req.user.role, video.project_id)) {
+        return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
+      }
+
+      const { count } = await db('video_comments').where({ video_id: req.params.videoId, resolved: false }).count('* as count').first();
+      const pending = Number(count) || 0;
+      if (pending === 0) return res.status(400).json({ error: 'No hay comentarios sin resolver para avisar' });
+
+      const taskAssignee = video.task_id
+        ? (await db('tasks').where({ id: video.task_id }).select('assigned_to').first())?.assigned_to
+        : null;
+      const recipientIds = new Set([video.uploaded_by, taskAssignee].filter(Boolean));
+      recipientIds.delete(req.user.id);
+
+      const preview = `${video.title} — ${pending} comentario${pending !== 1 ? 's' : ''} nuevo${pending !== 1 ? 's' : ''}`;
+      for (const uid of recipientIds) {
+        await createNotification({ userId: uid, type: 'video_review_done', actorId: req.user.id, projectId: video.project_id, videoId: video.id, preview });
+      }
+
+      if (video.task_id) {
+        await db('tasks').where({ id: video.task_id }).update({ status: 'feedback', updated_at: new Date().toISOString() });
+        const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', video.task_id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
+        await emitToProject(video.project_id, 'task:updated', task);
+      }
+
+      res.json({ success: true, notified: recipientIds.size, pending });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 

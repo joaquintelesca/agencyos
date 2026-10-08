@@ -27,6 +27,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   const [members, setMembers] = useState([]);
   const appliedInitialVideoRef = useRef(null);
   const [comments, setComments] = useState([]);
+  const [markingReviewDone, setMarkingReviewDone] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [shareModalVideoId, setShareModalVideoId] = useState(null);
   const [renameModalVideo, setRenameModalVideo] = useState(null);
@@ -216,6 +217,18 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       const patch = { approved_at: null, approved_by_name: null };
       setVideos(prev => prev.map(v => v.id === selectedVideo.id ? { ...v, ...patch } : v));
     } catch (e) { console.error(e); await alert('No se pudo quitar la aprobación: ' + e.message); }
+  };
+
+  // Un solo aviso al editor resumiendo la revisión, en vez de uno por cada comentario que se dejó
+  // en el camino (esos ya no notifican, ver server) — y de paso mueve la tarea a "Aplicar feedback"
+  // si el video tiene una vinculada, para no tener que ir a arrastrarla a mano en el Kanban.
+  const markReviewDone = async () => {
+    if (markingReviewDone) return;
+    setMarkingReviewDone(true);
+    try {
+      await api(`/api/videos/${selectedVideo.id}/review-done`, { method: 'POST' });
+    } catch (e) { console.error(e); await alert('No se pudo avisar: ' + e.message); }
+    finally { setMarkingReviewDone(false); }
   };
 
   const startEditComment = (c) => { setEditingComment(c.id); setEditText(c.content); };
@@ -637,6 +650,15 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           <button onClick={() => setShareModalVideoId(selectedVideo.id)} title="Compartir con el cliente"
             style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
             🔗 Compartir
+          </button>
+        )}
+        {/* Solo aparece si hay algo sin resolver que avisar — un video sin comentarios pendientes
+            no tiene nada que resumir. Manda un solo aviso al editor (en vez de uno por comentario,
+            que ya no se mandan) y mueve la tarea vinculada a "Aplicar feedback". */}
+        {user.role === 'admin' && comments.some(c => !c.resolved) && (
+          <button onClick={markReviewDone} disabled={markingReviewDone} title="Avisarle al editor que terminaste de revisar"
+            style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: markingReviewDone ? 'default' : 'pointer', opacity: markingReviewDone ? 0.6 : 1 }}>
+            🔍 {markingReviewDone ? 'Avisando...' : 'Revisión terminada'}
           </button>
         )}
         <button className="btn btn-primary btn-sm" onClick={() => setShowUpload(true)}>⬆ Nueva versión</button>
