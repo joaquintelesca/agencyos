@@ -796,7 +796,7 @@ export default function Project() {
                               Upwork {entry.cargado ? '✅' : '✗'}
                             </span>
                             <span className="badge" style={{ fontSize: 10, flexShrink: 0, background: entry.pagado ? 'rgba(34,201,122,0.12)' : 'rgba(240,92,92,0.12)', color: entry.pagado ? 'var(--green)' : 'var(--red)' }}>
-                              Pagado {entry.pagado ? '✅' : '✗'}
+                              Pago {entry.pagado ? '✅' : '✗'}
                             </span>
                             <button type="button" className="icon-btn" onClick={() => startEditHourEntry(entry)} title="Editar" aria-label="Editar entrada" style={{ color: 'var(--text3)', flexShrink: 0 }}><Icon.pencil /></button>
                             <button type="button" className="icon-btn" onClick={() => removeHourEntry(entry.id)} title="Quitar" aria-label="Quitar entrada" style={{ color: 'var(--text3)', flexShrink: 0 }}><Icon.trash /></button>
@@ -811,7 +811,7 @@ export default function Project() {
                         <input type="checkbox" checked={hourDraft.cargado} onChange={e => setHourDraft(p => ({ ...p, cargado: e.target.checked }))} /> Upwork
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
-                        <input type="checkbox" checked={hourDraft.pagado} onChange={e => setHourDraft(p => ({ ...p, pagado: e.target.checked }))} /> Pagado
+                        <input type="checkbox" checked={hourDraft.pagado} onChange={e => setHourDraft(p => ({ ...p, pagado: e.target.checked }))} /> Pago
                       </label>
                       <button type="button" className="icon-btn" onClick={addHourEntry} disabled={!hourDraft.etapa.trim() && !hourDraft.horas}
                         title={editingEntryId ? 'Guardar cambios' : 'Agregar entrada'} aria-label={editingEntryId ? 'Guardar cambios de la entrada' : 'Agregar entrada a la bitácora'}
