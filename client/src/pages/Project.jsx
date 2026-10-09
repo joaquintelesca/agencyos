@@ -46,6 +46,13 @@ export default function Project() {
   const [editingTask, setEditingTask] = useState(null);
   const [taskContextMenu, setTaskContextMenu] = useState(null); // { x, y, task }
   const [taskForm, setTaskForm] = useState({ title: '', description: '', status: 'todo', priority: 'medium', assigned_to: '', due_date: '' });
+  // Bitácora de horas — solo control/referencia para el admin, nunca toca Descripción ni Pagos.
+  // Pedido explícito del usuario: reemplaza el "escribir 'Etapa 1 – 11 hs – Cargado a Up / No
+  // cargado a Up' a mano" por una lista chica propia, colapsada por default porque no todas las
+  // tareas la necesitan.
+  const [hourLogOpen, setHourLogOpen] = useState(false);
+  const [hourEntries, setHourEntries] = useState([]);
+  const [hourDraft, setHourDraft] = useState({ etapa: '', horas: '', cargado: false, pagado: false });
   const [dragTask, setDragTask] = useState(null);
   const [reviewReminderTask, setReviewReminderTask] = useState(null);
   const [showPriceModal, setShowPriceModal] = useState(false);
@@ -163,9 +170,14 @@ export default function Project() {
     if (!socket) return;
     const onTask = (t) => {
       if (t.project_id !== id) return;
+      // El socket llega a TODO el proyecto, así que el server nunca manda hours_log ahí (solo por
+      // la respuesta HTTP directa a quien hizo el cambio, ver saveTask) — mergear en vez de
+      // reemplazar entero evita que este evento le borre al admin, en su propia pantalla, la
+      // bitácora que acaba de guardar (la clave ni siquiera viene en t, así que el spread la deja
+      // como estaba).
       setTasks(prev => {
         const exists = prev.find(x => x.id === t.id);
-        return exists ? prev.map(x => x.id === t.id ? t : x) : [...prev, t];
+        return exists ? prev.map(x => x.id === t.id ? { ...x, ...t } : x) : [...prev, t];
       });
     };
     const onTaskDel = ({ id: tid }) => setTasks(prev => prev.filter(t => t.id !== tid));
@@ -217,14 +229,30 @@ export default function Project() {
     // Si el proyecto ya tiene un editor asignado, lo más común es que la tarea nueva sea para esa
     // misma persona — se precarga como default, pero se puede cambiar antes de crear.
     setTaskForm({ title: '', description: '', status, priority: 'medium', assigned_to: project.payment_editor_id || '', due_date: '' });
+    setHourLogOpen(false);
+    setHourEntries([]);
+    setHourDraft({ etapa: '', horas: '', cargado: false, pagado: false });
     setShowTaskModal(true);
   };
 
   const openEditTask = (task) => {
     setEditingTask(task);
     setTaskForm({ title: task.title, description: task.description || '', status: task.status, priority: task.priority, assigned_to: task.assigned_to || '', due_date: task.due_date || '' });
+    setHourLogOpen(false);
+    // El servidor solo manda hours_log acá, en la respuesta directa del GET de tareas (para
+    // admin) — reseteaba esto a [] siempre antes, así que guardar cualquier otro cambio en la
+    // tarea (título, estado, lo que sea) borraba la bitácora entera sin querer.
+    setHourEntries((task.hours_log || []).map(e => ({ id: e.id ?? Date.now() + Math.random(), ...e })));
+    setHourDraft({ etapa: '', horas: '', cargado: false, pagado: false });
     setShowTaskModal(true);
   };
+
+  const addHourEntry = () => {
+    if (!hourDraft.etapa.trim() && !hourDraft.horas) return;
+    setHourEntries(prev => [...prev, { id: Date.now(), ...hourDraft, etapa: hourDraft.etapa.trim() }]);
+    setHourDraft({ etapa: '', horas: '', cargado: false, pagado: false });
+  };
+  const removeHourEntry = (entryId) => setHourEntries(prev => prev.filter(e => e.id !== entryId));
 
   const saveTask = async () => {
     if (!taskForm.title.trim() || savingTask) return;
@@ -232,11 +260,23 @@ export default function Project() {
     // modal abierto sin decir nada y parecía que el botón no hacía nada.
     setSavingTask(true);
     try {
+      // hours_log solo lo lee el server si quien pide es admin (ver tasks.js) — mandarlo siempre
+      // es inofensivo para un editor, que nunca llega a tener nada cargado en hourEntries porque
+      // ni ve la sección.
+      const body = { ...taskForm, hours_log: hourEntries.map(({ id: _id, ...rest }) => rest) };
+      let saved;
       if (editingTask) {
-        await api(`/api/tasks/${editingTask.id}`, { method: 'PUT', body: taskForm });
+        saved = await api(`/api/tasks/${editingTask.id}`, { method: 'PUT', body });
       } else {
-        await api(`/api/projects/${id}/tasks`, { method: 'POST', body: taskForm });
+        saved = await api(`/api/projects/${id}/tasks`, { method: 'POST', body });
       }
+      // El socket que acaba de disparar este mismo guardado nunca trae hours_log (ver onTask más
+      // arriba) — sin este upsert directo con la respuesta HTTP, que sí la trae completa, el admin
+      // veía su propia bitácora desaparecer de la card hasta recargar la página.
+      setTasks(prev => {
+        const exists = prev.find(x => x.id === saved.id);
+        return exists ? prev.map(x => x.id === saved.id ? { ...x, ...saved } : x) : [...prev, saved];
+      });
       setShowTaskModal(false);
     } catch (e) {
       console.error(e);
@@ -713,6 +753,46 @@ export default function Project() {
               <label>Descripción</label>
               <textarea className="input" value={taskForm.description} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))} placeholder="Detalles adicionales..." />
             </div>
+            {user?.role === 'admin' && (
+              <div style={{ marginBottom: 16 }}>
+                <button type="button" onClick={() => setHourLogOpen(o => !o)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 0, color: 'var(--accent2)', fontSize: 13, fontWeight: 600, fontFamily: 'var(--font)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  <span style={{ display: 'inline-block', transform: hourLogOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▸</span>
+                  Bitácora de horas
+                </button>
+                {hourLogOpen && (
+                  <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
+                    {hourEntries.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 10 }}>
+                        {hourEntries.map(entry => (
+                          <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
+                            <span style={{ flex: 1, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {entry.etapa}{entry.etapa && entry.horas ? ' — ' : ''}{entry.horas ? `${entry.horas} hs` : ''}
+                            </span>
+                            {entry.cargado && <span className="badge" style={{ fontSize: 10, flexShrink: 0, background: 'rgba(240,168,58,0.15)', color: 'var(--yellow)' }}>Upwork</span>}
+                            {entry.pagado && <span className="badge" style={{ fontSize: 10, flexShrink: 0, background: 'rgba(34,201,122,0.12)', color: 'var(--green)' }}>Pagado</span>}
+                            <button type="button" className="icon-btn" onClick={() => removeHourEntry(entry.id)} title="Quitar" aria-label="Quitar entrada" style={{ color: 'var(--text3)', flexShrink: 0 }}><Icon.trash /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <input className="input" value={hourDraft.etapa} onChange={e => setHourDraft(p => ({ ...p, etapa: e.target.value }))} placeholder="Etapa" style={{ flex: '2 1 90px', padding: '6px 9px', fontSize: 12 }} />
+                      <input className="input" type="number" min="0" step="0.1" value={hourDraft.horas} onChange={e => setHourDraft(p => ({ ...p, horas: e.target.value }))} placeholder="Hs" style={{ flex: '1 1 50px', padding: '6px 9px', fontSize: 12 }} />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
+                        <input type="checkbox" checked={hourDraft.cargado} onChange={e => setHourDraft(p => ({ ...p, cargado: e.target.checked }))} /> Upwork
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
+                        <input type="checkbox" checked={hourDraft.pagado} onChange={e => setHourDraft(p => ({ ...p, pagado: e.target.checked }))} /> Pagado
+                      </label>
+                      <button type="button" className="icon-btn" onClick={addHourEntry} disabled={!hourDraft.etapa.trim() && !hourDraft.horas}
+                        title="Agregar entrada" aria-label="Agregar entrada a la bitácora" style={{ color: 'var(--accent2)', flexShrink: 0 }}><Icon.plus /></button>
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }}>Solo para tu control — no afecta Pagos ni ninguna otra sección.</div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="form-row">
               <div className="form-group">
                 <label>Estado</label>
@@ -986,9 +1066,19 @@ function TaskCard({ task, onEdit, onDelete, onDragStart, onOpenVideo, initials, 
         </button>
       )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span className="badge" style={{ padding: '2px 7px', background: `${priorityColors[task.priority]}18`, color: priorityColors[task.priority] }}>
-          {priorityLabels[task.priority]}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className="badge" style={{ padding: '2px 7px', background: `${priorityColors[task.priority]}18`, color: priorityColors[task.priority] }}>
+            {priorityLabels[task.priority]}
+          </span>
+          {/* task.hours_log solo llega en el payload si quien lo pide es admin (server lo saca del
+              todo para cualquier otro rol) — no hace falta un prop aparte para ocultarlo. */}
+          {task.hours_log?.length > 0 && (
+            <span className="badge" title="Horas de la bitácora de esta tarea — suma informativa, no toca Pagos"
+              style={{ padding: '2px 7px', background: 'var(--bg4)', color: 'var(--text3)' }}>
+              🕐 {task.hours_log.reduce((sum, e) => sum + (parseFloat(e.horas) || 0), 0)} hs
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {task.due_date && <span style={{ fontSize: 10, color: 'var(--text3)' }}>📅 {new Date(task.due_date + 'T00:00:00').toLocaleDateString('es', { day: 'numeric', month: 'short' })}</span>}
           {task.assignee_name && (

@@ -4,6 +4,13 @@ const { v4: uuidv4 } = require('uuid');
 module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjectMember, addProjectMember, removeProjectMemberIfOrphaned, emitToProject, createNotification, TASK_STATUSES, logActivity }) {
   const router = express.Router();
 
+  // La bitácora de horas es admin-only (pedido explícito del usuario) — se parsea acá y se saca
+  // del todo para cualquier otro rol, para no depender solo de que el cliente oculte la sección.
+  function sanitizeTask(task, isAdmin) {
+    if (!isAdmin) { const { hours_log, ...rest } = task; return rest; }
+    return { ...task, hours_log: task.hours_log ? JSON.parse(task.hours_log) : [] };
+  }
+
   // Cuántas tareas activas tiene cada integrante AHORA MISMO — hoy, para asignar una tarea nueva
   // hay que ir proyecto por proyecto adivinando quién tiene lugar. Solo cuenta tareas de proyectos
   // 'active' (el backlog de un proyecto ya terminado no es carga real) y excluye 'done' (ya no
@@ -52,7 +59,8 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
           latestVideoByTask[v.task_id] = v;
         }
       }
-      res.json(tasks.map(t => ({ ...t, latest_video_id: latestVideoByTask[t.id]?.id || null })));
+      const isAdmin = req.user.role === 'admin';
+      res.json(tasks.map(t => sanitizeTask({ ...t, latest_video_id: latestVideoByTask[t.id]?.id || null }, isAdmin)));
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 
@@ -75,11 +83,17 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
       if (assigned_to && !await db('users').where({ id: assigned_to }).first()) {
         return res.status(400).json({ error: 'El usuario asignado no existe' });
       }
+      // Admin-only, igual que la lectura — un editor no debería poder sembrar esto ni al crear.
+      const hoursLog = (req.user.role === 'admin' && Array.isArray(req.body.hours_log)) ? JSON.stringify(req.body.hours_log) : null;
       const id = uuidv4();
-      await db('tasks').insert({ id, project_id: req.params.projectId, title, description, status: status || 'todo', priority: priority || 'medium', assigned_to: assigned_to || null, created_by: req.user.id, due_date: due_date || null });
+      await db('tasks').insert({ id, project_id: req.params.projectId, title, description, status: status || 'todo', priority: priority || 'medium', assigned_to: assigned_to || null, created_by: req.user.id, due_date: due_date || null, hours_log: hoursLog });
       if (assigned_to) await addProjectMember(req.params.projectId, assigned_to);
-      const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
-      await emitToProject(req.params.projectId, 'task:created', task);
+      const rawTask = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
+      // El socket llega a TODOS los que tienen el proyecto abierto, admin o no — a diferencia de la
+      // respuesta HTTP (que sí va solo a quien hizo el request), acá nunca se manda hours_log sin
+      // importar el rol de quien creó la tarea.
+      await emitToProject(req.params.projectId, 'task:created', sanitizeTask(rawTask, false));
+      const task = sanitizeTask(rawTask, req.user.role === 'admin');
       await logActivity({ projectId: req.params.projectId, type: 'task_created', actorId: req.user.id, data: { title } });
       // Sin el chequeo, un editor creándose una tarea a sí mismo se auto-notificaba de su propia
       // acción — ruido, no información.
@@ -129,6 +143,9 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
         if (priority !== undefined) update.priority = priority;
         if (assigned_to !== undefined) update.assigned_to = assigned_to || null;
         if (due_date !== undefined) update.due_date = due_date || null;
+        // Solo el admin la toca — el bloque de arriba (rol no-admin) ni siquiera lee este campo
+        // del body, así que un editor nunca puede escribirla aunque la mande a mano.
+        if (Array.isArray(req.body.hours_log)) update.hours_log = JSON.stringify(req.body.hours_log);
         await db('tasks').where({ id: req.params.id }).update(update);
         if (assigned_to) {
           await addProjectMember(existing.project_id, assigned_to);
@@ -149,8 +166,11 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
           await removeProjectMemberIfOrphaned(existing.project_id, existing.assigned_to);
         }
       }
-      const task = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', req.params.id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
-      await emitToProject(existing.project_id, 'task:updated', task);
+      const rawTask = await db('tasks as t').leftJoin('users as u', 't.assigned_to', 'u.id').where('t.id', req.params.id).select('t.*', 'u.name as assignee_name', 'u.avatar_color as assignee_color').first();
+      // Mismo criterio que en POST: el socket va a todo el proyecto (editor incluido), la
+      // respuesta HTTP va solo a quien hizo el request.
+      await emitToProject(existing.project_id, 'task:updated', sanitizeTask(rawTask, false));
+      const task = sanitizeTask(rawTask, req.user.role === 'admin');
       if (status !== undefined && status !== existing.status) {
         await logActivity({ projectId: existing.project_id, type: 'task_status_changed', actorId: req.user.id, data: { title: existing.title, from: existing.status, to: status } });
       }
