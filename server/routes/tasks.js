@@ -113,6 +113,18 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
       }
       const { title, description, status, priority, assigned_to, due_date } = req.body;
       if (status !== undefined && !TASK_STATUSES.includes(status)) return res.status(400).json({ error: 'Estado de tarea inválido' });
+      // "Aprobado por cliente" (columna extra, solo en el Kanban de CUURT) no es un status nuevo
+      // del flujo — es un check adicional sobre una tarea ya en 'done', para que el resto de la
+      // app que cuenta 'done' como "terminado" (Dashboard, Team, progreso del proyecto) no tenga
+      // que enterarse de este valor. Limpiarla (null) lo puede mandar cualquiera que pueda mover
+      // la tarea; setearla de verdad es cosa del admin (es quien confirma con el cliente). Fuera
+      // de 'done' no tiene sentido de ningún modo — se limpia acá pase lo que mande el body.
+      let clientApprovedAt;
+      if (req.body.client_approved_at !== undefined) {
+        if (!req.body.client_approved_at) clientApprovedAt = null;
+        else if (req.user.role === 'admin') clientApprovedAt = req.body.client_approved_at;
+      }
+      if (status !== undefined && status !== 'done') clientApprovedAt = null;
       if (req.user.role !== 'admin') {
         // "Es mi tarea asignada" y "yo la creé" dan exactamente los mismos permisos — estado,
         // título, descripción, prioridad y fecha límite — sin importar cuál de las dos sea. Lo
@@ -126,6 +138,7 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
         if (status !== undefined) update.status = status;
         if (priority !== undefined) update.priority = priority;
         if (due_date !== undefined) update.due_date = due_date || null;
+        if (clientApprovedAt !== undefined) update.client_approved_at = clientApprovedAt;
         await db('tasks').where({ id: req.params.id }).update(update);
       } else {
         if (assigned_to && !await db('users').where({ id: assigned_to }).first()) {
@@ -146,6 +159,7 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
         // Solo el admin la toca — el bloque de arriba (rol no-admin) ni siquiera lee este campo
         // del body, así que un editor nunca puede escribirla aunque la mande a mano.
         if (Array.isArray(req.body.hours_log)) update.hours_log = JSON.stringify(req.body.hours_log);
+        if (clientApprovedAt !== undefined) update.client_approved_at = clientApprovedAt;
         await db('tasks').where({ id: req.params.id }).update(update);
         if (assigned_to) {
           await addProjectMember(existing.project_id, assigned_to);

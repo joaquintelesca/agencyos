@@ -22,6 +22,18 @@ const STATUSES = [
 ];
 const PRIORITIES = ['low', 'medium', 'high'];
 
+// Pedido puntual del cliente CUURT, solo para sus proyectos — no un cambio general de la app.
+// "Aprobado por cliente" NO es un status nuevo de tasks.status: es un check (client_approved_at)
+// encima de una tarea que ya está en 'done', para que el resto de la app que cuenta 'done' como
+// "terminado" (Dashboard, Team, progreso del proyecto) no tenga que enterarse de esto. realStatus +
+// approvedFlag le dicen al Kanban "esta columna en realidad filtra por status 'done' + el check".
+const CUURT_CLIENT_NAME = 'cuurt';
+const isCuurtProject = (project) => project?.client_name?.trim().toLowerCase() === CUURT_CLIENT_NAME;
+const getStatusesForProject = (project) => isCuurtProject(project)
+  ? STATUSES.map(s => s.key === 'done' ? { ...s, label: 'Listo para el cliente' } : s)
+  : STATUSES;
+const CLIENT_APPROVED_COLUMN = { key: 'client_approved', label: 'Aprobado por cliente', color: 'var(--green)', description: 'El cliente confirmó que está todo bien.', realStatus: 'done', approvedFlag: true };
+
 export default function Project() {
   const { id } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -459,12 +471,16 @@ export default function Project() {
     }
   };
 
-  const moveTaskToStatus = async (task, status) => {
-    if (!task || task.status === status) return;
+  // `approved` solo lo usan los proyectos de CUURT (ver CLIENT_APPROVED_COLUMN) — mueve la tarea a
+  // 'done' y además prende/apaga client_approved_at. En cualquier otro caso queda en false, lo que
+  // además limpia la aprobación si la tarea la tenía y se la mueve a otro lado (el server también
+  // la limpia solo si el status deja de ser 'done', como red de seguridad).
+  const moveTaskToStatus = async (task, status, approved = false) => {
+    if (!task || (task.status === status && !!task.client_approved_at === approved)) return;
     try {
       // Solo se manda el campo que cambió: mandar la tarea entera (snapshot capturado al
       // agarrarla) podía pisar una edición concurrente de otra persona con datos viejos.
-      await api(`/api/tasks/${task.id}`, { method: 'PUT', body: { status } });
+      await api(`/api/tasks/${task.id}`, { method: 'PUT', body: { status, client_approved_at: approved ? new Date().toISOString() : null } });
       if (status === 'review' && task.status !== 'review') {
         setReviewReminderTask({ ...task, status });
       }
@@ -473,10 +489,14 @@ export default function Project() {
     }
   };
   const onDragStart = (task) => setDragTask(task);
-  const onDrop = (status) => {
+  const onDrop = (col) => {
     const task = dragTask;
     setDragTask(null);
-    moveTaskToStatus(task, status);
+    if (!task) return;
+    // Entrar a "Aprobado por cliente" es cosa del admin (confirmó con el cliente) — salir de ahí
+    // hacia cualquier otra columna lo puede hacer cualquiera que ya pueda mover esa tarea.
+    if (col.approvedFlag && user.role !== 'admin') return;
+    moveTaskToStatus(task, col.realStatus || col.key, !!col.approvedFlag);
   };
 
   const formatTime = (ts) => new Date(ts).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
@@ -499,6 +519,13 @@ export default function Project() {
   );
 
   if (!project) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><div className="spinner" /></div>;
+
+  // `statuses`: los 5 de siempre, con "Listo" renombrado a "Listo para el cliente" si es CUURT.
+  // `kanbanColumns`: lo mismo, más la columna extra "Aprobado por cliente" al final — solo se usa
+  // para pintar el tablero y el menú "Mover a"; el <select> de Estado del modal usa `statuses`
+  // nomás (esa columna no es un status real, no tiene sentido como opción suelta ahí).
+  const statuses = getStatusesForProject(project);
+  const kanbanColumns = isCuurtProject(project) ? [...statuses, CLIENT_APPROVED_COLUMN] : statuses;
 
   // Mismo chequeo que hace toggleProjectStatus antes de decidir si completar de una o pedir precio
   // primero — se repite acá solo para poder avisar en el botón ANTES de clickearlo, en vez de que
@@ -527,7 +554,10 @@ export default function Project() {
     if (canMove) {
       items.push({
         label: 'Mover a', icon: <Icon.arrow />,
-        submenu: STATUSES.filter(s => s.key !== task.status).map(s => ({ label: s.label, onClick: () => moveTaskToStatus(task, s.key) })),
+        submenu: kanbanColumns
+          .filter(s => (s.approvedFlag ? user.role === 'admin' : true)) // "Aprobado por cliente" solo la ofrece el admin
+          .filter(s => !((s.realStatus || s.key) === task.status && !!s.approvedFlag === !!task.client_approved_at))
+          .map(s => ({ label: s.label, onClick: () => moveTaskToStatus(task, s.realStatus || s.key, !!s.approvedFlag) })),
       });
     }
     if (task.latest_video_id) items.push({ label: 'Ver video', icon: <Icon.video />, onClick: () => openTaskVideo(task.latest_video_id) });
@@ -638,9 +668,17 @@ export default function Project() {
       )}
       {tab === 'kanban' && (
         <div style={{ display: 'flex', gap: 12, padding: 20, overflowX: 'auto', flex: 1 }}>
-          {STATUSES.map(col => (
+          {kanbanColumns.map(col => {
+            // "Aprobado por cliente" no es un status real (ver CLIENT_APPROVED_COLUMN) — filtra
+            // por el status real MÁS si tiene o no el check puesto, para que una tarea 'done' solo
+            // aparezca en una de las dos columnas, nunca en ambas.
+            const colTasks = tasks.filter(t => t.status === (col.realStatus || col.key) && !!t.client_approved_at === !!col.approvedFlag);
+            // Crear una tarea directamente como "ya aprobada por el cliente" no tiene sentido — se
+            // llega ahí arrastrándola o desde "Mover a", nunca de cero.
+            const canCreateHere = canManageTasks && !col.approvedFlag;
+            return (
             <div key={col.key} style={{ width: 250, flexShrink: 0, display: 'flex', flexDirection: 'column' }}
-              onDragOver={e => e.preventDefault()} onDrop={() => onDrop(col.key)}>
+              onDragOver={e => e.preventDefault()} onDrop={() => onDrop(col)}>
               <div style={{ marginBottom: 10, padding: '0 4px' }}>
                 {col.description && (
                   <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: col.note ? 1 : 4, lineHeight: 1.3 }}>{col.description}</div>
@@ -652,14 +690,14 @@ export default function Project() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: col.color }}>{col.label}</span>
                     <span className="badge" style={{ fontWeight: 400, background: 'var(--bg3)', color: 'var(--text3)', padding: '1px 7px' }}>
-                      {tasks.filter(t => t.status === col.key).length}
+                      {colTasks.length}
                     </span>
                   </div>
-                  {canManageTasks && <button className="icon-btn" onClick={() => openCreateTask(col.key)} title={`Agregar tarea a ${col.label}`} aria-label={`Agregar tarea a ${col.label}`} style={{ color: 'var(--text3)', display: 'flex' }}><Icon.plus /></button>}
+                  {canCreateHere && <button className="icon-btn" onClick={() => openCreateTask(col.key)} title={`Agregar tarea a ${col.label}`} aria-label={`Agregar tarea a ${col.label}`} style={{ color: 'var(--text3)', display: 'flex' }}><Icon.plus /></button>}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
-                {tasks.filter(t => t.status === col.key).map(task => (
+                {colTasks.map(task => (
                   <TaskCard key={task.id} task={task}
                     onEdit={canEditTask(task) ? () => openEditTask(task) : null}
                     onDelete={canEditTask(task) ? () => deleteTask(task.id) : null}
@@ -675,7 +713,7 @@ export default function Project() {
                     }} />
                 ))}
               </div>
-              {canManageTasks && (
+              {canCreateHere && (
                 <button onClick={() => openCreateTask(col.key)} style={{
                   marginTop: 8, padding: '8px', borderRadius: 8, border: '1px dashed var(--border)',
                   background: 'transparent', color: 'var(--text3)', fontSize: 12, cursor: 'pointer',
@@ -685,7 +723,8 @@ export default function Project() {
                 </button>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -832,7 +871,7 @@ export default function Project() {
               <div className="form-group">
                 <label>Estado</label>
                 <select className="input" value={taskForm.status} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value }))}>
-                  {STATUSES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  {statuses.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
               </div>
               <div className="form-group">
