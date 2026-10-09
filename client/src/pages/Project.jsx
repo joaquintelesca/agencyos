@@ -493,9 +493,6 @@ export default function Project() {
     const task = dragTask;
     setDragTask(null);
     if (!task) return;
-    // Entrar a "Aprobado por cliente" es cosa del admin (confirmó con el cliente) — salir de ahí
-    // hacia cualquier otra columna lo puede hacer cualquiera que ya pueda mover esa tarea.
-    if (col.approvedFlag && user.role !== 'admin') return;
     moveTaskToStatus(task, col.realStatus || col.key, !!col.approvedFlag);
   };
 
@@ -555,7 +552,6 @@ export default function Project() {
       items.push({
         label: 'Mover a', icon: <Icon.arrow />,
         submenu: kanbanColumns
-          .filter(s => (s.approvedFlag ? user.role === 'admin' : true)) // "Aprobado por cliente" solo la ofrece el admin
           .filter(s => !((s.realStatus || s.key) === task.status && !!s.approvedFlag === !!task.client_approved_at))
           .map(s => ({ label: s.label, onClick: () => moveTaskToStatus(task, s.realStatus || s.key, !!s.approvedFlag) })),
       });

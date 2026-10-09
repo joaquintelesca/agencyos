@@ -116,14 +116,11 @@ module.exports = function tasksRoutes({ db, auth, requireProjectAccess, isProjec
       // "Aprobado por cliente" (columna extra, solo en el Kanban de CUURT) no es un status nuevo
       // del flujo — es un check adicional sobre una tarea ya en 'done', para que el resto de la
       // app que cuenta 'done' como "terminado" (Dashboard, Team, progreso del proyecto) no tenga
-      // que enterarse de este valor. Limpiarla (null) lo puede mandar cualquiera que pueda mover
-      // la tarea; setearla de verdad es cosa del admin (es quien confirma con el cliente). Fuera
-      // de 'done' no tiene sentido de ningún modo — se limpia acá pase lo que mande el body.
+      // que enterarse de este valor. Mismo permiso que mover la tarea a cualquier otra columna —
+      // ya lo filtran isProjectMember acá arriba y, para no-admin, el canModify de abajo. Fuera de
+      // 'done' no tiene sentido de ningún modo — se limpia acá pase lo que mande el body.
       let clientApprovedAt;
-      if (req.body.client_approved_at !== undefined) {
-        if (!req.body.client_approved_at) clientApprovedAt = null;
-        else if (req.user.role === 'admin') clientApprovedAt = req.body.client_approved_at;
-      }
+      if (req.body.client_approved_at !== undefined) clientApprovedAt = req.body.client_approved_at || null;
       if (status !== undefined && status !== 'done') clientApprovedAt = null;
       if (req.user.role !== 'admin') {
         // "Es mi tarea asignada" y "yo la creé" dan exactamente los mismos permisos — estado,
