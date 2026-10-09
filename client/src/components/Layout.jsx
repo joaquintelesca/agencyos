@@ -1248,7 +1248,7 @@ export default function Layout() {
                     Como el editor sos vos, no hay "pago a editor" — solo se registra lo que le cobrás al cliente.
                   </div>
                 )}
-                <div style={{ display: 'grid', gridTemplateColumns: isSelfEditorEdit ? (editProjectForm.payment_type === 'hourly' ? '1fr 1fr' : '1fr') : (editProjectForm.payment_type === 'hourly' ? '1fr 1fr 1fr' : '1fr 1fr'), gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isNarrowViewport ? '1fr' : (isSelfEditorEdit ? (editProjectForm.payment_type === 'hourly' ? '1fr 1fr' : '1fr') : (editProjectForm.payment_type === 'hourly' ? '1fr 1fr 1fr' : '1fr 1fr')), gap: 10 }}>
                   <div className="form-group">
                     <label>{editProjectForm.payment_type === 'hourly' ? 'Tarifa cliente ($/h)' : 'Cobro al cliente ($)'}</label>
                     <input className="input" type="number" min="0" value={editProjectForm.client_amount} disabled={clientAmountLocked}

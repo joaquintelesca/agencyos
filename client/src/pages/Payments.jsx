@@ -516,10 +516,10 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }
           return (
             <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
               <span>${p.payment_amount}/h ·</span>
-              <input type="number" min="0" step="1" value={hours === '' ? '' : hPart} disabled={hoursLocked} title={lockTitle}
+              <input type="number" min="0" step="1" className="no-spinner" value={hours === '' ? '' : hPart} disabled={hoursLocked} title={lockTitle}
                 onChange={e => { const v = e.target.value; setHours(v === '' ? '' : partsToDecimalHours(v, mPart)); }}
                 onBlur={() => { const h = hours === '' ? 0 : hours; setHours(h); onUpdate(p.id, { payment_hours: h }); }}
-                style={{ ...smallInputStyle, width: 32 }} />
+                style={{ ...smallInputStyle, width: 28 }} />
               <span>h</span>
               <select value={mPart} disabled={hoursLocked} title={lockTitle}
                 onChange={e => { const combined = partsToDecimalHours(hPart, e.target.value); setHours(combined); onUpdate(p.id, { payment_hours: combined }); }}
@@ -585,10 +585,10 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }
               const smallInputStyle = { background: 'var(--bg4)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: 11, padding: '1px 4px', textAlign: 'center', opacity: editorHoursLocked ? 0.5 : 1, cursor: editorHoursLocked ? 'not-allowed' : 'text' };
               return (
                 <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                  <input type="number" min="0" step="1" value={editorOverrideDraft === '' ? '' : ehPart} disabled={editorHoursLocked} title={lockTitle}
+                  <input type="number" min="0" step="1" className="no-spinner" value={editorOverrideDraft === '' ? '' : ehPart} disabled={editorHoursLocked} title={lockTitle}
                     onChange={e => { const v = e.target.value; setEditorOverrideDraft(v === '' ? '' : partsToDecimalHours(v, emPart)); }}
                     onBlur={() => { const h = editorOverrideDraft === '' ? 0 : editorOverrideDraft; setEditorOverrideDraft(h); onUpdate(p.id, { editor_payment_hours: h }); }}
-                    style={{ ...smallInputStyle, width: 30 }} />
+                    style={{ ...smallInputStyle, width: 26 }} />
                   <span>h</span>
                   <select value={emPart} disabled={editorHoursLocked} title={lockTitle}
                     onChange={e => { const combined = partsToDecimalHours(ehPart, e.target.value); setEditorOverrideDraft(combined); onUpdate(p.id, { editor_payment_hours: combined }); }}

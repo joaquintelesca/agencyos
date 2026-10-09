@@ -176,6 +176,13 @@ select.input { cursor: pointer; }
    el fondo oscuro del input. */
 .input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
 
+/* Para los inputs de horas bien compactos (Pagos: editor de horas inline en la tabla) — las
+   flechitas nativas del navegador comían varios px que ahí no sobran, y con 10+ horas el número
+   quedaba recortado a un solo dígito. Se puede seguir escribiendo o usando las flechas del
+   teclado, type="number" sigue validando. */
+.no-spinner::-webkit-outer-spin-button, .no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.no-spinner { -moz-appearance: textfield; }
+
 /* Cards */
 .card {
   background: var(--bg2); border: 1px solid var(--border);
