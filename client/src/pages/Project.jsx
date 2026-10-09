@@ -53,6 +53,7 @@ export default function Project() {
   const [hourLogOpen, setHourLogOpen] = useState(false);
   const [hourEntries, setHourEntries] = useState([]);
   const [hourDraft, setHourDraft] = useState({ etapa: '', horas: '', cargado: false, pagado: false });
+  const [editingEntryId, setEditingEntryId] = useState(null);
   const [dragTask, setDragTask] = useState(null);
   const [reviewReminderTask, setReviewReminderTask] = useState(null);
   const [showPriceModal, setShowPriceModal] = useState(false);
@@ -232,6 +233,7 @@ export default function Project() {
     setHourLogOpen(false);
     setHourEntries([]);
     setHourDraft({ etapa: '', horas: '', cargado: false, pagado: false });
+    setEditingEntryId(null);
     setShowTaskModal(true);
   };
 
@@ -244,15 +246,36 @@ export default function Project() {
     // tarea (título, estado, lo que sea) borraba la bitácora entera sin querer.
     setHourEntries((task.hours_log || []).map(e => ({ id: e.id ?? Date.now() + Math.random(), ...e })));
     setHourDraft({ etapa: '', horas: '', cargado: false, pagado: false });
+    setEditingEntryId(null);
     setShowTaskModal(true);
   };
 
+  // Mismo botón para agregar una entrada nueva y para confirmar la edición de una existente —
+  // editingEntryId distingue cuál de los dos casos es. Mientras se edita, la entrada original
+  // sigue intacta en la lista hasta que se confirma (así no se pierde si cierran el modal sin
+  // terminar de editar).
   const addHourEntry = () => {
     if (!hourDraft.etapa.trim() && !hourDraft.horas) return;
-    setHourEntries(prev => [...prev, { id: Date.now(), ...hourDraft, etapa: hourDraft.etapa.trim() }]);
+    if (editingEntryId) {
+      setHourEntries(prev => prev.map(e => e.id === editingEntryId ? { ...e, ...hourDraft, etapa: hourDraft.etapa.trim() } : e));
+      setEditingEntryId(null);
+    } else {
+      setHourEntries(prev => [...prev, { id: Date.now(), ...hourDraft, etapa: hourDraft.etapa.trim() }]);
+    }
     setHourDraft({ etapa: '', horas: '', cargado: false, pagado: false });
   };
-  const removeHourEntry = (entryId) => setHourEntries(prev => prev.filter(e => e.id !== entryId));
+  const startEditHourEntry = (entry) => {
+    setHourDraft({ etapa: entry.etapa, horas: entry.horas, cargado: entry.cargado, pagado: entry.pagado });
+    setEditingEntryId(entry.id);
+  };
+  const cancelEditHourEntry = () => {
+    setHourDraft({ etapa: '', horas: '', cargado: false, pagado: false });
+    setEditingEntryId(null);
+  };
+  const removeHourEntry = (entryId) => {
+    setHourEntries(prev => prev.filter(e => e.id !== entryId));
+    if (editingEntryId === entryId) cancelEditHourEntry();
+  };
 
   const saveTask = async () => {
     if (!taskForm.title.trim() || savingTask) return;
@@ -765,12 +788,13 @@ export default function Project() {
                     {hourEntries.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 10 }}>
                         {hourEntries.map(entry => (
-                          <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
+                          <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, opacity: editingEntryId === entry.id ? 0.5 : 1 }}>
                             <span style={{ flex: 1, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {entry.etapa}{entry.etapa && entry.horas ? ' — ' : ''}{entry.horas ? `${entry.horas} hs` : ''}
                             </span>
                             {entry.cargado && <span className="badge" style={{ fontSize: 10, flexShrink: 0, background: 'rgba(240,168,58,0.15)', color: 'var(--yellow)' }}>Upwork</span>}
                             {entry.pagado && <span className="badge" style={{ fontSize: 10, flexShrink: 0, background: 'rgba(34,201,122,0.12)', color: 'var(--green)' }}>Pagado</span>}
+                            <button type="button" className="icon-btn" onClick={() => startEditHourEntry(entry)} title="Editar" aria-label="Editar entrada" style={{ color: 'var(--text3)', flexShrink: 0 }}><Icon.pencil /></button>
                             <button type="button" className="icon-btn" onClick={() => removeHourEntry(entry.id)} title="Quitar" aria-label="Quitar entrada" style={{ color: 'var(--text3)', flexShrink: 0 }}><Icon.trash /></button>
                           </div>
                         ))}
@@ -786,7 +810,14 @@ export default function Project() {
                         <input type="checkbox" checked={hourDraft.pagado} onChange={e => setHourDraft(p => ({ ...p, pagado: e.target.checked }))} /> Pagado
                       </label>
                       <button type="button" className="icon-btn" onClick={addHourEntry} disabled={!hourDraft.etapa.trim() && !hourDraft.horas}
-                        title="Agregar entrada" aria-label="Agregar entrada a la bitácora" style={{ color: 'var(--accent2)', flexShrink: 0 }}><Icon.plus /></button>
+                        title={editingEntryId ? 'Guardar cambios' : 'Agregar entrada'} aria-label={editingEntryId ? 'Guardar cambios de la entrada' : 'Agregar entrada a la bitácora'}
+                        style={{ color: 'var(--accent2)', flexShrink: 0 }}>{editingEntryId ? <Icon.check /> : <Icon.plus />}</button>
+                      {editingEntryId && (
+                        <button type="button" onClick={cancelEditHourEntry}
+                          style={{ fontSize: 11, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font)', padding: 0 }}>
+                          Cancelar
+                        </button>
+                      )}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }}>Solo para tu control — no afecta Pagos ni ninguna otra sección.</div>
                   </div>
