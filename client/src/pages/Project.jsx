@@ -792,8 +792,12 @@ export default function Project() {
                             <span style={{ flex: 1, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {entry.etapa}{entry.etapa && entry.horas ? ' — ' : ''}{entry.horas ? `${entry.horas} hs` : ''}
                             </span>
-                            {entry.cargado && <span className="badge" style={{ fontSize: 10, flexShrink: 0, background: 'rgba(240,168,58,0.15)', color: 'var(--yellow)' }}>Upwork</span>}
-                            {entry.pagado && <span className="badge" style={{ fontSize: 10, flexShrink: 0, background: 'rgba(34,201,122,0.12)', color: 'var(--green)' }}>Pagado</span>}
+                            <span className="badge" style={{ fontSize: 10, flexShrink: 0, background: entry.cargado ? 'rgba(34,201,122,0.12)' : 'rgba(240,92,92,0.12)', color: entry.cargado ? 'var(--green)' : 'var(--red)' }}>
+                              Upwork {entry.cargado ? '✅' : '✗'}
+                            </span>
+                            <span className="badge" style={{ fontSize: 10, flexShrink: 0, background: entry.pagado ? 'rgba(34,201,122,0.12)' : 'rgba(240,92,92,0.12)', color: entry.pagado ? 'var(--green)' : 'var(--red)' }}>
+                              Pagado {entry.pagado ? '✅' : '✗'}
+                            </span>
                             <button type="button" className="icon-btn" onClick={() => startEditHourEntry(entry)} title="Editar" aria-label="Editar entrada" style={{ color: 'var(--text3)', flexShrink: 0 }}><Icon.pencil /></button>
                             <button type="button" className="icon-btn" onClick={() => removeHourEntry(entry.id)} title="Quitar" aria-label="Quitar entrada" style={{ color: 'var(--text3)', flexShrink: 0 }}><Icon.trash /></button>
                           </div>
