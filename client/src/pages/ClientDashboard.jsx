@@ -2,9 +2,14 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { initials, deadlineLabel } from '../utils/format';
+import useModalA11y from '../hooks/useModalA11y';
 
 const STATUS_LABELS = { todo: 'Por hacer', in_progress: 'En progreso', review: 'En revisión', feedback: 'Aplicar feedback', done: 'Listo' };
 const STATUS_COLORS = { todo: 'var(--text3)', in_progress: 'var(--blue)', review: 'var(--yellow)', feedback: 'var(--red)', done: 'var(--green)' };
+
+// Pedido puntual del cliente SOAR, no una función general — mismo criterio que la columna extra de
+// CUURT en el Kanban (ver Project.jsx): un botón que solo aparece en el resumen de ESE cliente.
+const isSoarClient = (client) => client?.name?.trim().toLowerCase() === 'soar';
 
 export default function ClientDashboard() {
   const { id } = useParams();
@@ -13,8 +18,10 @@ export default function ClientDashboard() {
   const navigate = useNavigate();
   const [client, setClient] = useState(null);
   const [tasks, setTasks] = useState({});
+  const [showHoursModal, setShowHoursModal] = useState(false);
   const clientProjects = projects.filter(p => p.client_id === id);
   const projectIds = clientProjects.map(p => p.id).join(',');
+  const hoursModalRef = useModalA11y(showHoursModal, () => setShowHoursModal(false));
 
   useEffect(() => {
     // Resetear antes de refetch: si no, al navegar de un cliente a otro se ve por un instante
@@ -69,6 +76,12 @@ export default function ClientDashboard() {
             {client.phone && <span>{client.phone}</span>}
           </div>
         </div>
+        {isSoarClient(client) && isAdmin && (
+          <button className="btn-outline" onClick={() => setShowHoursModal(true)}
+            style={{ borderRadius: 8, padding: '7px 14px', fontSize: 12, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            🕐 Horas por proyecto
+          </button>
+        )}
       </div>
 
       {client.notes && (
@@ -117,6 +130,29 @@ export default function ClientDashboard() {
             {completedProjects.map(p => renderProjectCard(p, true))}
           </div>
         </>
+      )}
+
+      {showHoursModal && (
+        <div className="modal-overlay" onClick={() => setShowHoursModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} ref={hoursModalRef} role="dialog" aria-modal="true" aria-labelledby="hours-modal-title">
+            <button className="modal-close" onClick={() => setShowHoursModal(false)} title="Cerrar" aria-label="Cerrar">✕</button>
+            <h2 id="hours-modal-title">Horas por proyecto — {client.name}</h2>
+            {clientProjects.length === 0 ? (
+              <p style={{ color: 'var(--text3)', fontSize: 13, marginTop: 12 }}>Sin proyectos para este cliente.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', marginTop: 12 }}>
+                {clientProjects.map(p => (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 13, color: 'var(--text)' }}>{p.name}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: p.payment_type === 'hourly' ? 'var(--text)' : 'var(--text3)', flexShrink: 0 }}>
+                      {p.payment_type === 'hourly' ? `${p.payment_hours || 0} hs` : 'Precio fijo'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
