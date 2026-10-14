@@ -27,6 +27,15 @@ export default function Payments() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }); // YYYY-MM
   const [pendingComplete, setPendingComplete] = useState(null); // { projectId, changes } | null
+  // Colapsado por default — en Saldados los clientes se van acumulando con el tiempo (a diferencia
+  // de Activos, que naturalmente se vacía a medida que se cobra/paga), así que tenerlos todos
+  // desplegados a la vez termina siendo una lista larguísima de proyectos viejos.
+  const [expandedSaldados, setExpandedSaldados] = useState(new Set());
+  const toggleSaldadosClient = (name) => setExpandedSaldados(prev => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
 
   const [ledger, setLedger] = useState([]);
 
@@ -166,7 +175,7 @@ export default function Payments() {
             <col style={{ width: 230 }} />
             <col style={{ width: 150 }} />
             <col style={{ width: 70 }} />
-            <col style={{ width: 110 }} />
+            <col style={{ width: 165 }} />
             {isHistory && <col style={{ width: 110 }} />}
             <col style={{ width: 90 }} />
             <col style={{ width: 130 }} />
@@ -303,18 +312,26 @@ export default function Payments() {
             {completedProjects.length === 0 && (
               <div className="empty"><div className="empty-icon">✅</div><p>Aún no hay proyectos saldados</p><p style={{ fontSize: 12 }}>Cuando un proyecto tenga el editor pagado y el cliente cobrado, aparecerá acá como registro histórico</p></div>
             )}
-            {groupByClient(completedProjects).map(client => (
+            {groupByClient(completedProjects).map(client => {
+              const isOpen = expandedSaldados.has(client.name);
+              return (
               <div key={client.name} className="panel" style={{ borderRadius: 14, overflow: 'hidden', marginBottom: 14, opacity: 0.85 }}>
-                <div style={{ padding: '10px 16px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 26, height: 26, borderRadius: 7, background: client.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff' }}>
+                <button type="button" onClick={() => toggleSaldadosClient(client.name)}
+                  style={{ width: '100%', padding: '10px 16px', background: 'var(--bg3)', borderBottom: isOpen ? '1px solid var(--border)' : 'none', display: 'flex', alignItems: 'center', gap: 10, border: 'none', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left' }}>
+                  <span style={{ display: 'inline-block', fontSize: 11, color: 'var(--text3)', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▸</span>
+                  <div style={{ width: 26, height: 26, borderRadius: 7, background: client.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
                     {client.name[0].toUpperCase()}
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{client.name}</span>
+                  <span className="badge" style={{ fontSize: 10, background: 'var(--bg4)', color: 'var(--text3)' }}>
+                    {client.projects.length} proyecto{client.projects.length !== 1 ? 's' : ''}
+                  </span>
                   <span className="badge" style={{ fontSize: 10, background: 'rgba(34,201,122,0.12)', color: 'var(--green)' }}>✓ Todo resuelto</span>
-                </div>
-                {renderTable(client.projects, true)}
+                </button>
+                {isOpen && renderTable(client.projects, true)}
               </div>
-            ))}
+              );
+            })}
           </>
         )}
 
@@ -552,7 +569,7 @@ function ProjectRow({ project: p, onUpdate, onRequestUpdate, isHistory, onEdit }
       <td style={{ padding: '9px 12px' }}>
         <select value={p.upwork_status || 'Pendiente de carga'}
           onChange={e => onUpdate(p.id, { upwork_status: e.target.value })}
-          style={{ fontSize: 11, padding: '3px 6px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text2)', cursor: 'pointer', fontFamily: 'var(--font)' }}>
+          style={{ width: '100%', fontSize: 11, padding: '3px 6px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text2)', cursor: 'pointer', fontFamily: 'var(--font)' }}>
           {UPWORK_OPTIONS.map(o => <option key={o}>{o}</option>)}
         </select>
       </td>
