@@ -22,6 +22,12 @@ export default function ClientDashboard() {
   const clientProjects = projects.filter(p => p.client_id === id);
   const projectIds = clientProjects.map(p => p.id).join(',');
   const hoursModalRef = useModalA11y(showHoursModal, () => setShowHoursModal(false));
+  // Mismo criterio que usa GET /api/payments para decidir qué aparece en Pagos (server/routes/
+  // payments.js): 'completed' O ever_completed. Antes esta lista mostraba CUALQUIER proyecto del
+  // cliente, incluidos los que nunca pasaron por Pagos — payment_hours ahí todavía es la
+  // estimación que se cargó al crear el proyecto, no la hora real que termina confirmándose en
+  // Pagos, así que mostrarla acá era mostrar un número que todavía no significa nada.
+  const billedProjects = clientProjects.filter(p => p.status === 'completed' || p.ever_completed);
 
   useEffect(() => {
     // Resetear antes de refetch: si no, al navegar de un cliente a otro se ve por un instante
@@ -137,11 +143,11 @@ export default function ClientDashboard() {
           <div className="modal" onClick={e => e.stopPropagation()} ref={hoursModalRef} role="dialog" aria-modal="true" aria-labelledby="hours-modal-title">
             <button className="modal-close" onClick={() => setShowHoursModal(false)} title="Cerrar" aria-label="Cerrar">✕</button>
             <h2 id="hours-modal-title">Horas por proyecto — {client.name}</h2>
-            {clientProjects.length === 0 ? (
-              <p style={{ color: 'var(--text3)', fontSize: 13, marginTop: 12 }}>Sin proyectos para este cliente.</p>
+            {billedProjects.length === 0 ? (
+              <p style={{ color: 'var(--text3)', fontSize: 13, marginTop: 12 }}>Ningún proyecto de este cliente pasó por Pagos todavía.</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', marginTop: 12 }}>
-                {clientProjects.map(p => (
+                {billedProjects.map(p => (
                   <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
                     <span style={{ fontSize: 13, color: 'var(--text)' }}>{p.name}</span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: p.payment_type === 'hourly' ? 'var(--text)' : 'var(--text3)', flexShrink: 0 }}>
