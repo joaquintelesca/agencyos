@@ -102,7 +102,7 @@ function VoiceNotePlayer({ src, knownDuration }) {
 
 export default function Chat() {
   const { user, api, socket, onlineUsers, mediaUrl, token } = useAuth();
-  const { alert } = useAlert();
+  const { alert, confirm } = useAlert();
   // En celular la lista de conversaciones (240px fijo) y el chat abierto no entran juntos —
   // abajo del breakpoint se muestra uno u otro, como cualquier app de mensajería mobile.
   const isNarrowViewport = useNarrowViewport();
@@ -124,6 +124,16 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
+  // Textarea que crece con el contenido (hasta un tope) — hace falta su altura real para
+  // Shift+Enter (salto de línea sin mandar) tenga dónde mostrarse, a diferencia del <input> de
+  // una sola línea que había antes.
+  const composerRef = useRef(null);
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }, [input]);
   const [recording, setRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   // Espejo en refs de lo que hay que soltar al desmontar: el cleanup corre con deps [] y no puede
@@ -317,6 +327,15 @@ export default function Chat() {
       if (conv) loadPinned(conv.type, conv.id, conv.type === 'dm' ? activeTabRef.current : null);
     };
 
+    // El mensaje borrado puede estar en el feed principal, o ser el root o una respuesta del hilo
+    // abierto ahora mismo — a diferencia del resto (reaccionar, fijar), acá sí viene el objeto
+    // completo (ya vaciado) porque el contenido mostrado cambia, no solo un flag.
+    const handleChatMessageDeleted = (msg) => {
+      setMessagesRef.current(prev => prev.map(m => m.id === msg.id ? msg : m));
+      if (openThreadRef.current === msg.id) setOpenThread(msg);
+      setThreadRepliesRef.current(prev => prev.map(r => r.id === msg.id ? msg : r));
+    };
+
     // Tras una reconexión (WiFi cortado, pestaña dormida) pueden haber quedado mensajes sin
     // enterarse — se resincroniza la lista de conversaciones, los no leídos, y si hay una
     // conversación abierta, sus mensajes.
@@ -342,6 +361,7 @@ export default function Chat() {
     socket.on('chat:read', handleChatRead);
     socket.on('chat:reaction', handleChatReaction);
     socket.on('chat:pin', handleChatPin);
+    socket.on('chat:message_deleted', handleChatMessageDeleted);
     socket.on('connect', onReconnect);
 
     return () => {
@@ -349,6 +369,7 @@ export default function Chat() {
       socket.off('chat:read', handleChatRead);
       socket.off('chat:reaction', handleChatReaction);
       socket.off('chat:pin', handleChatPin);
+      socket.off('chat:message_deleted', handleChatMessageDeleted);
       socket.off('connect', onReconnect);
     };
   }, [socket]); // solo depende del socket, no de activeConv ni user
@@ -607,6 +628,20 @@ export default function Chat() {
     } catch (e) {
       console.error('Error al fijar:', e);
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, pinned: !m.pinned } : m));
+    }
+  };
+
+  // Soft delete del lado del servidor (vacía contenido, no borra la fila — otros mensajes pueden
+  // citarla o ser respuestas suyas) — acá no hay actualización optimista porque el propio evento
+  // de socket (chat:message_deleted, el emisor también está en esa room) ya vuelve con el mensaje
+  // vaciado, mismo criterio que fijar.
+  const deleteMessage = async (msg) => {
+    if (!await confirm('¿Eliminar este mensaje? No se puede deshacer.', { confirmText: 'Eliminar', danger: true })) return;
+    try {
+      await api(`/api/chat/messages/${msg.id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.error('Error al eliminar mensaje:', e);
+      await alert('No se pudo eliminar el mensaje: ' + e.message);
     }
   };
 
@@ -1237,6 +1272,7 @@ export default function Chat() {
                   onPin={() => togglePin(msg.id)}
                   onForward={() => openForwardModal(msg)}
                   onOpenThread={() => openThreadPanel(msg)}
+                  onDelete={(msg.sender_id === user?.id || user?.role === 'admin') ? () => deleteMessage(msg) : null}
                   isNarrowViewport={isNarrowViewport}
                   highlighted={flashMessageId === msg.id}
                 />
@@ -1292,7 +1328,7 @@ export default function Chat() {
                 </button>
               </div>
             ) : (
-              <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 12, padding: '8px 12px' }}>
+              <div className="panel" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, borderRadius: 12, padding: '8px 12px' }}>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1344,7 +1380,9 @@ export default function Chat() {
                     <span style={{ fontSize: 11, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums' }}>{formatRecordingTime(recordingSeconds)}</span>
                   </div>
                 )}
-                <input
+                <textarea
+                  ref={composerRef}
+                  rows={1}
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={e => {
@@ -1352,10 +1390,12 @@ export default function Chat() {
                       e.preventDefault();
                       sendMessage(input);
                     }
+                    // Shift+Enter: comportamiento nativo del textarea (salto de línea), no se
+                    // intercepta.
                   }}
                   onPaste={handlePasteImage}
                   placeholder={activeConv.type === 'channel' ? `Mensaje en #${activeConv.name}...` : activeConv.isSelf ? 'Escribí una nota...' : activeTab ? `Mensaje a ${activeConv.name} sobre ${dmTabs.find(t => t.id === activeTab)?.name || 'cliente'}...` : `Mensaje a ${activeConv.name}...`}
-                  style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font)' }}
+                  style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', resize: 'none', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font)', lineHeight: 1.4, maxHeight: 160, overflowY: 'auto', padding: '6px 0' }}
                 />
                 <button
                   onClick={() => sendMessage(input)}
@@ -1483,6 +1523,8 @@ export default function Chat() {
           scrollToMessage={scrollToMessage}
           togglePin={togglePin}
           openForward={openForwardModal}
+          userRole={user?.role}
+          onDeleteMessage={deleteMessage}
         />
       )}
     </div>
@@ -1620,7 +1662,7 @@ function SavedMessagesPanel({ api, userId, initials, isNarrowViewport, onBack, o
 // normal ni tan largo que se sienta que no respondió.
 const LONG_PRESS_MS = 450;
 
-function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, onSave, onQuote, onScrollToQuote, onPin, onForward, onOpenThread, isNarrowViewport, highlighted }) {
+function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, onReact, onSave, onQuote, onScrollToQuote, onPin, onForward, onOpenThread, onDelete, isNarrowViewport, highlighted }) {
   const timeStr = new Date(msg.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -1679,8 +1721,8 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
       className="msg-row"
       onMouseLeave={() => setEmojiPickerOpen(false)}
       // Doble clic es el mismo atajo que el botón "Citar" del toolbar — mismo patrón que WhatsApp
-      // desktop.
-      onDoubleClick={() => onQuote()}
+      // desktop. Nada que citar de un mensaje ya eliminado.
+      onDoubleClick={msg.deleted_at ? undefined : () => onQuote()}
       style={{
         display: 'flex', gap: 10, padding: compact ? '1px 0' : '8px 0 2px', alignItems: 'flex-start', position: 'relative',
         borderRadius: 8,
@@ -1698,7 +1740,9 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
     >
       {/* Barra de reacciones rápidas: en desktop aparece al pasar el mouse; en celular, al
           mantener presionado el mensaje (long-press, ver handleTouchStart). Posicionada arriba
-          a la derecha del mensaje, estilo Slack. */}
+          a la derecha del mensaje, estilo Slack. No tiene sentido sobre un mensaje ya eliminado —
+          no queda nada para reaccionar, citar, fijar, reenviar ni volver a borrar. */}
+      {!msg.deleted_at && (
       <div
         className={`panel msg-react-toolbar${toolbarOpen ? ' force-visible' : ''}`}
         style={{ position: 'absolute', top: -14, right: 0, display: 'flex', alignItems: 'center', gap: 2, borderRadius: 20, padding: '2px 4px', boxShadow: 'var(--shadow-lg)', zIndex: 1 }}
@@ -1805,7 +1849,20 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
             <Icon.comment />
           </button>
         )}
+        {/* Solo el autor o un admin — el servidor rechaza igual, esto es nomás para no ofrecer
+            el botón a quien ya sabemos que va a recibir un 403. */}
+        {onDelete && (
+          <button
+            className="icon-btn"
+            onClick={() => { onDelete(); setToolbarOpen(false); }}
+            title="Eliminar mensaje"
+            style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)' }}
+          >
+            <Icon.trash />
+          </button>
+        )}
       </div>
+      )}
       <div style={{ width: 36, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
         {!compact ? (
           <div className="avatar" style={{ background: msg.sender_color || 'var(--accent)', width: 34, height: 34, fontSize: 12 }}>
@@ -1824,11 +1881,17 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>{timeStr}</span>
           </div>
         )}
-        {/* Bloque de cita/reenvío — el mensaje referenciado puede haberse borrado (no hay borrado
-            de chat hoy, pero no hay que asumirlo), en ese caso quoted_sender_name viene null y no
-            se muestra nada en vez de un bloque vacío roto. Un reenvío no es clickeable: el
-            original vive en OTRA conversación, no en esta misma página, así que no hay a dónde
-            saltar (a diferencia de citar, que sí scrollea dentro del mismo hilo). */}
+        {msg.deleted_at ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: 'var(--text3)', fontStyle: 'italic' }}>
+            <Icon.trash /> Mensaje eliminado
+          </div>
+        ) : (
+          <>
+        {/* Bloque de cita/reenvío — el mensaje referenciado puede haberse borrado, en ese caso
+            quoted_deleted_at viene seteado y se muestra "Mensaje eliminado" en vez del contenido
+            (ahora vacío). Un reenvío no es clickeable: el original vive en OTRA conversación, no
+            en esta misma página, así que no hay a dónde saltar (a diferencia de citar, que sí
+            scrollea dentro del mismo hilo). */}
         {msg.quoted_message_id && msg.quoted_sender_name && (
           <div onClick={msg.forwarded ? undefined : () => onScrollToQuote(msg.quoted_message_id)}
             style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 4, padding: '4px 8px', borderLeft: '2px solid var(--border2)', borderRadius: 4, cursor: msg.forwarded ? 'default' : 'pointer', background: 'var(--bg3)' }}
@@ -1838,8 +1901,8 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
               <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent2)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 {msg.forwarded && <Icon.forward />} {msg.forwarded ? 'Reenviado de ' : ''}{msg.quoted_sender_name}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {msg.quoted_content || (msg.quoted_file_type ? '📎 Archivo' : '')}
+              <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: msg.quoted_deleted_at ? 'italic' : 'normal' }}>
+                {msg.quoted_deleted_at ? 'Mensaje eliminado' : (msg.quoted_content || (msg.quoted_file_type ? '📎 Archivo' : ''))}
               </div>
             </div>
           </div>
@@ -1878,9 +1941,11 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
           </a>
         )}
         {msg.content && (
-          <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.55, wordBreak: 'break-word' }}>
+          <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.55, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
             {msg.content}
           </div>
+        )}
+          </>
         )}
         {msg.reactions?.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
@@ -1922,8 +1987,16 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
 // Message para el root y cada respuesta: mismas 6 acciones disponibles ahí también, sin duplicar
 // la UI de la tarjeta de mensaje.
 function ThreadPanel({ root, replies, loading, threadInput, setThreadInput, onSend, sending, onClose, isNarrowViewport,
-  userId, initials, mediaUrl, onImageLoad, toggleReaction, toggleSave, setReplyingTo, scrollToMessage, togglePin, openForward }) {
-  // Mismas 6 acciones que en el feed principal, con los mismos closures por mensaje — el root y
+  userId, initials, mediaUrl, onImageLoad, toggleReaction, toggleSave, setReplyingTo, scrollToMessage, togglePin, openForward, userRole, onDeleteMessage }) {
+  // Mismo criterio de auto-resize que el composer principal (ver Chat.jsx).
+  const threadComposerRef = useRef(null);
+  useEffect(() => {
+    const el = threadComposerRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }, [threadInput]);
+  // Mismas acciones que en el feed principal, con los mismos closures por mensaje — el root y
   // cada respuesta pasan por acá en vez de por el .map() de Chat.jsx, pero son las mismas funciones.
   const renderMessage = (msg) => (
     <Message key={msg.id} msg={msg} isMe={msg.sender_id === userId} compact={false}
@@ -1935,6 +2008,7 @@ function ThreadPanel({ root, replies, loading, threadInput, setThreadInput, onSe
       onPin={() => togglePin(msg.id)}
       onForward={() => openForward(msg)}
       onOpenThread={null}
+      onDelete={(msg.sender_id === userId || userRole === 'admin') ? () => onDeleteMessage(msg) : null}
       isNarrowViewport={isNarrowViewport} />
   );
   return (
@@ -1965,13 +2039,15 @@ function ThreadPanel({ root, replies, loading, threadInput, setThreadInput, onSe
         )}
       </div>
       <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-        <div className="panel" style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 12, padding: '8px 12px' }}>
-          <input
+        <div className="panel" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, borderRadius: 12, padding: '8px 12px' }}>
+          <textarea
+            ref={threadComposerRef}
+            rows={1}
             value={threadInput}
             onChange={e => setThreadInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
             placeholder="Responder en el hilo..."
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font)' }}
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', resize: 'none', color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font)', lineHeight: 1.4, maxHeight: 160, overflowY: 'auto', padding: '6px 0' }}
           />
           <button
             onClick={onSend}

@@ -1200,7 +1200,7 @@ async function createNotificationInner({ userId, type, actorId, guestName, proje
 app.use(require('./routes/notifications')({ db, auth, io, parseReadBy }));
 
 // ─── CHAT ─────────────────────────────────────────────────────────────────────
-app.use(require('./routes/chat')({ db, auth, io, uploadLimiter, attachmentUpload, verifyAndPersistFiles, SAFE_ATTACHMENT_MIME_EXT }));
+app.use(require('./routes/chat')({ db, auth, io, uploadLimiter, attachmentUpload, verifyAndPersistFiles, SAFE_ATTACHMENT_MIME_EXT, safeUnlink }));
 
 // ─── SOCKET.IO ───────────────────────────────────────────────────────────────
 // Mismo criterio que el middleware HTTP: el rol se revalida contra la DB, no se confía en el token.

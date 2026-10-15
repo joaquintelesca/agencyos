@@ -5,7 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 // el pedido fue "solo algunos emojis"), así que el servidor rechaza cualquier otro valor.
 const QUICK_REACTIONS = ['👍', '👀', '✅', '🙌', '❤️', '🎉', '🔥', '😂'];
 
-module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUpload, verifyAndPersistFiles, SAFE_ATTACHMENT_MIME_EXT }) {
+module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUpload, verifyAndPersistFiles, SAFE_ATTACHMENT_MIME_EXT, safeUnlink }) {
   const router = express.Router();
 
   // Mismo criterio que ver el mensaje: participante del DM, o miembro del canal (o admin). Usado
@@ -28,7 +28,7 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
   const quoteJoins = (q) => q
     .leftJoin('chat_messages as qm', 'm.quoted_message_id', 'qm.id')
     .leftJoin('users as qu', 'qm.sender_id', 'qu.id');
-  const quoteCols = ['qm.content as quoted_content', 'qm.file_type as quoted_file_type', 'qu.name as quoted_sender_name'];
+  const quoteCols = ['qm.content as quoted_content', 'qm.file_type as quoted_file_type', 'qu.name as quoted_sender_name', 'qm.deleted_at as quoted_deleted_at'];
 
   // Suma reacciones/guardado-propio/fijado/cantidad-de-respuestas a una lista de mensajes ya
   // traída — usado por el feed principal y por el hilo de un mensaje (GET .../thread), que
@@ -462,8 +462,7 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
         .leftJoin('chat_messages as qm', 'm.quoted_message_id', 'qm.id')
         .leftJoin('users as qu', 'qm.sender_id', 'qu.id')
         .where('m.id', id)
-        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color',
-          'qm.content as quoted_content', 'qm.file_type as quoted_file_type', 'qu.name as quoted_sender_name')
+        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color', ...quoteCols)
         .first();
       // Los mensajes de chat ya tienen su propio contador de no leídos (chat_messages.read_by,
       // vía /api/chat/unread) que alimenta la burbuja del ítem "Chat" del sidebar — no se crea
@@ -477,6 +476,52 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
         }
       }
       res.json(msg);
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // Eliminar: soft-delete — se vacía el contenido en vez de borrar la fila, porque otros mensajes
+  // pueden citarla (quoted_message_id) o ser respuestas suyas (thread_parent_id); con la fila viva,
+  // esos lugares ven "Mensaje eliminado" automáticamente vía el mismo join que ya arma la vista
+  // previa de cita (quoteCols), sin tener que salir a actualizar cada lugar que referencia este id
+  // a mano. Pedido original: cualquiera borra lo suyo; un admin puede borrar cualquier mensaje
+  // (moderación), mismo criterio que ya usa el resto de la app para acciones de limpieza.
+  router.delete('/api/chat/messages/:id', auth, async (req, res) => {
+    try {
+      const message = await db('chat_messages').where({ id: req.params.id }).first();
+      if (!message) return res.status(404).json({ error: 'Mensaje no encontrado' });
+      if (message.sender_id !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Solo podés borrar tus propios mensajes' });
+      }
+      if (!message.deleted_at) {
+        if (message.file_url) safeUnlink(message.file_url.replace(/^\/uploads\//, ''));
+        await db('chat_messages').where({ id: req.params.id }).update({
+          content: '', file_url: null, file_type: null, file_name: null, file_duration: null,
+          deleted_at: new Date().toISOString(),
+        });
+        // Un mensaje borrado ya no tiene nada que fijar, guardar ni reaccionar — se limpia todo
+        // eso en vez de dejarlo pegado para siempre en esos paneles sobre un "Mensaje eliminado".
+        await db('chat_pinned_messages').where({ message_id: req.params.id }).delete();
+        await db('chat_saved_messages').where({ message_id: req.params.id }).delete();
+        await db('chat_reactions').where({ message_id: req.params.id }).delete();
+      }
+      const raw = await db('chat_messages as m')
+        .join('users as u', 'm.sender_id', 'u.id')
+        .leftJoin('chat_messages as qm', 'm.quoted_message_id', 'qm.id')
+        .leftJoin('users as qu', 'qm.sender_id', 'qu.id')
+        .where('m.id', req.params.id)
+        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color', ...quoteCols)
+        .first();
+      const [deletedMsg] = await enrichMessages([raw], req.user.id);
+
+      if (message.type === 'dm' && message.receiver_id) {
+        io.to(`user:${message.sender_id}`).to(`user:${message.receiver_id}`).emit('chat:message_deleted', deletedMsg);
+      } else if (message.type === 'channel' && message.channel_id) {
+        const members = await db('chat_channel_members').where({ channel_id: message.channel_id }).pluck('user_id');
+        for (const uid of members) {
+          io.to(`user:${uid}`).emit('chat:message_deleted', deletedMsg);
+        }
+      }
+      res.json(deletedMsg);
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 
@@ -519,8 +564,7 @@ module.exports = function chatRoutes({ db, auth, io, uploadLimiter, attachmentUp
         .leftJoin('chat_messages as qm', 'm.quoted_message_id', 'qm.id')
         .leftJoin('users as qu', 'qm.sender_id', 'qu.id')
         .where('m.id', id)
-        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color',
-          'qm.content as quoted_content', 'qm.file_type as quoted_file_type', 'qu.name as quoted_sender_name')
+        .select('m.*', 'u.name as sender_name', 'u.avatar_color as sender_color', ...quoteCols)
         .first();
       if (type === 'dm' && receiver_id) {
         io.to(`user:${senderId}`).to(`user:${receiver_id}`).emit('chat:message', msg);
