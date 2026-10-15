@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { initials, deadlineLabel } from '../utils/format';
+import { initials, deadlineLabel, formatHoursMinutes } from '../utils/format';
 import useModalA11y from '../hooks/useModalA11y';
 
 const STATUS_LABELS = { todo: 'Por hacer', in_progress: 'En progreso', review: 'En revisión', feedback: 'Aplicar feedback', done: 'Listo' };
@@ -151,7 +151,7 @@ export default function ClientDashboard() {
                   <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
                     <span style={{ fontSize: 13, color: 'var(--text)' }}>{p.name}</span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: p.payment_type === 'hourly' ? 'var(--text)' : 'var(--text3)', flexShrink: 0 }}>
-                      {p.payment_type === 'hourly' ? `${p.payment_hours || 0} hs` : 'Precio fijo'}
+                      {p.payment_type === 'hourly' ? formatHoursMinutes(p.payment_hours) : 'Precio fijo'}
                     </span>
                   </div>
                 ))}
