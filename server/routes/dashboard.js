@@ -11,7 +11,9 @@ module.exports = function dashboardRoutes({ db, auth }) {
           .where({ user_id: req.user.id }).pluck('project_id');
       }
 
-      // Videos vinculados a tareas en revisión
+      // Videos vinculados a tareas en revisión — si ya se aprobó ESE video puntual, ya no hay
+      // nada pendiente de aprobación aunque la tarea todavía diga "En revisión" (puede estar ahí
+      // por otro motivo, o el admin lo aprobó sin mover la tarea todavía).
       let reviewQuery = db('videos as v')
         .join('tasks as tk', function() {
           this.on('v.task_id', 'tk.id').andOn('tk.status', db.raw('?', ['review']));
@@ -19,6 +21,7 @@ module.exports = function dashboardRoutes({ db, auth }) {
         .join('projects as p', 'v.project_id', 'p.id')
         .leftJoin('clients as c', 'p.client_id', 'c.id')
         .leftJoin('users as u', 'v.uploaded_by', 'u.id')
+        .whereNull('v.approved_at')
         .select(
           'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at',
           'p.name as project_name', 'p.color as project_color',
@@ -34,6 +37,13 @@ module.exports = function dashboardRoutes({ db, auth }) {
       // ya están en "Aplicar feedback" — ese estado ya le avisa al editor que tiene que resolverlos,
       // así que mostrárselo también acá como "pendiente" al admin era un segundo aviso de lo mismo,
       // encima confuso porque ahí la pelota ya no está del lado del admin).
+      //
+      // Dos casos más que faltaban acá (reportados por el usuario): un video con comentarios sin
+      // resolver puede estar APROBADO igual (aprobar y resolver comentarios son acciones
+      // independientes) — ahí ya no hay nada pendiente del lado del admin. Y si ya usó "Revisión
+      // terminada" (ver POST /api/videos/:id/review-done) DESPUÉS del último comentario sin
+      // resolver, ya avisó — mismo criterio que el botón usa para mostrarse "Avisado" en vez de
+      // activo (comparar review_done_at contra el comentario sin resolver más reciente).
       const reviewVideoIds = reviewVideos.map(v => v.id);
       let commentsQuery = db('videos as v')
         .join('video_comments as vc', function() {
@@ -44,19 +54,23 @@ module.exports = function dashboardRoutes({ db, auth }) {
         .leftJoin('clients as c', 'p.client_id', 'c.id')
         .leftJoin('users as u', 'v.uploaded_by', 'u.id')
         .where(function() { this.whereNull('tk.status').orWhereNot('tk.status', 'feedback'); })
+        .whereNull('v.approved_at')
         .select(
-          'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at',
+          'v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at', 'v.review_done_at',
           'p.name as project_name', 'p.color as project_color',
           'c.name as client_name',
           'u.name as uploader_name',
           db.raw('count(vc.id) as unresolved_count'),
+          db.raw('max(vc.created_at) as latest_unresolved_at'),
           db.raw('? as type', ['comments'])
         )
-        .groupBy('v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at',
+        .groupBy('v.id', 'v.title', 'v.version', 'v.project_id', 'v.created_at', 'v.review_done_at',
           'p.name', 'p.color', 'c.name', 'u.name');
       if (projectFilter) commentsQuery = commentsQuery.whereIn('v.project_id', projectFilter);
       if (reviewVideoIds.length > 0) commentsQuery = commentsQuery.whereNotIn('v.id', reviewVideoIds);
-      const commentVideos = await commentsQuery;
+      const commentVideos = (await commentsQuery)
+        .filter(v => !(v.review_done_at && new Date(v.review_done_at) >= new Date(v.latest_unresolved_at)))
+        .map(({ review_done_at, latest_unresolved_at, ...v }) => v);
 
       res.json([...reviewVideos, ...commentVideos]);
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
