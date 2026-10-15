@@ -77,6 +77,9 @@ export default function Layout() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [expandedCompletedFolders, setExpandedCompletedFolders] = useState([]); // string[] de client IDs con "Terminados" abierto
   const [draggedClientId, setDraggedClientId] = useState(null);
+  // Un solo toggle para toda la sección (no uno por cliente como expandedClients) — colapsada por
+  // default, para que los clientes viejos no ocupen lugar en la vista principal del sidebar.
+  const [showArchivedClients, setShowArchivedClients] = useState(false);
   const [draggedProjectId, setDraggedProjectId] = useState(null);
   const SIDEBAR_MIN = 180, SIDEBAR_MAX = 420;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sidebarCollapsed') === 'true');
@@ -481,6 +484,20 @@ export default function Layout() {
     });
   };
 
+  // Puramente de UI — saca al cliente (y sus proyectos) de la lista principal del sidebar sin
+  // borrar nada, a diferencia de deleteClient no pasa por el sistema de undo (es reversible con el
+  // mismo botón, no hace falta esa red de seguridad extra).
+  const archiveClient = async (c, archived) => {
+    setClients(prev => prev.map(x => x.id === c.id ? { ...x, archived_at: archived ? new Date().toISOString() : null } : x));
+    try {
+      await api(`/api/clients/${c.id}`, { method: 'PATCH', body: { archived } });
+    } catch (e) {
+      console.error('Error archivando cliente:', e);
+      setClients(prev => prev.map(x => x.id === c.id ? { ...x, archived_at: c.archived_at } : x));
+      await alert('No se pudo ' + (archived ? 'archivar' : 'desarchivar') + ' el cliente: ' + e.message);
+    }
+  };
+
   // Reordena clientes por drag & drop: mueve el arrastrado a la posición del que recibió el
   // drop, actualiza el sidebar al toque, y persiste el orden completo en el servidor.
   const reorderClients = (draggedId, targetId) => {
@@ -630,6 +647,68 @@ export default function Layout() {
     </div>
   );
 
+  // Fila de un cliente — la usan tanto la lista principal como la sección colapsable "Clientes
+  // archivados" de más abajo, con el mismo comportamiento (expandir, drag-to-reorder, editar). Solo
+  // cambia qué le pasa a ProjectRowActions (Archivar vs Desarchivar) y una leve atenuación visual.
+  const renderClientRow = (c, isArchived = false) => {
+    const clientProjects = projects.filter(p => p.client_id === c.id);
+    const activeProjects = clientProjects.filter(p => p.status !== 'completed');
+    const completedProjects = clientProjects.filter(p => p.status === 'completed');
+    const isExpanded = expandedClients.includes(c.id);
+    const isCompletedExpanded = expandedCompletedFolders.includes(c.id);
+    return (
+      <div key={c.id} style={{ marginBottom: 2, opacity: draggedClientId === c.id ? 0.4 : (isArchived ? 0.6 : 1) }}>
+        <div className="sidebar-row" style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', transition: 'background 0.1s' }}
+          draggable={user?.role === 'admin' && !isArchived}
+          onDragStart={() => setDraggedClientId(c.id)}
+          onDragOver={e => { if (user?.role === 'admin' && draggedClientId) e.preventDefault(); }}
+          onDrop={e => { if (draggedClientId) { e.preventDefault(); reorderClients(draggedClientId, c.id); } }}
+          onDragEnd={() => setDraggedClientId(null)}
+          onClick={() => setExpandedClients(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}
+          onDoubleClick={e => { e.stopPropagation(); navigate(`/client/${c.id}`); }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+          <span style={{ fontSize: 10, color: 'var(--text3)', transition: 'transform 0.15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
+          {/* Pedido explícito del usuario: un click simple sobre el nombre ahora expande/
+              colapsa igual que el resto de la fila (ya no navega aparte) — "ir al cliente"
+              queda solo en doble click sobre la fila, que ya lo hacía (ver onDoubleClick
+              de la fila). El title acá es el único rastro visual de ese gesto en desktop;
+              en mobile no hay pista (sin hover), pero así lo pidió el usuario. */}
+          <span title="Doble clic para ver el cliente"
+            style={{ font: 'inherit', textAlign: 'left', fontSize: 15.6, fontWeight: 900, color: 'var(--text2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {c.name}
+          </span>
+          {user?.role === 'admin' && clientProjects.some(p => p.unread_review_count > 0) && (
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
+          )}
+          {activeProjects.length > 0 && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{activeProjects.length}</span>}
+          {user?.role === 'admin' && (
+            <ProjectRowActions fontSize={12} padding="1px 4px" archived={isArchived}
+              onArchive={e => { e.stopPropagation(); archiveClient(c, !isArchived); }}
+              onEdit={e => { e.stopPropagation(); setEditingClient(c); setEditClientForm({ name: c.name, color: c.color, email: c.email || '', phone: c.phone || '', notes: c.notes || '' }); }}
+              onDelete={e => { e.stopPropagation(); deleteClient(c); }} />
+          )}
+        </div>
+        {isExpanded && activeProjects.map(p => renderSidebarProjectRow(p, c.id))}
+        {isExpanded && completedProjects.length > 0 && (
+          <>
+            <div className="sidebar-row" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px 4px 26px', borderRadius: 7, cursor: 'pointer', fontSize: 11.5, color: 'var(--text3)' }}
+              onClick={() => setExpandedCompletedFolders(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}>
+              <span style={{ fontSize: 9, transition: 'transform 0.15s', display: 'inline-block', transform: isCompletedExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
+              <span style={{ flex: 1 }}>📁 Terminados</span>
+              <span style={{ fontSize: 10 }}>{completedProjects.length}</span>
+            </div>
+            {isCompletedExpanded && completedProjects.map(p => renderSidebarProjectRow(p, c.id, 38))}
+          </>
+        )}
+        {isExpanded && clientProjects.length === 0 && (
+          <div style={{ padding: '4px 10px 4px 26px', fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>Sin proyectos aún</div>
+        )}
+      </div>
+    );
+  };
+
   const newProjectModalRef = useModalA11y(showNewProject, () => setShowNewProject(false));
   const reviewReminderModalRef = useModalA11y(!!reviewReminder, () => setReviewReminder(null));
   const newClientModalRef = useModalA11y(showNewClient, () => setShowNewClient(false));
@@ -708,63 +787,21 @@ export default function Layout() {
           )}
 
           {/* Projects grouped by client — click to expand */}
-          {clients.map(c => {
-            const clientProjects = projects.filter(p => p.client_id === c.id);
-            const activeProjects = clientProjects.filter(p => p.status !== 'completed');
-            const completedProjects = clientProjects.filter(p => p.status === 'completed');
-            const isExpanded = expandedClients.includes(c.id);
-            const isCompletedExpanded = expandedCompletedFolders.includes(c.id);
-            return (
-              <div key={c.id} style={{ marginBottom: 2, opacity: draggedClientId === c.id ? 0.4 : 1 }}>
-                <div className="sidebar-row" style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', transition: 'background 0.1s' }}
-                  draggable={user?.role === 'admin'}
-                  onDragStart={() => setDraggedClientId(c.id)}
-                  onDragOver={e => { if (user?.role === 'admin' && draggedClientId) e.preventDefault(); }}
-                  onDrop={e => { if (draggedClientId) { e.preventDefault(); reorderClients(draggedClientId, c.id); } }}
-                  onDragEnd={() => setDraggedClientId(null)}
-                  onClick={() => setExpandedClients(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}
-                  onDoubleClick={e => { e.stopPropagation(); navigate(`/client/${c.id}`); }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
-                  <span style={{ fontSize: 10, color: 'var(--text3)', transition: 'transform 0.15s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
-                  {/* Pedido explícito del usuario: un click simple sobre el nombre ahora expande/
-                      colapsa igual que el resto de la fila (ya no navega aparte) — "ir al cliente"
-                      queda solo en doble click sobre la fila, que ya lo hacía (ver onDoubleClick
-                      de la fila). El title acá es el único rastro visual de ese gesto en desktop;
-                      en mobile no hay pista (sin hover), pero así lo pidió el usuario. */}
-                  <span title="Doble clic para ver el cliente"
-                    style={{ font: 'inherit', textAlign: 'left', fontSize: 15.6, fontWeight: 900, color: 'var(--text2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {c.name}
-                  </span>
-                  {user?.role === 'admin' && clientProjects.some(p => p.unread_review_count > 0) && (
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
-                  )}
-                  {activeProjects.length > 0 && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{activeProjects.length}</span>}
-                  {user?.role === 'admin' && (
-                    <ProjectRowActions fontSize={12} padding="1px 4px"
-                      onEdit={e => { e.stopPropagation(); setEditingClient(c); setEditClientForm({ name: c.name, color: c.color, email: c.email || '', phone: c.phone || '', notes: c.notes || '' }); }}
-                      onDelete={e => { e.stopPropagation(); deleteClient(c); }} />
-                  )}
-                </div>
-                {isExpanded && activeProjects.map(p => renderSidebarProjectRow(p, c.id))}
-                {isExpanded && completedProjects.length > 0 && (
-                  <>
-                    <div className="sidebar-row" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px 4px 26px', borderRadius: 7, cursor: 'pointer', fontSize: 11.5, color: 'var(--text3)' }}
-                      onClick={() => setExpandedCompletedFolders(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}>
-                      <span style={{ fontSize: 9, transition: 'transform 0.15s', display: 'inline-block', transform: isCompletedExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
-                      <span style={{ flex: 1 }}>📁 Terminados</span>
-                      <span style={{ fontSize: 10 }}>{completedProjects.length}</span>
-                    </div>
-                    {isCompletedExpanded && completedProjects.map(p => renderSidebarProjectRow(p, c.id, 38))}
-                  </>
-                )}
-                {isExpanded && clientProjects.length === 0 && (
-                  <div style={{ padding: '4px 10px 4px 26px', fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>Sin proyectos aún</div>
-                )}
+          {clients.filter(c => !c.archived_at).map(c => renderClientRow(c))}
+
+          {/* Clientes archivados — colapsada por default, se van acumulando con el tiempo. Mismo
+              patrón que "Terminados" dentro de cada cliente, pero a nivel de toda la sección. */}
+          {clients.some(c => c.archived_at) && (
+            <div style={{ marginTop: 4 }}>
+              <div className="sidebar-row" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', fontSize: 11.5, color: 'var(--text3)' }}
+                onClick={() => setShowArchivedClients(o => !o)}>
+                <span style={{ fontSize: 9, transition: 'transform 0.15s', display: 'inline-block', transform: showArchivedClients ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
+                <span style={{ flex: 1 }}>📦 Clientes archivados</span>
+                <span style={{ fontSize: 10 }}>{clients.filter(c => c.archived_at).length}</span>
               </div>
-            );
-          })}
+              {showArchivedClients && clients.filter(c => c.archived_at).map(c => renderClientRow(c, true))}
+            </div>
+          )}
 
           {/* Projects without client */}
           {projects.filter(p => !p.client_id).map(p => (
@@ -1479,11 +1516,13 @@ export default function Layout() {
 // Botones editar/borrar de una fila de proyecto en el sidebar — solo visibles al pasar el mouse
 // por la fila (clase .sidebar-row en el padre, ver index.css). Usado en las dos listas de
 // proyectos (agrupados por cliente y sin cliente), antes duplicado en cada una.
-function ProjectRowActions({ fontSize, padding, onEdit, onDelete, onDuplicate }) {
+function ProjectRowActions({ fontSize, padding, onEdit, onDelete, onDuplicate, onArchive, archived }) {
   return (
     <div style={{ display: 'flex', gap: 0 }}>
       {/* Solo las filas de proyecto pasan onDuplicate — no tiene sentido "duplicar" un cliente. */}
       {onDuplicate && <button className="reveal-btn edit" title="Duplicar proyecto" aria-label="Duplicar proyecto" onClick={onDuplicate} style={{ fontSize, padding, display: 'flex' }}><Icon.copy /></button>}
+      {/* Solo las filas de cliente pasan onArchive — no tiene sentido "archivar" un proyecto suelto. */}
+      {onArchive && <button className="reveal-btn edit" title={archived ? 'Desarchivar' : 'Archivar'} aria-label={archived ? 'Desarchivar cliente' : 'Archivar cliente'} onClick={onArchive} style={{ fontSize, padding, display: 'flex' }}><Icon.archive /></button>}
       <button className="reveal-btn edit" title="Editar" aria-label="Editar" onClick={onEdit} style={{ fontSize, padding, display: 'flex' }}><Icon.pencil /></button>
       <button className="reveal-btn delete" title="Eliminar" aria-label="Eliminar" onClick={onDelete} style={{ fontSize, padding, display: 'flex' }}><Icon.trash /></button>
     </div>

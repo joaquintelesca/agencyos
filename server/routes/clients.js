@@ -55,9 +55,13 @@ module.exports = function clientsRoutes({ db, auth, io }) {
   router.patch('/api/clients/:id', auth, async (req, res) => {
     try {
       if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
-      const { name, color, email, phone, notes } = req.body;
+      const { name, color, email, phone, notes, archived } = req.body;
       if (name !== undefined && !name?.trim()) return res.status(400).json({ error: 'El nombre del cliente es obligatorio' });
-      await db('clients').where({ id: req.params.id }).update({ name, color, email, phone, notes });
+      const update = { name, color, email, phone, notes };
+      // Puramente de UI (ver migración) — guarda cuándo, no solo si, por si en algún momento hace
+      // falta ordenar/mostrar la fecha de archivado.
+      if (archived !== undefined) update.archived_at = archived ? new Date().toISOString() : null;
+      await db('clients').where({ id: req.params.id }).update(update);
       const client = await db('clients').where({ id: req.params.id }).first();
       io.to('admins').emit('client:updated', client);
       res.json(client);
