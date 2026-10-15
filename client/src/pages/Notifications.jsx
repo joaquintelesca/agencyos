@@ -215,6 +215,19 @@ export default function Notifications() {
           {notifSupported && desktopPermission === 'granted' && (
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>🔔 Avisos de escritorio activados</span>
           )}
+          {/* Una vez que el navegador queda en "denied", pedir el permiso de nuevo desde JS ya no
+              hace nada — ni siquiera vuelve a mostrar el cartel, lo rechaza en silencio. Por eso
+              esta opción "desaparecía" sin explicación: antes solo había botón para 'default' y
+              texto para 'granted', nada para 'denied'. Esto deja claro qué pasó y cómo se revierte
+              (solo se puede desde la configuración del sitio en el navegador, no desde acá). */}
+          {notifSupported && desktopPermission === 'denied' && (
+            <span
+              style={{ fontSize: 11, color: 'var(--yellow)', whiteSpace: 'nowrap' }}
+              title="Para activarlos, abrí la configuración del sitio en tu navegador (ícono de candado/info junto a la URL) y permitilos ahí."
+            >
+              🔕 Avisos de escritorio bloqueados
+            </span>
+          )}
           <button
             onClick={() => setUnreadOnly(o => !o)}
             style={{
