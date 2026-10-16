@@ -817,7 +817,14 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
               // mano en su lugar, mismo compromiso que TaskCard en Project.jsx.
               <div key={c.id} onClick={() => playerRef.current?.jumpToComment(c)}
                 role="button" tabIndex={0}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playerRef.current?.jumpToComment(c); } }}
+                onKeyDown={e => {
+                  // El Enter/Espacio de "activar la tarjeta" bubblea desde CUALQUIER hijo, incluido
+                  // el <textarea> de "Editar" que se renderiza adentro de esta misma tarjeta — sin
+                  // este chequeo, escribir un espacio mientras se edita el texto del comentario
+                  // llegaba hasta acá y se comía con preventDefault(), como si fuera un click.
+                  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playerRef.current?.jumpToComment(c); }
+                }}
                 style={{ padding: '8px 12px', borderBottom: `1px solid var(--bg3)`, cursor: 'pointer', background: activeComment === c.id ? 'var(--bg3)' : 'transparent', borderLeft: activeComment === c.id ? `2px solid var(--accent)` : c.resolved ? `2px solid #10b981` : '2px solid transparent', opacity: c.resolved ? 0.6 : 1, transition: 'all 0.1s' }}
                 onMouseEnter={e => { if (activeComment !== c.id) e.currentTarget.style.background = 'var(--bg3)'; }}
                 onMouseLeave={e => { if (activeComment !== c.id) e.currentTarget.style.background = 'transparent'; }}>
