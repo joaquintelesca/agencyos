@@ -289,6 +289,14 @@ module.exports = function videoUploadRoutes({
         idsToUpdate.push(...oldGroupMembers);
       }
       await db('videos').whereIn('id', [...new Set(idsToUpdate)]).update({ group_id: groupId });
+      // Renumerar TODO el grupo resultante por orden de subida — sin esto, dos videos subidos por
+      // separado (cada uno arrancando en v1 porque nadie tocó "Nueva versión" para encadenarlos)
+      // quedaban diciendo "v1" los dos para siempre al apilarlos a mano: el stack nunca les había
+      // asignado un número de versión relativo entre sí, solo el group_id. Se renumera siempre que
+      // cambia el grupo (no solo cuando hay colisión) para que el orden quede consistente aunque
+      // se sumen stacks que ya traían su propia numeración.
+      const groupMembers = await db('videos').where({ group_id: groupId }).orderBy('created_at', 'asc');
+      await Promise.all(groupMembers.map((v, i) => db('videos').where({ id: v.id }).update({ version: i + 1 })));
       await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
       res.json({ success: true, group_id: groupId });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
