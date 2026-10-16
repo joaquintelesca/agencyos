@@ -60,13 +60,20 @@ export default function VideoCompareModal({ videos, initialLeftId, initialRightI
     if (side === 'left' && leftRef.current) setCurrentTime(leftRef.current.currentTime);
   };
 
+  // Antes el recuadro de cada video tenía un aspect-ratio 16:9 fijo — para un video vertical
+  // (9:16, el formato real de estos spots) eso deja un recuadro chico con franjas negras enormes
+  // a los costados, y en modo inline además sobra toda la altura de la pantalla debajo sin usar
+  // (el recuadro mide lo que da su ancho, no lo que hay disponible). Ahora el recuadro no fuerza
+  // ninguna proporción: crece para ocupar toda la altura real disponible (flex:1 en una columna),
+  // y es el propio <video> con object-fit:contain el que decide cómo entra ADENTRO de ese
+  // rectángulo según su proporción real — vertical, horizontal o cuadrado, sin franjas de más.
   const pane = (side, video, ref, setId) => (
-    <div style={{ flex: 1, minWidth: 260 }}>
+    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <select className="input" value={video?.id || ''} onChange={e => setId(e.target.value)}
-        style={{ marginBottom: 8, fontSize: 12, padding: '5px 8px' }}>
+        style={{ marginBottom: 8, fontSize: 12, padding: '5px 8px', flexShrink: 0 }}>
         {videos.map(v => <option key={v.id} value={v.id}>v{v.version} — {v.title}</option>)}
       </select>
-      <div style={{ position: 'relative', background: '#000', borderRadius: 8, overflow: 'hidden', aspectRatio: '16/9' }}>
+      <div style={{ position: 'relative', background: '#000', borderRadius: 8, overflow: 'hidden', flex: 1, minHeight: 0 }}>
         {video && (
           <video
             ref={ref}
@@ -92,7 +99,11 @@ export default function VideoCompareModal({ videos, initialLeftId, initialRightI
 
   const body = (
     <>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16, flex: inline ? 1 : undefined, minHeight: 0 }}>
+      {/* flex:1 (inline) se estira hasta donde dé la página — la columna padre ya es flex:1 de
+          arriba abajo. La variante modal no vive dentro de ningún flex vertical acotado, así que
+          ahí necesita una altura propia explícita para que el flex:1 de cada pane tenga de qué
+          repartir. */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16, minHeight: 0, ...(inline ? { flex: 1 } : { height: 420 }) }}>
         {pane('left', leftVideo, leftRef, setLeftId)}
         {pane('right', rightVideo, rightRef, setRightId)}
       </div>
@@ -110,7 +121,7 @@ export default function VideoCompareModal({ videos, initialLeftId, initialRightI
 
   if (inline) {
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', padding: 16, minHeight: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 16, minHeight: 0 }}>
         {body}
       </div>
     );
