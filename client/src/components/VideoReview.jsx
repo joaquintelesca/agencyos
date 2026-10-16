@@ -354,6 +354,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     if (canManage) items.push({ label: 'Renombrar', icon: <Icon.pencil />, onClick: () => setRenameModalVideo(v) });
     items.push({ label: 'Descargar', icon: <Icon.download />, href: mediaUrl(`/uploads/${v.filename}?download=1`) });
     if (user.role === 'admin') items.push({ label: 'Compartir', icon: <Icon.link />, onClick: () => setShareModalVideoId(v.id) });
+    if (canManage && v.group_id) items.push({ label: 'Desapilar', icon: <Icon.unlink />, onClick: () => handleUnstack(v.id) });
     if (canManage) items.push({ label: 'Eliminar', icon: <Icon.trash />, danger: true, onClick: () => deleteVideo(v) });
     return items;
   };
@@ -633,12 +634,26 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         </button>
         {/* Version selector */}
         <select value={selectedVideo.id}
-          onChange={async e => { if (!(await (playerRef.current?.confirmDiscardDraft() ?? true))) return; const v = videos.find(x => x.id === e.target.value); if (v) setSelectedVideo(v); }}
+          onChange={async e => {
+            // El id hay que capturarlo ACÁ, antes de cualquier await — es un <select> controlado
+            // (value={selectedVideo.id}), así que en cuanto termina este handler sin haber
+            // actualizado el estado todavía, React devuelve el DOM al value de siempre. Leer
+            // e.target.value DESPUÉS del await (como estaba antes) ya no lee lo que el usuario
+            // eligió: lee ese mismo valor revertido, y el selector queda "pegado" en la versión
+            // actual pase lo que pase se haya clickeado.
+            const nextId = e.target.value;
+            if (!(await (playerRef.current?.confirmDiscardDraft() ?? true))) return;
+            const v = videos.find(x => x.id === nextId);
+            if (v) setSelectedVideo(v);
+          }}
           style={{ background: 'var(--bg3)', border: `1px solid var(--border)`, borderRadius: 7, color: 'var(--text)', fontSize: 12, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
-          {/* All versions of all videos — grouped by title */}
-          {videos.map(v => (
-            <option key={v.id} value={v.id}>{v.title} — v{v.version}</option>
-          ))}
+          {/* Solo las versiones DEL MISMO stack (mismo group_id) — antes listaba todos los videos
+              del proyecto sin relación entre sí, ni versiones reales de este. */}
+          {(selectedVideo.group_id ? videos.filter(v => v.group_id === selectedVideo.group_id) : [selectedVideo])
+            .sort((a, b) => b.version - a.version)
+            .map(v => (
+              <option key={v.id} value={v.id}>{v.title} — v{v.version}</option>
+            ))}
         </select>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--accent-glow)', border: `1px solid rgba(124,106,247,0.31)`, borderRadius: 6, padding: '3px 9px', fontSize: 11, color: 'var(--accent2)', fontWeight: 600 }}>
           v{selectedVideo.version}

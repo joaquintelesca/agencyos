@@ -17,6 +17,29 @@ const CATEGORIES = [
 ];
 const categoryMeta = (key) => CATEGORIES.find(c => c.key === key);
 
+// Colapsa cada stack (mismo group_id, apilados desde "Videos del proyecto") a una sola fila/card
+// — la versión más alta — con un badge de cuántas hay. Sin esto, apilar dos videos en el proyecto
+// no se reflejaba acá: esta pantalla listaba cada versión por separado, como si fueran videos sin
+// relación. No replica la interacción de apilar/desapilar (no tiene sentido entre proyectos
+// distintos, ver comentario de VideoCard más abajo) — clickear sigue llevando al proyecto, que es
+// donde se gestiona el stack completo.
+function groupStacks(list) {
+  const result = [];
+  const indexByGroup = {};
+  for (const v of list) {
+    if (!v.group_id) { result.push(v); continue; }
+    const idx = indexByGroup[v.group_id];
+    if (idx === undefined) {
+      indexByGroup[v.group_id] = result.length;
+      result.push({ ...v, _stackCount: 1 });
+    } else {
+      result[idx]._stackCount++;
+      if (v.version > result[idx].version) result[idx] = { ...v, _stackCount: result[idx]._stackCount };
+    }
+  }
+  return result;
+}
+
 function VideoRow({ v, navigate, showClient, onContextMenu }) {
   const meta = categoryMeta(v.category);
   return (
@@ -26,7 +49,9 @@ function VideoRow({ v, navigate, showClient, onContextMenu }) {
       onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
       onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
       <div style={{ width: 8, height: 8, borderRadius: '50%', background: v.project_color || 'var(--text3)', flexShrink: 0 }} />
-      <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{v.title} <span style={{ fontSize: 11, color: 'var(--text3)' }}>v{v.version}</span></span>
+      <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>{v.title} <span style={{ fontSize: 11, color: 'var(--text3)' }}>v{v.version}</span>
+        {v._stackCount > 1 && <span className="badge" style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, background: 'var(--bg3)', color: 'var(--text2)' }}>{v._stackCount} versiones</span>}
+      </span>
       <span style={{ fontSize: 11, color: 'var(--text3)' }}>{showClient && v.client_name ? `${v.client_name} · ` : ''}{v.project_name}</span>
       {v.uploader_name && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -46,13 +71,20 @@ function VideoRow({ v, navigate, showClient, onContextMenu }) {
 // Misma tarjeta visual que "Videos del proyecto" (VideoReview.jsx renderVideoCard) — a propósito
 // NO es el mismo componente: acá se listan videos de CUALQUIER proyecto a la vez (sin el drag de
 // apilar versiones, que no tiene sentido entre proyectos distintos), y se agrega el nombre del
-// proyecto/cliente y el badge de categoría en vez del estado de la tarea vinculada.
+// proyecto/cliente y el badge de categoría en vez del estado de la tarea vinculada. Sí replica el
+// efecto visual de "apilado" (sombra en capas + badge "N versiones") cuando v._stackCount > 1 —
+// eso es solo lectura del group_id que ya trae el video, no requiere la lógica de drag.
 function VideoCard({ v, navigate, showClient, mediaUrl, onContextMenu }) {
   const meta = categoryMeta(v.category);
+  const stackN = Math.min((v._stackCount || 1) - 1, 3);
   return (
     <ClickableRow className="" onClick={() => navigate(`/project/${v.project_id}?tab=videos`)}
       onContextMenu={e => { e.preventDefault(); onContextMenu(e, v); }}
-      style={{ display: 'block', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, cursor: 'pointer', transition: 'border-color 0.15s' }}
+      style={{
+        display: 'block', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, cursor: 'pointer', transition: 'border-color 0.15s',
+        boxShadow: stackN > 0 ? Array.from({ length: stackN }, (_, i) => `${(i + 1) * 6}px ${(i + 1) * 6}px 0 -1px var(--bg2), ${(i + 1) * 6}px ${(i + 1) * 6}px 0 0.5px var(--text3)`).join(', ') : undefined,
+        marginBottom: stackN * 6, marginRight: stackN * 6,
+      }}
       onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
       onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
       <div style={{ width: '100%', paddingBottom: '56%', background: 'var(--bg4)', borderRadius: 8, marginBottom: 10, position: 'relative', overflow: 'hidden' }}>
@@ -72,7 +104,12 @@ function VideoCard({ v, navigate, showClient, mediaUrl, onContextMenu }) {
         {showClient && v.client_name ? `${v.client_name} · ` : ''}{v.project_name}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span className="badge" style={{ padding: '2px 7px', background: 'var(--accent-glow)', color: 'var(--accent2)', fontWeight: 700, flexShrink: 0 }}>v{v.version}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+          <span className="badge" style={{ padding: '2px 7px', background: 'var(--accent-glow)', color: 'var(--accent2)', fontWeight: 700, flexShrink: 0 }}>v{v.version}</span>
+          {v._stackCount > 1 && (
+            <span className="badge" style={{ fontSize: 10, fontWeight: 600, background: 'var(--bg3)', color: 'var(--text2)', flexShrink: 0 }}>{v._stackCount} versiones</span>
+          )}
+        </div>
         <span className="badge" style={{ fontSize: 10, fontWeight: 500, background: meta.bg, color: meta.color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {v.category === 'editing' ? `${v.unresolved_count} comentario${v.unresolved_count !== 1 ? 's' : ''}` : meta.label}
         </span>
@@ -127,8 +164,10 @@ export default function VideosDashboard() {
     { label: 'Eliminar', icon: <Icon.trash />, danger: true, onClick: () => deleteVideoFromDashboard(v) },
   ];
 
+  // counts usa `videos` sin agrupar a propósito — contar stacks en vez de videos reales daría un
+  // número que no coincide con "Todos los videos" ni con lo que hay realmente en el proyecto.
   const counts = CATEGORIES.reduce((acc, c) => ({ ...acc, [c.key]: videos.filter(v => v.category === c.key).length }), {});
-  const shown = filter === 'all' ? videos : videos.filter(v => v.category === filter);
+  const shown = groupStacks(filter === 'all' ? videos : videos.filter(v => v.category === filter));
 
   const clientGroups = (() => {
     const groups = {};
