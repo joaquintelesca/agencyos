@@ -509,6 +509,60 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
 
   const uploadModalRef = useModalA11y(showUpload, () => { if (!uploading) closeUploadModal(); });
 
+  // Un solo modal, no dos copias de la misma pantalla — hasta hace poco "Subir video" (vista
+  // grilla, selectedVideo null) y "Subir nueva versión" (vista reproductor, selectedVideo con
+  // valor) eran dos bloques de JSX pegados a mano, idénticos salvo el título y los placeholders.
+  // Cada bug de este form (la fuga de estado entre los dos, los placeholders que no se aplicaban
+  // solos) había que arreglarlo y verificarlo dos veces por existir dos copias. selectedVideo ya
+  // alcanza para decidir cuál texto mostrar — no hace falta un prop ni un segundo componente.
+  const uploadModal = showUpload && (
+    <div className="modal-overlay">
+      <div className="modal" onClick={e => e.stopPropagation()} ref={uploadModalRef} role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
+        {!uploading && <button className="modal-close" onClick={closeUploadModal} title="Cerrar" aria-label="Cerrar">✕</button>}
+        <h2 id="upload-modal-title">{selectedVideo ? 'Subir nueva versión' : 'Subir video'}</h2>
+        <div className="form-group">
+          <label>Archivo de video</label>
+          <input type="file" accept="video/*" onChange={e => setUploadFile(e.target.files[0])} style={{ color: 'var(--text)', fontSize: 13 }} />
+        </div>
+        <div className="form-group">
+          <label>Título</label>
+          <input className="input" value={uploadForm.title} onChange={e => setUploadForm(p => ({ ...p, title: e.target.value }))}
+            placeholder={selectedVideo ? (selectedVideo.title || 'Nombre del video') : 'ej: comercial_verano'} />
+        </div>
+        <div className="form-group">
+          <label>Versión</label>
+          <input className="input" value={uploadForm.version} onChange={e => setUploadForm(p => ({ ...p, version: e.target.value }))}
+            placeholder={selectedVideo ? `v${(selectedVideo.version || 0) + 1}` : 'ej: v1, v2, v3...'} />
+        </div>
+        {tasks.length > 0 && (
+          <div className="form-group">
+            <label>Tarea asociada</label>
+            <select className="input" value={uploadForm.task_id} onChange={e => setUploadForm(p => ({ ...p, task_id: e.target.value }))}>
+              <option value="">Sin tarea</option>
+              {tasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+            </select>
+          </div>
+        )}
+        {uploading && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div style={{ flex: 1, height: 6, background: 'var(--bg3)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ width: `${uploadProgress}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.2s' }} />
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--text3)', minWidth: 32, textAlign: 'right' }}>{uploadProgress}%</span>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost" onClick={() => uploading ? cancelUpload() : closeUploadModal()}>
+            {uploading ? 'Cancelar subida' : 'Cancelar'}
+          </button>
+          <button className="btn btn-primary" onClick={uploadVideo} disabled={!uploadFile || uploading}>
+            {uploading ? `⏳ Subiendo... ${uploadProgress}%` : '⬆ Subir'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   // ─── VIDEO LIST ──────────────────────────────────────────────────────────────
   if (!selectedVideo) {
     return (
@@ -585,51 +639,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
             );
           })}
         </div>
-        {showUpload && (
-          <div className="modal-overlay">
-            <div className="modal" onClick={e => e.stopPropagation()} ref={uploadModalRef} role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
-              {!uploading && <button className="modal-close" onClick={closeUploadModal} title="Cerrar" aria-label="Cerrar">✕</button>}
-              <h2 id="upload-modal-title">Subir video</h2>
-              <div className="form-group">
-                <label>Archivo de video</label>
-                <input type="file" accept="video/*" onChange={e => setUploadFile(e.target.files[0])} style={{ color: 'var(--text)', fontSize: 13 }} />
-              </div>
-              <div className="form-group">
-                <label>Título</label>
-                <input className="input" value={uploadForm.title} onChange={e => setUploadForm(p => ({ ...p, title: e.target.value }))} placeholder="ej: comercial_verano" />
-              </div>
-              <div className="form-group">
-                <label>Versión</label>
-                <input className="input" value={uploadForm.version} onChange={e => setUploadForm(p => ({ ...p, version: e.target.value }))} placeholder="ej: v1, v2, v3..." />
-              </div>
-              {tasks.length > 0 && (
-                <div className="form-group">
-                  <label>Tarea asociada</label>
-                  <select className="input" value={uploadForm.task_id} onChange={e => setUploadForm(p => ({ ...p, task_id: e.target.value }))}>
-                    <option value="">Sin tarea</option>
-                    {tasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-                  </select>
-                </div>
-              )}
-              {uploading && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <div style={{ flex: 1, height: 6, background: 'var(--bg3)', borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{ width: `${uploadProgress}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.2s' }} />
-                  </div>
-                  <span style={{ fontSize: 11, color: 'var(--text3)', minWidth: 32, textAlign: 'right' }}>{uploadProgress}%</span>
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button className="btn btn-ghost" onClick={() => uploading ? cancelUpload() : closeUploadModal()}>
-                  {uploading ? 'Cancelar subida' : 'Cancelar'}
-                </button>
-                <button className="btn btn-primary" onClick={uploadVideo} disabled={!uploadFile || uploading}>
-                  {uploading ? `⏳ Subiendo... ${uploadProgress}%` : '⬆ Subir'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {uploadModal}
         {contextMenu && (
           <ContextMenu x={contextMenu.x} y={contextMenu.y} items={videoMenuItems(contextMenu.video)} onClose={() => setContextMenu(null)} />
         )}
@@ -969,51 +979,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       </div>
 
       {/* Upload modal */}
-      {showUpload && (
-        <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()} ref={uploadModalRef} role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
-            {!uploading && <button className="modal-close" onClick={closeUploadModal} title="Cerrar" aria-label="Cerrar">✕</button>}
-            <h2 id="upload-modal-title">Subir nueva versión</h2>
-            <div className="form-group">
-              <label>Archivo de video</label>
-              <input type="file" accept="video/*" onChange={e => setUploadFile(e.target.files[0])} style={{ color: 'var(--text)', fontSize: 13 }} />
-            </div>
-            <div className="form-group">
-              <label>Título</label>
-              <input className="input" value={uploadForm.title} onChange={e => setUploadForm(p => ({ ...p, title: e.target.value }))} placeholder={selectedVideo?.title || 'Nombre del video'} />
-            </div>
-            <div className="form-group">
-              <label>Versión</label>
-              <input className="input" value={uploadForm.version} onChange={e => setUploadForm(p => ({ ...p, version: e.target.value }))} placeholder={`v${(selectedVideo?.version || 0) + 1}`} />
-            </div>
-            {tasks.length > 0 && (
-              <div className="form-group">
-                <label>Tarea asociada</label>
-                <select className="input" value={uploadForm.task_id} onChange={e => setUploadForm(p => ({ ...p, task_id: e.target.value }))}>
-                  <option value="">Sin tarea</option>
-                  {tasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-                </select>
-              </div>
-            )}
-            {uploading && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <div style={{ flex: 1, height: 6, background: 'var(--bg3)', borderRadius: 3, overflow: 'hidden' }}>
-                  <div style={{ width: `${uploadProgress}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.2s' }} />
-                </div>
-                <span style={{ fontSize: 11, color: 'var(--text3)', minWidth: 32, textAlign: 'right' }}>{uploadProgress}%</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button className="btn btn-ghost" onClick={() => uploading ? cancelUpload() : closeUploadModal()}>
-                {uploading ? 'Cancelar subida' : 'Cancelar'}
-              </button>
-              <button className="btn btn-primary" onClick={uploadVideo} disabled={!uploadFile || uploading}>
-                {uploading ? `⏳ Subiendo... ${uploadProgress}%` : '⬆ Subir'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {uploadModal}
 
       {shareModalVideoId && (
         <VideoShareModal videoId={shareModalVideoId} onClose={() => setShareModalVideoId(null)} />
