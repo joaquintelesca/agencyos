@@ -309,9 +309,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       } catch (e) { console.error('No se pudo generar la miniatura:', e); }
       setVideos(prev => [v, ...prev]);
       setSelectedVideo(v);
-      setShowUpload(false);
-      setUploadFile(null);
-      setUploadForm({ title: '', version: '', task_id: '' });
+      closeUploadModal();
       reloadVideos();
     } catch (e) {
       if (e.name !== 'AbortError') { console.error(e); await alert('Error al subir el video: ' + e.message); }
@@ -323,6 +321,18 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
   };
 
   const cancelUpload = () => { uploadAbortRef.current?.abort(); };
+
+  // "Subir video" (genérico) y "Nueva versión" comparten el mismo uploadForm/showUpload — son el
+  // mismo modal, solo con distinto estado inicial según desde dónde se abre (ver los dos onClick
+  // de más abajo, y el efecto de uploadForTaskId). Cerrar sin completar la subida (X, Cancelar o
+  // Escape) antes dejaba lo que hubiera quedado cargado — título, versión o la tarea precargada
+  // por "Nueva versión" — pisando el próximo upload que se abriera, aunque fuera para un video sin
+  // ninguna relación. Solo se limpiaba al terminar una subida con éxito (ver uploadVideo arriba).
+  const closeUploadModal = () => {
+    setShowUpload(false);
+    setUploadFile(null);
+    setUploadForm({ title: '', version: '', task_id: '' });
+  };
 
   const handleDrop = async (targetVideoId) => {
     if (!dragVideoId || dragVideoId === targetVideoId) return;
@@ -490,7 +500,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     </div>
   );
 
-  const uploadModalRef = useModalA11y(showUpload, () => { if (!uploading) setShowUpload(false); });
+  const uploadModalRef = useModalA11y(showUpload, () => { if (!uploading) closeUploadModal(); });
 
   // ─── VIDEO LIST ──────────────────────────────────────────────────────────────
   if (!selectedVideo) {
@@ -571,7 +581,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         {showUpload && (
           <div className="modal-overlay">
             <div className="modal" onClick={e => e.stopPropagation()} ref={uploadModalRef} role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
-              {!uploading && <button className="modal-close" onClick={() => setShowUpload(false)} title="Cerrar" aria-label="Cerrar">✕</button>}
+              {!uploading && <button className="modal-close" onClick={closeUploadModal} title="Cerrar" aria-label="Cerrar">✕</button>}
               <h2 id="upload-modal-title">Subir video</h2>
               <div className="form-group">
                 <label>Archivo de video</label>
@@ -603,7 +613,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button className="btn btn-ghost" onClick={() => uploading ? cancelUpload() : setShowUpload(false)}>
+                <button className="btn btn-ghost" onClick={() => uploading ? cancelUpload() : closeUploadModal()}>
                   {uploading ? 'Cancelar subida' : 'Cancelar'}
                 </button>
                 <button className="btn btn-primary" onClick={uploadVideo} disabled={!uploadFile || uploading}>
@@ -934,7 +944,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       {showUpload && (
         <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()} ref={uploadModalRef} role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
-            {!uploading && <button className="modal-close" onClick={() => setShowUpload(false)} title="Cerrar" aria-label="Cerrar">✕</button>}
+            {!uploading && <button className="modal-close" onClick={closeUploadModal} title="Cerrar" aria-label="Cerrar">✕</button>}
             <h2 id="upload-modal-title">Subir nueva versión</h2>
             <div className="form-group">
               <label>Archivo de video</label>
@@ -966,7 +976,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button className="btn btn-ghost" onClick={() => uploading ? cancelUpload() : setShowUpload(false)}>
+              <button className="btn btn-ghost" onClick={() => uploading ? cancelUpload() : closeUploadModal()}>
                 {uploading ? 'Cancelar subida' : 'Cancelar'}
               </button>
               <button className="btn btn-primary" onClick={uploadVideo} disabled={!uploadFile || uploading}>
