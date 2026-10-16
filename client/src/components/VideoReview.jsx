@@ -115,6 +115,13 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
     if (fresh && fresh !== selectedVideo) setSelectedVideo(fresh);
   }, [videos, selectedVideo]);
 
+  // Entrar a OTRO video (dropdown de versión, volver y elegir otro, deep link) sale del modo
+  // comparar — quedarse comparando pero con las versiones de un video distinto al que se acaba de
+  // abrir sería confuso. Atado al id, no al objeto: el efecto de arriba reemplaza selectedVideo por
+  // una copia fresca en cada actualización de `videos` (mismo id), eso no debería cortar la
+  // comparación activa.
+  useEffect(() => { setShowCompareModal(false); }, [selectedVideo?.id]);
+
   const gridItems = useMemo(() => {
     const groups = {};
     const standalone = [];
@@ -682,11 +689,14 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
           <Icon.download /> Descargar
         </a>
         {/* Solo tiene sentido si hay al menos otra versión del mismo video (mismo group_id) —
-            comparar contra un video sin relación no es lo que alguien espera de "comparar versiones". */}
+            comparar contra un video sin relación no es lo que alguien espera de "comparar versiones".
+            El mismo botón alterna: "Comparar" divide el reproductor en 2 ahí mismo (ver más abajo,
+            VideoCompareModal inline) en vez de abrir una ventana aparte — mientras está activo,
+            pasa a ser el botón para volver al reproductor normal. */}
         {videos.filter(v => v.group_id && v.group_id === selectedVideo.group_id).length > 1 && (
-          <button onClick={() => setShowCompareModal(true)} title="Comparar con otra versión"
-            style={{ background: 'transparent', border: `1px solid var(--border)`, borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
-            🔀 Comparar
+          <button onClick={() => setShowCompareModal(s => !s)} title={showCompareModal ? 'Volver al reproductor' : 'Comparar con otra versión'}
+            style={{ background: showCompareModal ? 'var(--accent-glow)' : 'transparent', border: `1px solid ${showCompareModal ? 'rgba(124,106,247,0.31)' : 'var(--border)'}`, borderRadius: 6, padding: '4px 10px', color: showCompareModal ? 'var(--accent2)' : 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>
+            {showCompareModal ? '✕ Cerrar comparación' : '🔀 Comparar'}
           </button>
         )}
         {/* Admin-only a propósito, no "admin o quien subió" como Eliminar — decidir qué sale a
@@ -710,41 +720,59 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: isNarrowViewport ? 'column' : 'row', overflow: 'hidden' }}>
-        {/* LEFT (o arriba, en angosto): player + tools + timeline (compartido con PublicReview.jsx) */}
-        <VideoPlayerAnnotator
-          ref={playerRef}
-          src={mediaUrl(`/uploads/${selectedVideo.filename}`)}
-          comments={comments}
-          currentUserId={user.id}
-          activeComment={activeComment}
-          onActiveCommentChange={setActiveComment}
-          allowAttachments={true}
-          members={members}
-          approvedAt={selectedVideo.approved_at}
-          approvedByName={selectedVideo.approved_by_name}
-          onApprove={approveVideo}
-          onUnapprove={unapproveVideo}
-          onMarkReviewDone={(user.role === 'admin' && hasUnresolvedComments) ? markReviewDone : null}
-          markingReviewDone={markingReviewDone}
-          reviewAlreadyNotified={reviewAlreadyNotified}
-          onSubmit={async ({ content, timestampSec, timestampEnd, annotations, files }) => {
-            const fd = new FormData();
-            fd.append('content', content);
-            fd.append('timestamp_sec', timestampSec);
-            if (timestampEnd != null) fd.append('timestamp_end', timestampEnd);
-            if (annotations.length > 0) fd.append('annotation', JSON.stringify(annotations));
-            files.forEach(f => fd.append('attachments', f));
-            await api(`/api/videos/${selectedVideo.id}/comments`, { method: 'POST', body: fd });
-            const updated = await api(`/api/videos/${selectedVideo.id}/comments`);
-            setComments(updated);
-            // Solo el admin tiene el botón "Revisión terminada" — recordarle a un editor que no lo
-            // apretó no tendría sentido, ni siquiera lo ve. Se guarda el ÚLTIMO video comentado: si
-            // sigue comentando otro antes de avisar, el recordatorio apunta al más reciente.
-            if (user.role === 'admin') {
-              setPendingReview({ videoId: selectedVideo.id, projectId, videoTitle: selectedVideo.title });
-            }
-          }}
-        />
+        {/* LEFT (o arriba, en angosto): player + tools + timeline (compartido con PublicReview.jsx)
+            — o, en modo comparar, las 2 versiones lado a lado en el mismo lugar (ver el botón
+            "Comparar"/"Cerrar comparación" de la barra de arriba). El panel de comentarios de la
+            derecha se mantiene igual, siempre referido a selectedVideo. */}
+        {showCompareModal ? (() => {
+          const siblings = videos.filter(v => v.group_id && v.group_id === selectedVideo.group_id);
+          const other = siblings.find(v => v.id !== selectedVideo.id) || siblings[0];
+          return (
+            <VideoCompareModal
+              inline
+              videos={siblings}
+              initialLeftId={other.id}
+              initialRightId={selectedVideo.id}
+              mediaUrl={mediaUrl}
+              onClose={() => setShowCompareModal(false)}
+            />
+          );
+        })() : (
+          <VideoPlayerAnnotator
+            ref={playerRef}
+            src={mediaUrl(`/uploads/${selectedVideo.filename}`)}
+            comments={comments}
+            currentUserId={user.id}
+            activeComment={activeComment}
+            onActiveCommentChange={setActiveComment}
+            allowAttachments={true}
+            members={members}
+            approvedAt={selectedVideo.approved_at}
+            approvedByName={selectedVideo.approved_by_name}
+            onApprove={approveVideo}
+            onUnapprove={unapproveVideo}
+            onMarkReviewDone={(user.role === 'admin' && hasUnresolvedComments) ? markReviewDone : null}
+            markingReviewDone={markingReviewDone}
+            reviewAlreadyNotified={reviewAlreadyNotified}
+            onSubmit={async ({ content, timestampSec, timestampEnd, annotations, files }) => {
+              const fd = new FormData();
+              fd.append('content', content);
+              fd.append('timestamp_sec', timestampSec);
+              if (timestampEnd != null) fd.append('timestamp_end', timestampEnd);
+              if (annotations.length > 0) fd.append('annotation', JSON.stringify(annotations));
+              files.forEach(f => fd.append('attachments', f));
+              await api(`/api/videos/${selectedVideo.id}/comments`, { method: 'POST', body: fd });
+              const updated = await api(`/api/videos/${selectedVideo.id}/comments`);
+              setComments(updated);
+              // Solo el admin tiene el botón "Revisión terminada" — recordarle a un editor que no lo
+              // apretó no tendría sentido, ni siquiera lo ve. Se guarda el ÚLTIMO video comentado: si
+              // sigue comentando otro antes de avisar, el recordatorio apunta al más reciente.
+              if (user.role === 'admin') {
+                setPendingReview({ videoId: selectedVideo.id, projectId, videoTitle: selectedVideo.title });
+              }
+            }}
+          />
+        )}
 
         {/* RIGHT (o abajo, en angosto): comments panel */}
         <div style={{
@@ -999,20 +1027,6 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       {contextMenu && (
         <ContextMenu x={contextMenu.x} y={contextMenu.y} items={videoMenuItems(contextMenu.video)} onClose={() => setContextMenu(null)} />
       )}
-
-      {showCompareModal && (() => {
-        const siblings = videos.filter(v => v.group_id && v.group_id === selectedVideo.group_id);
-        const other = siblings.find(v => v.id !== selectedVideo.id) || siblings[0];
-        return (
-          <VideoCompareModal
-            videos={siblings}
-            initialLeftId={other.id}
-            initialRightId={selectedVideo.id}
-            mediaUrl={mediaUrl}
-            onClose={() => setShowCompareModal(false)}
-          />
-        );
-      })()}
     </div>
   );
 }

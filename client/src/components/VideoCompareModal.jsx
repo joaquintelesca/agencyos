@@ -7,7 +7,13 @@ import useModalA11y from '../hooks/useModalA11y';
 // acordarse de memoria cómo se veía la otra. Deliberadamente NO reusa VideoPlayerAnnotator: acá no
 // hace falta dibujar ni comentar, solo mirar dos videos a la vez, así que un <video> simple por
 // lado alcanza y evita la complejidad de sincronizar dos sets de herramientas de dibujo.
-export default function VideoCompareModal({ videos, initialLeftId, initialRightId, mediaUrl, onClose }) {
+//
+// `inline`: VideoReview lo monta directo en el lugar del reproductor normal (reemplazando a
+// VideoPlayerAnnotator mientras dura la comparación) en vez de como ventana flotante encima de
+// todo — el usuario pidió explícitamente "que el reproductor se divida en 2 ahí mismo" en vez de
+// abrir algo nuevo. Sin overlay/modal/título propios acá: el padre ya tiene su propia barra
+// superior con un botón para salir del modo comparar, no hace falta otro cierre adentro.
+export default function VideoCompareModal({ videos, initialLeftId, initialRightId, mediaUrl, onClose, inline = false }) {
   const [leftId, setLeftId] = useState(initialLeftId);
   const [rightId, setRightId] = useState(initialRightId);
   const [playing, setPlaying] = useState(false);
@@ -18,7 +24,9 @@ export default function VideoCompareModal({ videos, initialLeftId, initialRightI
   const [audioSide, setAudioSide] = useState(null);
   const leftRef = useRef(null);
   const rightRef = useRef(null);
-  const modalRef = useModalA11y(true, onClose);
+  // Atajo Escape y foco atrapado solo tienen sentido para la variante modal — inline vive dentro
+  // de la página normal, el usuario tiene que poder seguir usando el resto de la barra superior.
+  const modalRef = useModalA11y(!inline && true, onClose);
 
   const leftVideo = videos.find(v => v.id === leftId);
   const rightVideo = videos.find(v => v.id === rightId);
@@ -82,24 +90,38 @@ export default function VideoCompareModal({ videos, initialLeftId, initialRightI
     </div>
   );
 
+  const body = (
+    <>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16, flex: inline ? 1 : undefined, minHeight: 0 }}>
+        {pane('left', leftVideo, leftRef, setLeftId)}
+        {pane('right', rightVideo, rightRef, setRightId)}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <button className="btn btn-primary btn-sm" onClick={togglePlay}>{playing ? '⏸ Pausar' : '▶ Reproducir'}</button>
+        <input type="range" min={0} max={duration || 0} step={0.1} value={Math.min(currentTime, duration)}
+          onChange={e => seekBoth(parseFloat(e.target.value))}
+          style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }} />
+        <span style={{ fontSize: 12, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums', minWidth: 80 }}>
+          {formatTime(currentTime)} / {formatTime(duration)}
+        </span>
+      </div>
+    </>
+  );
+
+  if (inline) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', padding: 16, minHeight: 0 }}>
+        {body}
+      </div>
+    );
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 1080, width: '95%' }} onClick={e => e.stopPropagation()} ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="compare-modal-title">
         <button className="modal-close" onClick={onClose} title="Cerrar" aria-label="Cerrar">✕</button>
         <h2 id="compare-modal-title">Comparar versiones</h2>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
-          {pane('left', leftVideo, leftRef, setLeftId)}
-          {pane('right', rightVideo, rightRef, setRightId)}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className="btn btn-primary btn-sm" onClick={togglePlay}>{playing ? '⏸ Pausar' : '▶ Reproducir'}</button>
-          <input type="range" min={0} max={duration || 0} step={0.1} value={Math.min(currentTime, duration)}
-            onChange={e => seekBoth(parseFloat(e.target.value))}
-            style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }} />
-          <span style={{ fontSize: 12, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums', minWidth: 80 }}>
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </span>
-        </div>
+        {body}
       </div>
     </div>
   );
