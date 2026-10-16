@@ -286,7 +286,13 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         file: uploadFile,
         projectId,
         title: uploadForm.title || uploadFile.name,
-        version: uploadForm.version || '1',
+        // El campo Versión solo muestra el siguiente número COMO PLACEHOLDER (texto gris de
+        // ejemplo) cuando se sube "Nueva versión" de un video ya existente — si se dejaba en
+        // blanco, antes esto mandaba '1' literal en vez del número sugerido, así que encadenar
+        // una versión nueva sin escribir nada a mano terminaba chocando con la v1 que ya existía.
+        // El servidor igual renumera todo el grupo al final (ver renumberGroup en video-upload.js)
+        // como red de seguridad, pero el valor que se manda acá debería coincidir de entrada.
+        version: uploadForm.version || (selectedVideo ? String((selectedVideo.version || 0) + 1) : '1'),
         taskId: uploadForm.task_id || null,
         stackWith: selectedVideo ? selectedVideo.id : null,
         token,

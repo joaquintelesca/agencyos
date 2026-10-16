@@ -14,6 +14,15 @@ module.exports = function videoUploadRoutes({
 }) {
   const router = express.Router();
 
+  // Renumera un grupo (stack) completo por orden de subida — compartido entre apilar a mano
+  // (PATCH .../stack) y subir "Nueva versión" encadenada a un video existente. Sin esto el número
+  // que el usuario escribe (o deja en blanco) en el campo Versión queda librado a su suerte: dos
+  // videos de un mismo stack pueden terminar diciendo "v1" los dos.
+  async function renumberGroup(groupId) {
+    const members = await db('videos').where({ group_id: groupId }).orderBy('created_at', 'asc');
+    await Promise.all(members.map((v, i) => db('videos').where({ id: v.id }).update({ version: i + 1 })));
+  }
+
   // Inicia una subida: valida tipo/tamaño y guarda los metadatos del video a crear
   // (se usan recién al completar, para no tener que volver a mandarlos en cada parte).
   router.post('/api/projects/:projectId/videos/upload/init', auth, uploadLimiter, requireProjectAccess(), async (req, res) => {
@@ -138,8 +147,16 @@ module.exports = function videoUploadRoutes({
         }
       }
       await db('videos').insert({ id, project_id: session.projectId, title, filename, original_name: originalName || title, version: parseInt(version) || 1, uploaded_by: req.user.id, file_size: session.totalSize, task_id: task_id || null, group_id: groupId });
+      // "Nueva versión" encadenada a un video existente: el número que haya quedado en el insert
+      // (lo que el usuario escribió, o el fallback a 1 si lo dejó en blanco) es solo un valor de
+      // partida — renumerar acá lo corrige si no coincide con el orden real de subida.
+      if (groupId) await renumberGroup(groupId);
       const video = await db('videos as v').leftJoin('users as u', 'v.uploaded_by', 'u.id').leftJoin('tasks as tk', 'v.task_id', 'tk.id').where('v.id', id).select('v.*', 'u.name as uploader_name', 'tk.title as task_title').first();
       await emitToProject(session.projectId, 'video:uploaded', video);
+      // El renumerado de arriba puede haber cambiado la versión de OTROS miembros del grupo, no
+      // solo la del recién subido — video:uploaded solo trae ese uno. video:updated es la señal
+      // genérica de "recargá la lista" que ya usa PATCH .../stack para el mismo caso.
+      if (groupId) await emitToProject(session.projectId, 'video:updated', { projectId: session.projectId });
       await logActivity({ projectId: session.projectId, type: 'video_uploaded', actorId: req.user.id, data: { title, version: video.version } });
       // Subir un video no cambia el estado de ninguna tarea por sí solo (eso es una acción aparte
       // del usuario), así que sin esto un admin podía no enterarse nunca de que hay contenido
@@ -295,8 +312,7 @@ module.exports = function videoUploadRoutes({
       // asignado un número de versión relativo entre sí, solo el group_id. Se renumera siempre que
       // cambia el grupo (no solo cuando hay colisión) para que el orden quede consistente aunque
       // se sumen stacks que ya traían su propia numeración.
-      const groupMembers = await db('videos').where({ group_id: groupId }).orderBy('created_at', 'asc');
-      await Promise.all(groupMembers.map((v, i) => db('videos').where({ id: v.id }).update({ version: i + 1 })));
+      await renumberGroup(groupId);
       await emitToProject(video.project_id, 'video:updated', { projectId: video.project_id });
       res.json({ success: true, group_id: groupId });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
