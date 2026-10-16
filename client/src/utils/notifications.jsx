@@ -28,8 +28,11 @@ export function notificationLabel(n) {
   if (n.type === 'task_review') return <><strong>{n.actor_name}</strong> pasó una tarea a revisión{proj}</>;
   if (n.type === 'task_feedback') return <><strong>{n.actor_name}</strong> te dejó feedback para aplicar en una tarea{proj}</>;
   if (n.type === 'task_done') return <><strong>{n.actor_name}</strong> terminó una tarea{proj}</>;
-  if (n.type === 'video_uploaded') return <><strong>{n.actor_name}</strong> subió un video{n.preview ? <>: "{n.preview}"</> : ''}{proj}</>;
-  if (n.type === 'video_approved') return <><strong>{n.actor_name}</strong> aprobó un video{n.preview ? <>: "{n.preview}"</> : ''}{proj}</>;
+  // El título no repite n.preview acá (el cuadro de preview más abajo ya lo muestra) — si lo
+  // hiciera, al agruparse ("3 videos nuevos subidos") quedaría pegado dentro de la frase como si
+  // fuera el nombre de un video puntual. Mismo criterio que 'comment'/'task_*' de arriba.
+  if (n.type === 'video_uploaded') return <><strong>{n.actor_name}</strong> subió un video{proj}</>;
+  if (n.type === 'video_approved') return <><strong>{n.actor_name}</strong> aprobó un video{proj}</>;
   if (n.type === 'project_assigned') return <><strong>{n.actor_name}</strong> te asignó un proyecto{proj}</>;
   if (n.type === 'task_assigned') return <><strong>{n.actor_name}</strong> te asignó una tarea{proj}</>;
   if (n.type === 'project_message') return <><strong>{n.actor_name}</strong> escribió en el chat del proyecto{proj}</>;
@@ -52,8 +55,8 @@ export function notificationText(n) {
   if (n.type === 'task_review') return `${n.actor_name} pasó una tarea a revisión${proj}`;
   if (n.type === 'task_feedback') return `${n.actor_name} te dejó feedback para aplicar en una tarea${proj}`;
   if (n.type === 'task_done') return `${n.actor_name} terminó una tarea${proj}`;
-  if (n.type === 'video_uploaded') return `${n.actor_name} subió un video${n.preview ? `: "${n.preview}"` : ''}${proj}`;
-  if (n.type === 'video_approved') return `${n.actor_name} aprobó un video${n.preview ? `: "${n.preview}"` : ''}${proj}`;
+  if (n.type === 'video_uploaded') return `${n.actor_name} subió un video${proj}`;
+  if (n.type === 'video_approved') return `${n.actor_name} aprobó un video${proj}`;
   if (n.type === 'project_assigned') return `${n.actor_name} te asignó un proyecto${proj}`;
   if (n.type === 'task_assigned') return `${n.actor_name} te asignó una tarea${proj}`;
   if (n.type === 'project_message') return `${n.actor_name} escribió en el chat del proyecto${proj}`;

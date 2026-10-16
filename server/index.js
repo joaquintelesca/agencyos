@@ -1134,6 +1134,32 @@ async function createNotification(args) {
     return null;
   }
 }
+// Tipos que se agrupan cuando el mismo emisor dispara varios seguidos para el mismo destinatario
+// en el mismo contexto, en vez de crear una fila por evento — alguien escribiendo 10 mensajes
+// seguidos, un editor resolviendo o respondiendo 10 comentarios de un video, o un admin aprobando
+// varios videos de un editor en la misma sesión, son el mismo problema de fondo. `scope` dice qué
+// columna además de actor/tipo tiene que coincidir para agrupar ('video_id' cuando el contexto es
+// un video puntual; 'project_id' cuando cada evento es sobre un ítem distinto — otro video, otra
+// tarea — y lo que importa es que pasó en el mismo proyecto, no agrupar por video no tendría
+// sentido ahí porque casi nunca se repite el mismo video dos veces seguidas). `label` arma el
+// preview a partir del conteo; project_message no tiene uno propio porque el último mensaje
+// escrito ya es el preview más útil (no hay "resumen" mejor que el texto real).
+// Deliberadamente afuera: 'mention' (ver abajo, es un llamado directo, no ruido de fondo) y los
+// recordatorios automáticos payment_pending/review_pending (no tienen actor humano y ya llegan de
+// a uno por corrida programada, no en ráfaga).
+const GROUPABLE_NOTIFICATIONS = {
+  project_message: { scope: [], label: null },
+  comment: { scope: ['video_id'], label: (n) => `${n} comentarios nuevos` },
+  comment_resolved: { scope: ['video_id'], label: (n) => `${n} comentarios resueltos` },
+  reply: { scope: ['video_id'], label: (n) => `${n} respuestas nuevas` },
+  video_uploaded: { scope: ['project_id'], label: (n) => `${n} videos nuevos subidos` },
+  video_approved: { scope: ['project_id'], label: (n) => `${n} videos aprobados` },
+  task_assigned: { scope: ['project_id'], label: (n) => `${n} tareas asignadas` },
+  task_review: { scope: ['project_id'], label: (n) => `${n} tareas en revisión` },
+  task_feedback: { scope: ['project_id'], label: (n) => `${n} tareas con feedback` },
+  task_done: { scope: ['project_id'], label: (n) => `${n} tareas completadas` },
+};
+
 async function createNotificationInner({ userId, type, actorId, guestName, projectId, videoId, commentId, chatMessageId, preview }) {
   if (userId && userId === actorId) return; // don't notify yourself
 
@@ -1145,23 +1171,17 @@ async function createNotificationInner({ userId, type, actorId, guestName, proje
     if (muted) return;
   }
 
-  // Agrupar las no leídas del mismo emisor en una sola fila, en vez de crear una nueva por cada
-  // evento — alguien escribiendo 10 mensajes seguidos (o dejando 10 comentarios en un mismo video)
-  // generaba 10 notificaciones separadas. (El bloque de chat apuntaba a `type === 'chat'`, un tipo
-  // que nunca se llegó a usar — el chat de proyecto siempre mandó 'project_message' — así que
-  // quedó de código muerto hasta que se reusó acá para comentarios de video.)
-  if (type === 'project_message' || type === 'comment') {
+  const grouping = GROUPABLE_NOTIFICATIONS[type];
+  if (grouping) {
     const matchWhere = { user_id: userId, actor_id: actorId, type, read: false };
-    // Comentarios se agrupan por video además de por actor — la misma persona comentando dos
-    // videos distintos casi al mismo tiempo no debería mezclarse en una sola notificación ("¿de
-    // cuál video habla?"). Un mensaje de chat ya es 1 a 1 con el actor, no tiene ese problema.
-    if (type === 'comment' && videoId) matchWhere.video_id = videoId;
+    const scopeValues = { video_id: videoId, project_id: projectId };
+    for (const field of grouping.scope) {
+      if (scopeValues[field]) matchWhere[field] = scopeValues[field];
+    }
     const existing = await db('notifications').where(matchWhere).first();
     if (existing) {
       const groupCount = (existing.group_count || 1) + 1;
-      // Chat: el último mensaje escrito sigue siendo el preview más útil. Comentarios de video: a
-      // partir del segundo, el conteo dice más que mostrar solo el texto de uno entre varios.
-      const groupedPreview = type === 'comment' ? `${groupCount} comentarios nuevos` : (preview || existing.preview);
+      const groupedPreview = grouping.label ? grouping.label(groupCount) : (preview || existing.preview);
       await db('notifications').where({ id: existing.id }).update({
         preview: groupedPreview,
         chat_message_id: chatMessageId || existing.chat_message_id,
