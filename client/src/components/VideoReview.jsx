@@ -285,13 +285,12 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       const v = await uploadVideoChunked({
         file: uploadFile,
         projectId,
-        title: uploadForm.title || uploadFile.name,
-        // El campo Versión solo muestra el siguiente número COMO PLACEHOLDER (texto gris de
-        // ejemplo) cuando se sube "Nueva versión" de un video ya existente — si se dejaba en
-        // blanco, antes esto mandaba '1' literal en vez del número sugerido, así que encadenar
-        // una versión nueva sin escribir nada a mano terminaba chocando con la v1 que ya existía.
-        // El servidor igual renumera todo el grupo al final (ver renumberGroup en video-upload.js)
-        // como red de seguridad, pero el valor que se manda acá debería coincidir de entrada.
+        // "Nueva versión" ya precarga Título/Versión/Tarea con lo del video actual al abrir el
+        // modal (ver el botón más abajo) — esto de acá es la red de seguridad si de todos modos
+        // quedan en blanco (por ejemplo, si el usuario borra el campo a mano). Sin esto, un título
+        // vacío caía en el nombre del ARCHIVO nuevo en vez del título real del video que se está
+        // versionando, el mismo problema de fondo que tenía Versión.
+        title: uploadForm.title || (selectedVideo ? selectedVideo.title : uploadFile.name),
         version: uploadForm.version || (selectedVideo ? String((selectedVideo.version || 0) + 1) : '1'),
         taskId: uploadForm.task_id || null,
         stackWith: selectedVideo ? selectedVideo.id : null,
@@ -690,7 +689,14 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         )}
         {/* "Revisión terminada" se movió debajo de "Aprobar", sobre el video mismo (ver
             VideoPlayerAnnotator) — pedido del usuario, ya no vive acá en la barra superior. */}
-        <button className="btn btn-primary btn-sm" onClick={() => setShowUpload(true)}>⬆ Nueva versión</button>
+        {/* Precargar el form con lo del video actual (no solo mostrarlo como placeholder gris) —
+            Versión ya se corrige en el server igual (ver renumberGroup), pero Título y Tarea
+            asociada no tenían ninguna red de seguridad: dejarlos en blanco se mandaba tal cual,
+            perdiendo el título real y DESVINCULANDO la tarea de la nueva versión en silencio. */}
+        <button className="btn btn-primary btn-sm" onClick={() => {
+          setUploadForm({ title: selectedVideo.title || '', version: String((selectedVideo.version || 0) + 1), task_id: selectedVideo.task_id || '' });
+          setShowUpload(true);
+        }}>⬆ Nueva versión</button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: isNarrowViewport ? 'column' : 'row', overflow: 'hidden' }}>
