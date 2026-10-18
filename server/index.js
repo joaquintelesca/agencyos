@@ -1333,7 +1333,20 @@ io.on('connection', (socket) => {
 // ─── CLIENT ESTÁTICO (producción) ────────────────────────────────────────────
 const clientDist = path.join(__dirname, '../client/dist');
 if (fs.existsSync(clientDist)) {
-  app.use(express.static(clientDist));
+  app.use(express.static(clientDist, {
+    setHeaders: (res, filePath) => {
+      // Vite nombra cada archivo de /assets con un hash del contenido (ej: index-C72-VrvR.js) —
+      // ese nombre cambia SOLO si el contenido cambia, así que el navegador lo puede cachear para
+      // siempre sin riesgo de servir una versión vieja. Sin esto (como estaba hasta ahora), cada
+      // visita repetía la descarga completa del bundle sin ningún header de caché — con uso real
+      // de varias personas entrando seguido, eso es justo el tipo de tráfico que agota rápido el
+      // ancho de banda gratuito de Render. index.html queda afuera a propósito: ese sí tiene que
+      // pedirse fresco siempre, es el que apunta a CUÁL build (qué hashes) usar en cada momento.
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    }
+  }));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) {
       return next();
