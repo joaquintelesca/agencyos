@@ -3,8 +3,9 @@ const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
 const {
-  CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, GetObjectCommand, DeleteObjectCommand,
 } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 module.exports = function videoUploadRoutes({
   db, auth, io, requireProjectAccess, uploadLimiter, isProjectMember, emitToProject, createNotification, safeUnlink,
@@ -44,25 +45,42 @@ module.exports = function videoUploadRoutes({
         totalSize: size, receivedBytes: 0, createdAt: Date.now(),
         meta: { title: title || originalName, originalName: originalName || title, version, task_id: task_id || null, stack_with: stack_with || null }
       };
+      let partUrls;
       if (useR2) {
         const created = await s3.send(new CreateMultipartUploadCommand({ Bucket: R2_BUCKET, Key: key, ContentType: mimetype }));
         session.key = key;
         session.r2UploadId = created.UploadId;
-        session.parts = new Map();
+        // El navegador sube cada parte DIRECTO a R2 con estas URLs firmadas — el servidor ya no
+        // recibe ni reenvía ningún byte del video. Antes cada parte viajaba Cliente → Render → R2
+        // (el chunk llegaba acá y se reenviaba con UploadPartCommand), y ESE reenvío es tráfico
+        // "Service-Initiated" que cuenta contra el bandwidth gratis de Render — con uso real de una
+        // agencia de video, eso agota el plan gratuito en días. getSignedUrl firma localmente (sin
+        // ida y vuelta a R2), así que generar una por parte acá no cuesta nada. 24hs de vigencia:
+        // tiene que alcanzar para subir un archivo de 3GB entero en una conexión lenta sin que la
+        // primera URL ya haya vencido cuando se llega a la última parte.
+        const partCount = Math.ceil(size / CHUNK_SIZE);
+        partUrls = await Promise.all(
+          Array.from({ length: partCount }, (_, i) => getSignedUrl(
+            s3,
+            new UploadPartCommand({ Bucket: R2_BUCKET, Key: key, UploadId: created.UploadId, PartNumber: i + 1 }),
+            { expiresIn: 86400 }
+          ))
+        );
       } else {
         session.tempPath = path.join(chunksDir, uploadId);
         await fs.promises.writeFile(session.tempPath, Buffer.alloc(0));
       }
       uploadSessions.set(uploadId, session);
-      res.json({ uploadId, chunkSize: CHUNK_SIZE });
+      res.json({ uploadId, chunkSize: CHUNK_SIZE, partUrls });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 
-  // Recibe una parte del archivo. El offset lo manda el cliente pero manda la posta el servidor:
-  // si no coincide con lo que ya se recibió, se rechaza con el offset correcto (permite retomar
-  // tras una reconexión sin duplicar ni perder bytes). Con R2, el offset determina el número de
-  // parte (son partes fijas de CHUNK_SIZE) — reintentar la misma parte simplemente la pisa, es
-  // idempotente por diseño, no hace falta lógica extra de deduplicación.
+  // Recibe una parte del archivo — SOLO existe para el fallback a disco local (dev sin R2
+  // configurado). Con R2, el navegador sube cada parte directo a R2 con las URLs firmadas que
+  // devolvió /init (ver más abajo /complete): este endpoint nunca llega a verse invocado en ese
+  // caso. El offset lo manda el cliente pero manda la posta el servidor: si no coincide con lo que
+  // ya se recibió, se rechaza con el offset correcto (permite retomar tras una reconexión sin
+  // duplicar ni perder bytes).
   router.post('/api/videos/upload/:uploadId/chunk', auth, express.raw({ type: '*/*', limit: CHUNK_SIZE + 1024 * 1024 }), async (req, res) => {
     try {
       const session = uploadSessions.get(req.params.uploadId);
@@ -80,22 +98,7 @@ module.exports = function videoUploadRoutes({
       if (session.receivedBytes + chunk.length > session.totalSize) {
         return res.status(400).json({ error: 'La subida excede el tamaño declarado' });
       }
-      if (useR2) {
-        const partNumber = Math.floor(offset / CHUNK_SIZE) + 1;
-        // La primera parte siempre trae la firma/header real del archivo — verificarla acá, antes
-        // de gastar ancho de banda subiendo el resto de un archivo que en realidad no es un video.
-        if (partNumber === 1 && !await verifyFileSignature(chunk, session.mimetype)) {
-          await discardUploadSession(session);
-          uploadSessions.delete(req.params.uploadId);
-          return res.status(400).json({ error: 'El contenido del archivo no coincide con el tipo de video declarado.' });
-        }
-        const uploaded = await s3.send(new UploadPartCommand({
-          Bucket: R2_BUCKET, Key: session.key, UploadId: session.r2UploadId, PartNumber: partNumber, Body: chunk
-        }));
-        session.parts.set(partNumber, { ETag: uploaded.ETag, PartNumber: partNumber });
-      } else {
-        await fs.promises.appendFile(session.tempPath, chunk);
-      }
+      await fs.promises.appendFile(session.tempPath, chunk);
       session.receivedBytes += chunk.length;
       res.json({ receivedBytes: session.receivedBytes });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
@@ -111,17 +114,50 @@ module.exports = function videoUploadRoutes({
       if (!await isProjectMember(req.user.id, req.user.role, session.projectId)) {
         return res.status(403).json({ error: 'No tenés acceso a este proyecto' });
       }
-      if (session.receivedBytes !== session.totalSize) {
-        return res.status(400).json({ error: 'Subida incompleta' });
-      }
       let filename;
       if (useR2) {
-        const parts = Array.from(session.parts.values()).sort((a, b) => a.PartNumber - b.PartNumber);
-        await s3.send(new CompleteMultipartUploadCommand({
-          Bucket: R2_BUCKET, Key: session.key, UploadId: session.r2UploadId, MultipartUpload: { Parts: parts }
-        }));
+        // El cliente subió cada parte directo a R2 (ver /init) y manda acá los ETags que R2 le
+        // devolvió por cada una — el servidor nunca vio los bytes, así que no hay forma de contar
+        // "recibido" del lado de acá; R2 mismo rechaza el Complete si falta una parte o el ETag
+        // no coincide, así que esa validación ya viene gratis.
+        const { parts } = req.body;
+        if (!Array.isArray(parts) || parts.length === 0) {
+          return res.status(400).json({ error: 'Subida incompleta' });
+        }
+        try {
+          await s3.send(new CompleteMultipartUploadCommand({
+            Bucket: R2_BUCKET, Key: session.key, UploadId: session.r2UploadId,
+            MultipartUpload: { Parts: parts.map(p => ({ PartNumber: p.PartNumber, ETag: p.ETag })).sort((a, b) => a.PartNumber - b.PartNumber) }
+          }));
+        } catch (e) {
+          console.error('CompleteMultipartUpload:', e);
+          return res.status(400).json({ error: 'No se pudo completar la subida. Reintentá.' });
+        }
         filename = session.key;
+        // La firma/header real del archivo se verifica ACÁ, no por chunk como antes — el servidor
+        // ya no ve los bytes en tránsito, así que es la única forma de confirmar que es un video de
+        // verdad sin volver a bajar el archivo entero: un GET con Range chico (los primeros 4KB
+        // alcanzan para la firma), no todo el objeto.
+        try {
+          const head = await s3.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: filename, Range: 'bytes=0-4095' }));
+          const headChunks = [];
+          for await (const c of head.Body) headChunks.push(c);
+          const headBuffer = Buffer.concat(headChunks);
+          if (!await verifyFileSignature(headBuffer, session.mimetype)) {
+            await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: filename })).catch(() => {});
+            uploadSessions.delete(req.params.uploadId);
+            return res.status(400).json({ error: 'El contenido del archivo no coincide con el tipo de video declarado.' });
+          }
+        } catch (e) {
+          console.error('Verificación de firma post-upload:', e);
+          await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: filename })).catch(() => {});
+          uploadSessions.delete(req.params.uploadId);
+          return res.status(400).json({ error: 'No se pudo verificar el archivo subido. Reintentá.' });
+        }
       } else {
+        if (session.receivedBytes !== session.totalSize) {
+          return res.status(400).json({ error: 'Subida incompleta' });
+        }
         // Con disco local la firma recién se puede verificar acá (no hay forma barata de ver el
         // primer chunk por separado del resto una vez que appendFile los concatenó todos juntos).
         if (!await verifyFileSignature(session.tempPath, session.mimetype)) {

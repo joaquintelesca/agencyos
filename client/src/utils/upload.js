@@ -14,6 +14,13 @@ async function parseError(res) {
 
 // Sube un video en partes de 5MB: si se corta la conexión a mitad de camino, reintenta
 // la parte en curso (hasta 3 veces) en vez de perder todo el archivo. Cancelable via signal.
+//
+// Con R2, /init devuelve una URL firmada por parte y cada una se manda DIRECTO a R2 — el servidor
+// de Render ya no ve ni reenvía ningún byte del video. Antes cada parte viajaba Cliente → Render →
+// R2 (el chunk se mandaba acá y el servidor lo reenviaba a R2), y ESE reenvío contaba como tráfico
+// saliente de Render: con uso real de una agencia de video, agotaba el bandwidth gratuito del plan
+// en días. Sin R2 (dev local), /init no manda partUrls y se sigue usando el camino viejo
+// (POST de cada chunk al servidor), que sigue haciendo falta para guardar en disco.
 export async function uploadVideoChunked({ file, projectId, title, version, taskId, stackWith, token, onProgress, signal }) {
   const initRes = await fetch(`${API_BASE}/api/projects/${projectId}/videos/upload/init`, {
     method: 'POST',
@@ -22,12 +29,24 @@ export async function uploadVideoChunked({ file, projectId, title, version, task
     signal
   });
   if (!initRes.ok) throw new Error(await parseError(initRes));
-  const { uploadId } = await initRes.json();
+  const { uploadId, partUrls } = await initRes.json();
 
   // El cleanup (DELETE de la sesión) cubre TODO lo que puede fallar después del init, incluido
-  // el /complete final — cancelar justo mientras se está completando dejaba el temporal y la
-  // sesión huérfanos en el servidor porque el fetch de /complete estaba fuera de este try.
+  // el /complete final — cancelar justo mientras se está completando dejaba el temporal (o el
+  // multipart upload abierto en R2) huérfano porque el fetch de /complete estaba fuera de este try.
   try {
+    if (partUrls) {
+      const parts = await uploadPartsDirectToR2(file, partUrls, signal, onProgress);
+      const completeRes = await fetch(`${API_BASE}/api/videos/upload/${uploadId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ parts }),
+        signal
+      });
+      if (!completeRes.ok) throw new Error(await parseError(completeRes));
+      return await completeRes.json();
+    }
+
     let offset = 0;
     while (offset < file.size) {
       const chunk = file.slice(offset, offset + CHUNK_SIZE);
@@ -70,6 +89,43 @@ export async function uploadVideoChunked({ file, projectId, title, version, task
     fetch(`${API_BASE}/api/videos/upload/${uploadId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
     throw e;
   }
+}
+
+// Sube cada parte directo a su URL firmada de R2 (PUT, sin pasar por Render) y devuelve
+// [{PartNumber, ETag}, ...] para que /complete pueda cerrar el multipart upload. Reintenta cada
+// parte hasta 3 veces — subir dos veces la misma parte a R2 simplemente la pisa (incluida en el
+// propio protocolo de multipart upload de S3/R2), así que no hace falta lógica extra de resync
+// como la que sí necesita el camino viejo (ahí el servidor llevaba la cuenta de offset; acá cada
+// parte es independiente).
+async function uploadPartsDirectToR2(file, partUrls, signal, onProgress) {
+  const parts = [];
+  let uploadedBytes = 0;
+  for (let i = 0; i < partUrls.length; i++) {
+    const partNumber = i + 1;
+    const start = i * CHUNK_SIZE;
+    const chunk = file.slice(start, start + CHUNK_SIZE);
+    let attempt = 0;
+    for (;;) {
+      try {
+        const res = await fetch(partUrls[i], { method: 'PUT', body: chunk, signal });
+        if (!res.ok) throw new Error(`Error ${res.status} subiendo la parte ${partNumber}`);
+        // R2/S3 siempre trae ETag en la respuesta de un PUT de parte — se manda tal cual (con sus
+        // comillas) de vuelta en /complete, es el formato que CompleteMultipartUpload espera.
+        const etag = res.headers.get('ETag');
+        if (!etag) throw new Error(`R2 no devolvió ETag para la parte ${partNumber}`);
+        parts.push({ PartNumber: partNumber, ETag: etag });
+        uploadedBytes += chunk.size;
+        onProgress?.(Math.min(100, Math.round((uploadedBytes / file.size) * 100)));
+        break;
+      } catch (e) {
+        if (signal?.aborted) throw e;
+        attempt++;
+        if (attempt > 3) throw e;
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+      }
+    }
+  }
+  return parts;
 }
 
 // Captura un frame del video como miniatura, 100% en el navegador de quien sube — nunca hace
