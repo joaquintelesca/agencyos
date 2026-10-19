@@ -875,7 +875,13 @@ app.use(helmet({
       // 'blob:' hace falta para el preview de notas de voz (audio.src = URL.createObjectURL(blob),
       // local al navegador, antes de subir nada) — mismo tipo de gap que ya se corrigió en img-src.
       mediaSrc: ["'self'", 'blob:', ...(r2Origin ? [r2Origin] : [])],
-      connectSrc: ["'self'"],
+      // Las subidas de video ahora van directo del navegador a R2 (fetch con PUT a una URL
+      // firmada, ver server/routes/video-upload.js) — a diferencia de <img>/<video src=...>
+      // (gobernado por img-src/media-src, ya permitido arriba), una llamada fetch()/XHR hecha
+      // desde JS cae bajo connect-src. Mismo tipo de gap que ya pasó con img-src/media-src la
+      // primera vez que se probó con contenido real — connect-src nunca se tocó porque hasta
+      // ahora nada del navegador le hablaba a R2 directamente, solo al propio servidor.
+      connectSrc: ["'self'", ...(r2Origin ? [r2Origin] : [])],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       frameAncestors: ["'none'"]
