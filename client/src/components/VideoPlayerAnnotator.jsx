@@ -177,11 +177,19 @@ const VideoPlayerAnnotator = forwardRef(function VideoPlayerAnnotator(
   // ninguna pista de si era la red, el archivo en sí (corrupto/códec no soportado) o que el link
   // firmado no haya devuelto el video real (ej. un error XML de R2 en vez del archivo). Los 4
   // códigos de MediaError.code son un estándar del navegador, no algo que invente esta app.
+  // code 4 salía solo con la explicación de "el link no devolvió el archivo real" — pero un
+  // archivo perfectamente válido y completo (confirmado bajándolo y abriéndolo en VLC/QuickTime)
+  // también dispara code 4 en Chrome cuando el códec interno no es compatible con su reproductor
+  // (típico de .mov en ProRes u otros códecs "pro", container válido pero códec no soportado por
+  // ningún navegador) — Chrome no siempre usa code 3 (MEDIA_ERR_DECODE) para esto, a veces ni
+  // llega a reconocer el formato como decodificable y tira code 4 directo. Se agregan las dos
+  // causas reales en vez de una sola, para no hacer pensar que el archivo/link está roto cuando en
+  // realidad solo es un códec no soportado — el archivo puede estar perfecto.
   const MEDIA_ERROR_LABELS = {
     1: 'Carga cancelada',
     2: 'Error de red al pedir el archivo',
     3: 'El archivo está dañado o usa un formato/códec que el navegador no puede decodificar',
-    4: 'El navegador no reconoció el contenido como un video válido (puede ser que el link no haya devuelto el archivo real)',
+    4: 'El navegador no pudo reproducir este archivo — puede ser un problema de red/link, o que el video use un códec no compatible con el navegador (pasa con algunos .mov, aunque el archivo esté perfecto). Probá descargarlo y abrirlo con otro reproductor (VLC, QuickTime) para confirmar si el archivo en sí está bien.',
   };
   const onVideoError = (e) => {
     setVideoLoading(false);
