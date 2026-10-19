@@ -11,7 +11,7 @@ module.exports = function videoUploadRoutes({
   db, auth, io, requireProjectAccess, uploadLimiter, isProjectMember, emitToProject, createNotification, safeUnlink,
   useR2, s3, R2_BUCKET, uploadsDir, VIDEO_MIME_EXT, verifyFileSignature, STORAGE_HARD_LIMIT_BYTES,
   CHUNK_SIZE, VIDEO_MAX_BYTES, chunksDir, uploadSessions, discardUploadSession, getUploadsSize, STORAGE_WARN_BYTES,
-  logActivity,
+  cleanupOrphanedFiles, logActivity,
 }) {
   const router = express.Router();
 
@@ -379,6 +379,20 @@ module.exports = function videoUploadRoutes({
       if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
       const bytes = await getUploadsSize();
       res.json({ bytes, gb: (bytes / (1024 ** 3)).toFixed(2), warning: bytes >= STORAGE_WARN_BYTES });
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
+  });
+
+  // Dispara a demanda el mismo barrido que ya corre solo cada 6hs (ver cleanupOrphanedFiles en
+  // lib/storage.js) — archivos en R2/disco que ya no están referenciados por ninguna fila de la
+  // DB (quedaron huérfanos por un proceso cortado a mitad de subida, un borrado interrumpido,
+  // etc.) y multipart uploads abandonados que nunca se completaron ni cancelaron. Nunca toca nada
+  // que esté referenciado por un video/comentario/chat todavía vivo — no borra "trabajo", solo
+  // bytes sueltos que ya no le sirven a nada. Pedido puntual del usuario para no esperar las 6hs.
+  router.post('/api/storage/cleanup-orphaned', auth, async (req, res) => {
+    try {
+      if (req.user.role !== 'admin') return res.status(403).json({ error: 'Sin acceso' });
+      const result = await cleanupOrphanedFiles();
+      res.json({ success: true, ...result });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Error interno del servidor' }); }
   });
 

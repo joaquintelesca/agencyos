@@ -93,7 +93,11 @@ module.exports = function createStorage({ db, useR2, s3, R2_BUCKET, uploadsDir, 
   // huérfano para siempre. Barrido periódico: cualquier archivo (en R2 o en uploads/ local) que
   // no esté referenciado por ninguna fila de la DB, y que no sea sospechosamente reciente (podría
   // estar subiéndose en este momento), se borra.
+  // Devuelve cuántas cosas limpió — antes no lo reportaba a ningún lado porque solo corría sola
+  // en el `setInterval` de abajo; el endpoint admin bajo demanda (ver routes/admin.js) lo necesita
+  // para poder mostrarle al usuario qué encontró, no solo "listo, corrí algo".
   async function cleanupOrphanedFiles() {
+    const result = { deletedFiles: 0, abortedUploads: 0 };
     try {
       const [videoFiles, thumbFiles, commentFiles, replyFiles, chatFiles] = await Promise.all([
         db('videos').pluck('filename'),
@@ -118,6 +122,7 @@ module.exports = function createStorage({ db, useR2, s3, R2_BUCKET, uploadsDir, 
             if (referenced.has(obj.Key)) continue;
             if (Date.now() - obj.LastModified.getTime() < ONE_HOUR) continue;
             await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: obj.Key })).catch(() => {});
+            result.deletedFiles++;
           }
           token = listed.IsTruncated ? listed.NextContinuationToken : undefined;
         } while (token);
@@ -129,8 +134,9 @@ module.exports = function createStorage({ db, useR2, s3, R2_BUCKET, uploadsDir, 
         for (const up of (abandoned.Uploads || [])) {
           if (Date.now() - up.Initiated.getTime() < ONE_HOUR) continue;
           await s3.send(new AbortMultipartUploadCommand({ Bucket: R2_BUCKET, Key: up.Key, UploadId: up.UploadId })).catch(() => {});
+          result.abortedUploads++;
         }
-        return;
+        return result;
       }
 
       const entries = await fs.promises.readdir(uploadsDir, { withFileTypes: true });
@@ -142,6 +148,7 @@ module.exports = function createStorage({ db, useR2, s3, R2_BUCKET, uploadsDir, 
           const stat = await fs.promises.stat(filePath);
           if (Date.now() - stat.mtimeMs < ONE_HOUR) continue;
           await fs.promises.unlink(filePath);
+          result.deletedFiles++;
         } catch {}
       }
 
@@ -157,9 +164,11 @@ module.exports = function createStorage({ db, useR2, s3, R2_BUCKET, uploadsDir, 
           const stat = await fs.promises.stat(filePath);
           if (Date.now() - stat.mtimeMs < ONE_HOUR) continue;
           await fs.promises.unlink(filePath);
+          result.abortedUploads++;
         } catch {}
       }
     } catch (e) { console.error('Error en limpieza de archivos huérfanos:', e); }
+    return result;
   }
   setInterval(cleanupOrphanedFiles, 6 * 60 * 60 * 1000); // cada 6h
 

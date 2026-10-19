@@ -1093,13 +1093,13 @@ app.use(require('./routes/settings')({ db, auth, serveFile, safeUnlink, verifyAn
 // las rutas de subida/aprobación/stack/storage viven en routes/video-upload.js.)
 const {
   CHUNK_SIZE, VIDEO_MAX_BYTES, chunksDir, uploadSessions, discardUploadSession,
-  getUploadsSize, STORAGE_WARN_BYTES,
+  getUploadsSize, STORAGE_WARN_BYTES, cleanupOrphanedFiles,
 } = require('./lib/storage')({ db, useR2, s3, R2_BUCKET, uploadsDir, STORAGE_HARD_LIMIT_BYTES });
 app.use(require('./routes/video-upload')({
   db, auth, io, requireProjectAccess, uploadLimiter, isProjectMember, emitToProject, createNotification, safeUnlink,
   useR2, s3, R2_BUCKET, uploadsDir, VIDEO_MIME_EXT, verifyFileSignature, STORAGE_HARD_LIMIT_BYTES,
   CHUNK_SIZE, VIDEO_MAX_BYTES, chunksDir, uploadSessions, discardUploadSession, getUploadsSize, STORAGE_WARN_BYTES,
-  logActivity,
+  cleanupOrphanedFiles, logActivity,
 }));
 require('./lib/review-reminders')({ db, createNotification });
 require('./lib/payment-reminders')({ db, createNotification });
