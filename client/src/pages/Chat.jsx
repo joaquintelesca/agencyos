@@ -1161,7 +1161,7 @@ export default function Chat() {
                 <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--bg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: 'var(--text2)' }}>#</div>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{activeConv.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>Canal</div>
+                  <div className="text-hint">Canal</div>
                 </div>
               </>
             )}
@@ -1460,7 +1460,7 @@ export default function Chat() {
                 )}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+            <div className="modal-actions" style={{ marginTop: 8 }}>
               <button className="btn btn-ghost" onClick={() => setShowNewChannel(false)}>Cancelar</button>
               <button className="btn btn-primary" onClick={createChannel} disabled={!channelForm.name.trim()}>
                 Crear canal
@@ -1638,7 +1638,7 @@ function SavedMessagesPanel({ api, userId, initials, isNarrowViewport, onBack, o
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
                   <span style={{ fontWeight: 700, fontSize: 13 }}>{m.sender_name}</span>
-                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>en {labelFor(m)}</span>
+                  <span className="text-hint">en {labelFor(m)}</span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {m.content || (m.file_type ? '📎 Archivo' : '')}
@@ -1750,22 +1750,22 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
         {PRIMARY_REACTIONS.map(emoji => (
           <button
             key={emoji}
-            className="icon-btn"
+            className="icon-btn msg-tool-btn"
             onClick={() => react(emoji)}
             title={`Reaccionar con ${emoji}`}
-            style={{ borderRadius: '50%', width: 24, height: 24, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ fontSize: 14 }}
           >
             {emoji}
           </button>
         ))}
         <div style={{ position: 'relative' }}>
           <button
-            className="icon-btn"
+            className="icon-btn msg-tool-btn"
             onClick={() => setEmojiPickerOpen(o => !o)}
             title="Más reacciones"
             aria-label="Más reacciones"
             aria-expanded={emojiPickerOpen}
-            style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', background: emojiPickerOpen ? 'var(--bg3)' : 'transparent' }}
+            style={{ color: '#fff', background: emojiPickerOpen ? 'var(--bg3)' : 'transparent' }}
           >
             <Icon.smile />
           </button>
@@ -1778,10 +1778,10 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
                 <button
                   key={emoji}
                   role="menuitem"
-                  className="icon-btn"
+                  className="icon-btn msg-tool-btn"
                   onClick={() => react(emoji)}
                   title={`Reaccionar con ${emoji}`}
-                  style={{ borderRadius: '50%', width: 24, height: 24, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  style={{ fontSize: 14 }}
                 >
                   {emoji}
                 </button>
@@ -1795,45 +1795,45 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
         <div style={{ width: 1, height: 16, background: 'var(--border2)', margin: '0 2px' }} />
         {msg.content && (
           <button
-            className="icon-btn"
+            className="icon-btn msg-tool-btn"
             onClick={() => { navigator.clipboard.writeText(msg.content); setToolbarOpen(false); }}
             title="Copiar texto"
-            style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+            style={{ color: '#fff' }}
           >
             <Icon.copy />
           </button>
         )}
         <button
-          className="icon-btn"
+          className="icon-btn msg-tool-btn"
           onClick={() => { onSave(); setToolbarOpen(false); }}
           title={msg.saved_by_me ? 'Quitar de guardados' : 'Guardar'}
           aria-pressed={!!msg.saved_by_me}
-          style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: msg.saved_by_me ? 'var(--yellow)' : '#fff' }}
+          style={{ color: msg.saved_by_me ? 'var(--yellow)' : '#fff' }}
         >
           {msg.saved_by_me ? <Icon.bookmarkFilled /> : <Icon.bookmark />}
         </button>
         <button
-          className="icon-btn"
+          className="icon-btn msg-tool-btn"
           onClick={() => { onQuote(); setToolbarOpen(false); }}
           title="Citar"
-          style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+          style={{ color: '#fff' }}
         >
           <Icon.quote />
         </button>
         <button
-          className="icon-btn"
+          className="icon-btn msg-tool-btn"
           onClick={() => { onPin(); setToolbarOpen(false); }}
           title={msg.pinned ? 'Desfijar' : 'Fijar'}
           aria-pressed={!!msg.pinned}
-          style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: msg.pinned ? 'var(--accent2)' : '#fff' }}
+          style={{ color: msg.pinned ? 'var(--accent2)' : '#fff' }}
         >
           {msg.pinned ? <Icon.pinFilled /> : <Icon.pin />}
         </button>
         <button
-          className="icon-btn"
+          className="icon-btn msg-tool-btn"
           onClick={() => { onForward(); setToolbarOpen(false); }}
           title="Reenviar"
-          style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+          style={{ color: '#fff' }}
         >
           <Icon.forward />
         </button>
@@ -1841,10 +1841,10 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
             no tiene sentido ofrecer "Responder en hilo" sobre algo que ya es una respuesta. */}
         {!msg.thread_parent_id && onOpenThread && (
           <button
-            className="icon-btn"
+            className="icon-btn msg-tool-btn"
             onClick={() => { onOpenThread(); setToolbarOpen(false); }}
             title="Responder en hilo"
-            style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+            style={{ color: '#fff' }}
           >
             <Icon.comment />
           </button>
@@ -1853,10 +1853,10 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
             el botón a quien ya sabemos que va a recibir un 403. */}
         {onDelete && (
           <button
-            className="icon-btn"
+            className="icon-btn msg-tool-btn"
             onClick={() => { onDelete(); setToolbarOpen(false); }}
             title="Eliminar mensaje"
-            style={{ borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)' }}
+            style={{ color: 'var(--red)' }}
           >
             <Icon.trash />
           </button>
@@ -1878,7 +1878,7 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
             <span style={{ fontWeight: 700, fontSize: 14, color: isMe ? 'var(--accent)' : 'var(--text)' }}>
               {msg.sender_name}
             </span>
-            <span style={{ fontSize: 11, color: 'var(--text3)' }}>{timeStr}</span>
+            <span className="text-hint">{timeStr}</span>
           </div>
         )}
         {msg.deleted_at ? (
@@ -1935,7 +1935,7 @@ function Message({ msg, isMe, compact, initials, mediaUrl, onImageLoad, userId, 
               <span style={{ display: 'flex', color: 'var(--text2)' }}><Icon.paperclip /></span>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{msg.file_name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Descargar</div>
+                <div className="text-hint">Descargar</div>
               </div>
             </div>
           </a>

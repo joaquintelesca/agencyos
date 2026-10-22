@@ -919,7 +919,7 @@ export default function Layout() {
             <p style={{ fontSize: 'var(--fs-base)', color: 'var(--text2)', lineHeight: 'var(--lh-normal)', marginBottom: 16 }}>
               Dejaste comentarios en <strong>"{reviewReminder.videoTitle}"</strong> pero no le avisaste al editor que terminaste de revisar.
             </p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setReviewReminder(null)}>Ahora no</button>
               <button className="btn btn-primary" onClick={confirmReviewReminder} disabled={sendingReviewReminder}>
                 {sendingReviewReminder ? 'Avisando...' : 'Avisar ahora'}
@@ -964,7 +964,7 @@ export default function Layout() {
                   <label>Descripción (opcional)</label>
                   <textarea className="input" value={projectForm.description} onChange={e => setProjectForm(p => ({ ...p, description: e.target.value }))} placeholder="¿De qué se trata este proyecto?" />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2">
                   <div className="form-group">
                     <label>Cliente (opcional)</label>
                     <select className="input" value={projectForm.client_id} onChange={e => {
@@ -997,7 +997,7 @@ export default function Layout() {
                     ))}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <div className="modal-actions">
                   <button className="btn btn-ghost" onClick={() => setShowNewProject(false)}>Cancelar</button>
                   {user?.role === 'admin'
                     ? <button className="btn btn-primary" onClick={goToStep2} disabled={!projectForm.name.trim()}>Siguiente →</button>
@@ -1045,7 +1045,7 @@ export default function Layout() {
                       </div>
                     </div>
                     <div className="form-group">
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+                      <label className="check-label">
                         <input type="checkbox" checked={paymentForm.upwork_status !== 'No'}
                           onChange={e => setPaymentForm(p => ({ ...p, upwork_status: e.target.checked ? 'Pendiente de carga' : 'No', upwork_fee_pct: e.target.checked ? (p.upwork_fee_pct || 15) : '' }))} />
                         Se cobra al cliente por Upwork
@@ -1062,7 +1062,7 @@ export default function Layout() {
                       )}
                     </div>
                     <div className="form-group">
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+                      <label className="check-label">
                         <input type="checkbox" checked={paymentForm.client_paid === 'cobrado'}
                           onChange={e => setPaymentForm(p => ({ ...p, client_paid: e.target.checked ? 'cobrado' : 'unpaid' }))} />
                         El cliente ya pagó este proyecto
@@ -1139,7 +1139,7 @@ export default function Layout() {
                       </div>
                     )}
                   </>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <div className="modal-actions">
                   <button className="btn btn-ghost" onClick={() => setStep(1)}>← Volver</button>
                   <button className="btn btn-primary" onClick={createProject} disabled={isCreatingProject}>{isCreatingProject ? 'Creando...' : 'Crear proyecto'}</button>
                 </div>
@@ -1158,7 +1158,7 @@ export default function Layout() {
               <label>Nombre</label>
               <input className="input" value={clientForm.name} onChange={e => setClientForm(p => ({ ...p, name: e.target.value }))} placeholder="Ej: Nike, Adidas..." autoFocus />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-grid-2">
               <div className="form-group">
                 <label>Email (opcional)</label>
                 <input className="input" type="email" value={clientForm.email} onChange={e => setClientForm(p => ({ ...p, email: e.target.value }))} placeholder="contacto@cliente.com" />
@@ -1182,7 +1182,7 @@ export default function Layout() {
                 ))}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setShowNewClient(false)}>Cancelar</button>
               <button className="btn btn-primary" onClick={createClient} disabled={!clientForm.name.trim() || isCreatingClient}>{isCreatingClient ? 'Creando...' : 'Crear cliente'}</button>
             </div>
@@ -1202,7 +1202,7 @@ export default function Layout() {
               <label>Descripción</label>
               <textarea className="input" value={editProjectForm.description} onChange={e => setEditProjectForm(p => ({ ...p, description: e.target.value }))} rows={2} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-grid-2">
               <div className="form-group">
                 <label>Cliente</label>
                 <select className="input" value={editProjectForm.client_id} onChange={e => setEditProjectForm(p => ({ ...p, client_id: e.target.value }))}>
@@ -1251,7 +1251,7 @@ export default function Layout() {
                   </div>
                 </div>
                 <div className="form-group">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+                  <label className="check-label">
                     <input type="checkbox" checked={editProjectForm.upwork_status !== 'No'}
                       onChange={e => setEditProjectForm(p => ({ ...p, upwork_status: e.target.checked ? 'Pendiente de carga' : 'No', upwork_fee_pct: e.target.checked ? (p.upwork_fee_pct || 15) : '' }))} />
                     Se cobra al cliente por Upwork
@@ -1268,7 +1268,7 @@ export default function Layout() {
                   )}
                 </div>
                 <div className="form-group">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
+                  <label className="check-label">
                     <input type="checkbox" checked={editProjectForm.client_paid === 'cobrado'}
                       onChange={async e => {
                         // Desmarcar no deja rastro de cuándo se había marcado la primera vez —
@@ -1325,7 +1325,7 @@ export default function Layout() {
                 ))}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setEditingProject(null)}>Cancelar</button>
               <button className="btn btn-primary" onClick={saveProject} disabled={!editProjectForm.name.trim()}>Guardar cambios</button>
             </div>
@@ -1341,7 +1341,7 @@ export default function Layout() {
             <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.5, margin: '12px 0' }}>
               Vas a marcar este proyecto como pagado al editor y cobrado al cliente — va a pasar a "Saldados" en Pagos.
             </p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setShowCompleteConfirm(false)}>Cancelar</button>
               <button className="btn btn-primary" onClick={async () => { setShowCompleteConfirm(false); const taskIdsToReassign = await reassignOldEditorTasks(); if (taskIdsToReassign === null) return; doSaveProject(taskIdsToReassign); }}>Sí, marcar como saldado</button>
             </div>
@@ -1382,7 +1382,7 @@ export default function Layout() {
               <label>Nombre</label>
               <input className="input" value={editClientForm.name} onChange={e => setEditClientForm(p => ({ ...p, name: e.target.value }))} autoFocus />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-grid-2">
               <div className="form-group">
                 <label>Email</label>
                 <input className="input" type="email" value={editClientForm.email} onChange={e => setEditClientForm(p => ({ ...p, email: e.target.value }))} placeholder="contacto@cliente.com" />
@@ -1453,7 +1453,7 @@ export default function Layout() {
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setEditingClient(null)}>Cancelar</button>
               <button className="btn btn-primary" onClick={saveClient} disabled={!editClientForm.name.trim()}>Guardar cambios</button>
             </div>
@@ -1480,7 +1480,7 @@ export default function Layout() {
               <input className="input" type="password" value={passwordForm.confirm} onChange={e => setPasswordForm(p => ({ ...p, confirm: e.target.value }))} placeholder="••••••••" />
             </div>
             {passwordError && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12, background: 'rgba(240,92,92,0.08)', padding: '8px 12px', borderRadius: 8 }}>{passwordError}</p>}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setShowChangePassword(false)}>Cancelar</button>
               <button className="btn btn-primary" onClick={changePassword} disabled={passwordLoading}>
                 {passwordLoading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : 'Cambiar contraseña'}

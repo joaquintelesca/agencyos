@@ -491,7 +491,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
       <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{v.title}</div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span className="badge" style={{ padding: '2px 7px', background: 'var(--accent-glow)', color: 'var(--accent2)', fontWeight: 700 }}>v{v.version}</span>
-        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v.uploader_name}</span>
+        <span className="text-hint">{v.uploader_name}</span>
       </div>
       {v.task_title && (
         <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -551,7 +551,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
             <span style={{ fontSize: 11, color: 'var(--text3)', minWidth: 32, textAlign: 'right' }}>{uploadProgress}%</span>
           </div>
         )}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div className="modal-actions">
           <button className="btn btn-ghost" onClick={() => uploading ? cancelUpload() : closeUploadModal()}>
             {uploading ? 'Cancelar subida' : 'Cancelar'}
           </button>
@@ -628,7 +628,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
                       {item.videos.length} versiones
                     </button>
                   </div>
-                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>{item.latest.uploader_name}</span>
+                  <span className="text-hint">{item.latest.uploader_name}</span>
                 </div>
                 {item.latest.task_title && (
                   <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -693,7 +693,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
           {selectedVideo.title}
         </span>
-        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{comments.length} comentarios</span>
+        <span className="text-hint">{comments.length} comentarios</span>
         <a href={mediaUrl(`/uploads/${selectedVideo.filename}?download=1`)} title="Descargar video" aria-label="Descargar video"
           style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', color: 'var(--text2)', fontSize: 12, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <Icon.download /> Descargar
@@ -792,7 +792,7 @@ export default function VideoReview({ projectId, tasks = [], uploadForTaskId, on
         }}>
           <div style={{ padding: '10px 14px', borderBottom: `1px solid var(--border)`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Comentarios</span>
-            <span style={{ fontSize: 11, color: 'var(--text3)' }}>{comments.length}</span>
+            <span className="text-hint">{comments.length}</span>
           </div>
           <div style={{ display: 'flex', borderBottom: `1px solid var(--border)`, flexShrink: 0 }}>
             {[['all','Todos'],['pending','Pendientes'],['resolved','Hechos']].map(([val, label]) => (

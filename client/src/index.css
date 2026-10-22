@@ -160,6 +160,18 @@ body {
 }
 .msg-react-toolbar.force-visible { opacity: 1; pointer-events: auto; }
 .msg-react-toolbar button:hover { background: var(--bg3); }
+/* Botón redondo de 24px de esa barra — el color sigue inline porque cambia según estado
+   (guardado/fijado/borrar). */
+.msg-tool-btn { border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
+
+/* Fila de botones al pie de un modal (Cancelar / Guardar), alineada a la derecha. */
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Grilla de 2 columnas iguales para campos de formulario lado a lado. */
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Texto secundario chico (nombre de quien subió, contadores, subtítulos). */
+.text-hint { font-size: 11px; color: var(--text3); }
 
 /* Inputs */
 .input {
@@ -241,6 +253,8 @@ select.input { cursor: pointer; }
 /* Form groups */
 .form-group { margin-bottom: 16px; }
 .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+/* Label con checkbox adentro: mismo look que el resto de los labels, pero en línea con el tilde. */
+.form-group label.check-label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 /* Avatar */
