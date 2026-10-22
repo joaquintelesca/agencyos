@@ -452,7 +452,9 @@ export default function Project() {
           payment_amount: isSelfEditorPrice ? 0 : priceFormAmount(),
           payment_hours: priceForm.payment_hours,
           payment_status: project.payment_status,
-          upwork_status: priceForm.upwork_status, upwork_fee_pct: priceForm.upwork_fee_pct,
+          // Cobrado por Upwork implica que ya está cargado ahí (si no, el PATCH de "cobrado" rebota con 409).
+          upwork_status: priceForm.client_paid === 'cobrado' && priceForm.upwork_status === 'Pendiente de carga' ? 'Cargado' : priceForm.upwork_status,
+          upwork_fee_pct: priceForm.upwork_fee_pct,
           client_amount: priceForm.payment_type === 'fixed' ? priceForm.client_amount : priceForm.client_rate,
           status: project.status
         }

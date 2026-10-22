@@ -297,6 +297,8 @@ export default function Layout() {
     try {
       const isSelf = editProjectForm.payment_editor_id === ownerUserId;
       const body = { ...editingProject, ...editProjectForm, payment_amount: isSelf ? 0 : editProjectForm.payment_amount };
+      // Mismo caso que en createProject: cobrado por Upwork implica que ya está cargado ahí.
+      if (editProjectForm.client_paid === 'cobrado' && editProjectForm.upwork_status === 'Pendiente de carga') body.upwork_status = 'Cargado';
       let updated = await api(`/api/projects/${editingProject.id}`, { method: 'PUT', body });
       // client_paid necesita pasar por el endpoint de Pagos para "congelar" el monto real en
       // ese momento (ver PATCH /api/payments/:id) — el PUT genérico de arriba lo ignora a propósito.
@@ -550,7 +552,9 @@ export default function Layout() {
         body.payment_amount = isSelf ? 0 : (paymentForm.payment_type === 'fixed' ? paymentForm.payment_amount : paymentForm.payment_rate);
         body.payment_hours = paymentForm.payment_hours || 0;
         body.client_amount = paymentForm.payment_type === 'fixed' ? paymentForm.client_amount : paymentForm.client_rate;
-        body.upwork_status = paymentForm.upwork_status;
+        // Si el cliente ya pagó por Upwork, la factura ya está cargada ahí — sin esto el PATCH de
+        // "cobrado" de abajo rebota con 409 (el checkbox de Upwork solo sabe poner "Pendiente de carga").
+        body.upwork_status = paymentForm.client_paid === 'cobrado' && paymentForm.upwork_status === 'Pendiente de carga' ? 'Cargado' : paymentForm.upwork_status;
         body.upwork_fee_pct = paymentForm.upwork_fee_pct;
       }
       let p = await api('/api/projects', { method: 'POST', body });
