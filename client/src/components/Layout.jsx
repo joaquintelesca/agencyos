@@ -1021,7 +1021,7 @@ export default function Layout() {
                   🔒 Esta información es solo visible para vos — es opcional, se puede cargar después desde "Editar proyecto"
                 </div>
                 <div className="form-group">
-                  <label>Editor responsable</label>
+                  <label>Editor asignado</label>
                   <select className="input" value={paymentForm.payment_editor_id} onChange={e => setPaymentForm(p => ({ ...p, payment_editor_id: e.target.value }))}>
                     <option value="">Sin asignar (opcional, lo podés agregar después)</option>
                     {users.map(u => (
