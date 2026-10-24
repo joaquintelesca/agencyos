@@ -1388,7 +1388,6 @@ process.on('uncaughtException', (err) => {
 
 initDB().then(() => {
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 AgencyOS corriendo en http://localhost:${PORT}`);
-    console.log(`👤 Admin: admin@agencyos.com / admin123\n`);
+    console.log(`\n🚀 AgencyOS corriendo en http://localhost:${PORT} (Node ${process.version})\n`);
   });
 }).catch(e => { console.error('Error iniciando DB:', e); process.exit(1); });
